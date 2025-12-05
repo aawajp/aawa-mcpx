@@ -1,0 +1,23 @@
+# Ignore everything by default
+*
+
+# Allow directories to be traversable
+!*/
+
+!src/**
+!styles/**
+
+!.gitignore
+!AGENTS.md
+!biome.jsonc
+!bun-env.d.ts
+!bun.lock
+!bunfig.toml
+!components.json
+!index.html
+!package.json
+!plan.md
+!README.md
+!tsconfig.json
+
+node_modules
