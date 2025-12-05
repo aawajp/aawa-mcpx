@@ -1,0 +1,16 @@
+# Settings for Bun (can be overriden by CLI arguments)
+# https://bun.sh/docs/runtime/bunfig
+telemetry = false
+
+[run]
+	# execute "run" commands with "bun" instead of "node" (note: bun's default is "node"
+	bun = true
+
+[install]
+	# set exact package versions in package.json
+	# for more precise dependency version management
+	exact = true
+
+[serve.static]
+plugins = ["bun-plugin-tailwind"]
+env = "BUN_PUBLIC_*"

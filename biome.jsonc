@@ -1,0 +1,113 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.3.13/schema.json",
+	"vcs": {
+		"enabled": false
+	},
+	"files": {
+		"includes": ["src/**", "*.json", "*.jsonc", "*.ts"],
+		"ignoreUnknown": true
+	},
+	"linter": {
+		"enabled": true,
+		"domains": {
+			"project": "all",
+			"react": "all"
+		},
+		"rules": {
+			"recommended": true,
+			"correctness": {
+				"useUniqueElementIds": "off", // TODO: should enable?
+				"noUnusedFunctionParameters": "warn",
+				"noUnusedVariables": "warn",
+				"noUnusedLabels": "warn",
+				"noUnusedPrivateClassMembers": "warn",
+				"noUnusedImports": "warn",
+				"noUndeclaredDependencies": "warn",
+				"useImportExtensions": "off"
+			},
+			// "nursery": {
+			// 	"noUnresolvedImports": "off", // client side imports will break if "on"
+			// 	"noFloatingPromises": "off" // need to disable due to React's useEffect pattern
+			// },
+			"style": {
+				"noExportedImports": "warn"
+			},
+			"suspicious": {
+				// "noConsole": "error"
+				// "noUnknownAtRules": "off" // Tailwind incompatibilities: https://github.com/biomejs/biome/discussions/3195
+			}
+		}
+	},
+	"formatter": {
+		"enabled": true,
+		"indentStyle": "tab",
+		"lineEnding": "lf",
+		"useEditorconfig": false
+	},
+	"javascript": {
+		"parser": {
+			"jsxEverywhere": false
+		},
+		"formatter": {
+			"enabled": true,
+			"quoteStyle": "single",
+			"quoteProperties": "preserve"
+		},
+		"linter": {
+			"enabled": true
+		}
+	},
+	"json": {
+		"formatter": {
+			"enabled": true
+		},
+		"linter": {
+			"enabled": true
+		}
+	},
+	"css": {
+		"parser": {
+			"cssModules": true,
+			"tailwindDirectives": true
+		},
+		"formatter": {
+			"enabled": true,
+			"quoteStyle": "single"
+		},
+		"linter": {
+			"enabled": true
+		}
+	},
+	"html": {
+		"experimentalFullSupportEnabled": true,
+		"formatter": {
+			"enabled": true
+		},
+		"linter": {
+			"enabled": true
+		}
+	},
+	"assist": {
+		"enabled": true,
+		"actions": {
+			"source": {
+				"organizeImports": {
+					"level": "on",
+					"options": {
+						"groups": [
+							":URL:",
+							":BLANK_LINE:",
+							":PACKAGE:",
+							":BLANK_LINE:",
+							":NODE:",
+							":BLANK_LINE:",
+							":ALIAS:",
+							":BLANK_LINE:",
+							":PATH:"
+						]
+					}
+				}
+			}
+		}
+	}
+}
