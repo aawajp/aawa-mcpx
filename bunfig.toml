@@ -7,6 +7,7 @@ telemetry = false
 	bun = true
 
 [install]
+	auto = "disable"
 	# set exact package versions in package.json
 	# for more precise dependency version management
 	exact = true

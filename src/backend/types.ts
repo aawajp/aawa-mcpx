@@ -76,6 +76,16 @@ type ResourcesMap = Map<
 >;
 type ClientsMap = Map<string, Client>;
 
+type RequestQueue = {
+	pending: Array<{
+		resolve: (value: unknown) => void;
+		reject: (reason?: unknown) => void;
+		request: () => Promise<unknown>;
+	}>;
+	isProcessing: boolean;
+	lastRequestTime: number;
+};
+
 type BackendManager = {
 	initialize: () => Promise<void>;
 	getClient: (params: GetClientParams) => Client | undefined;
@@ -100,6 +110,7 @@ export type {
 	GetPromptParams,
 	PromptsMap,
 	ReadResourceParams,
+	RequestQueue,
 	ResourcesMap,
 	ToolsMap,
 };

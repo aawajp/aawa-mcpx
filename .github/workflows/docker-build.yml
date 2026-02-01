@@ -1,0 +1,48 @@
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches:
+      - release/*
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    uses: docker/github-builder/.github/workflows/build.yml@v1.0.0
+    permissions:
+      contents: read # to fetch the repository content
+      id-token: write # for signing attestation(s) with GitHub OIDC Token
+      packages: write # for pushing to GHCR
+    with:
+      output: image
+      push: ${{ github.event_name != 'pull_request' }}
+      platforms: |
+        linux/arm64
+        linux/amd64
+      meta-images: |
+        ghcr.io/${{ github.repository }}
+        docker.io/${{ github.repository }}
+      meta-tags: |
+        type=ref,event=branch
+        type=ref,event=pr
+        type=semver,pattern={{version}}
+        type=semver,pattern={{major}}.{{minor}}
+        type=semver,pattern={{major}}
+        type=sha,prefix={{branch}}-
+      cache: true
+      cache-mode: max
+    secrets:
+      registry-auths: |
+        - registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+        - registry: docker.io
+          username: ${{ vars.GH_DOCKERHUB_USERNAME }}
+          password: ${{ secrets.GH_DOCKERHUB_ACCESS_TOKEN }}

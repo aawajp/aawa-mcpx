@@ -4,6 +4,7 @@ type McpServerConfig = {
 	headers?: Record<string, string>;
 	timeout?: number;
 	enabled?: boolean;
+	trafficLimit?: number;
 };
 
 type McpConfig = {

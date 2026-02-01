@@ -16,6 +16,7 @@ import { randomUUID } from 'node:crypto';
 import { setInterval } from 'node:timers/promises';
 
 import { createHandlers } from '@/gateway/handlers';
+import { parsePrefix } from '@/gateway/namespace';
 import type { ServerInstance, StartServerParams } from '@/gateway/types';
 import { logger } from '@/utils/logger';
 
@@ -34,17 +35,19 @@ type JsonRpcResponse = JSONRPCResultResponse | JSONRPCErrorResponse;
 type RouteResult = {
 	payload: JsonRpcResponse | null; // null for notifications (HTTP 202 with no body)
 	sessionId?: string;
+	status?: number;
 };
 
 const createJsonResponse = (
 	body: JsonRpcResponse,
 	sessionId?: string,
+	status?: number,
 ): Response => {
 	const headers = new Headers({ 'Content-Type': 'application/json' });
 	if (sessionId) {
 		headers.set(MCP_SESSION_HEADER, sessionId);
 	}
-	return new Response(JSON.stringify(body), { headers });
+	return new Response(JSON.stringify(body), { status: status ?? 200, headers });
 };
 
 const createNotificationResponse = (sessionId?: string): Response => {
@@ -126,6 +129,9 @@ const startServer = async (
 	): Promise<RouteResult> => {
 		const sessionId = randomUUID();
 		sessions.add(sessionId);
+		logger.info(
+			`Created new MCP session: ${sessionId} (total: ${sessions.size})`,
+		);
 
 		return {
 			sessionId,
@@ -146,21 +152,31 @@ const startServer = async (
 		id: string | number | undefined,
 	): RouteResult | null => {
 		if (!sessionId) {
+			logger.warn('Request missing MCP session ID');
 			return {
 				payload: {
 					jsonrpc: '2.0',
 					id: id,
 					error: { code: 400, message: 'Missing MCP session' },
 				},
+				status: 400,
 			};
 		}
 		if (!sessions.has(sessionId)) {
+			logger.warn(
+				`Unknown MCP session: ${sessionId} (active sessions: ${sessions.size})`,
+			);
 			return {
 				payload: {
 					jsonrpc: '2.0',
 					id: id,
-					error: { code: 404, message: 'Unknown MCP session' },
+					error: {
+						code: 404,
+						message:
+							'Unknown MCP session. Please re-initialize by calling initialize.',
+					},
 				},
+				status: 404,
 			};
 		}
 		return null;
@@ -371,6 +387,30 @@ const startServer = async (
 		}
 	};
 
+	// Build log message for requests
+	const buildLogMessage = (
+		method: string,
+		sessionId: string | undefined,
+		params?: unknown,
+	): string => {
+		let message = `Request: session=${sessionId ?? 'none'}, method=${method}`;
+		if (
+			method === 'tools/call' &&
+			params &&
+			typeof params === 'object' &&
+			'name' in params
+		) {
+			const toolName = typeof params.name === 'string' ? params.name : '';
+			try {
+				const { serverName, originalName } = parsePrefix(toolName);
+				message += `, backend=${serverName}, tool=${originalName}`;
+			} catch {
+				message += `, tool=${toolName}`;
+			}
+		}
+		return message;
+	};
+
 	// Route notifications (no id, no response body, HTTP 202)
 	const routeNotification = (
 		_notification: JSONRPCNotification,
@@ -415,6 +455,13 @@ const startServer = async (
 						// Notification: no id, no response body, HTTP 202
 						const notification = body as JSONRPCNotification;
 						const routeResult = routeNotification(notification, sessionId);
+						logger.info(
+							buildLogMessage(
+								notification.method,
+								sessionId,
+								notification.params,
+							),
+						);
 						trafficStore.logClientTraffic({
 							sessionId: routeResult.sessionId ?? sessionId,
 							method: notification.method,
@@ -431,9 +478,17 @@ const startServer = async (
 					try {
 						const routeResult = await routeRequest(jsonRpcRequest, sessionId);
 						// routeResult.payload is always non-null for requests
+						logger.info(
+							buildLogMessage(
+								jsonRpcRequest.method,
+								sessionId,
+								jsonRpcRequest.params,
+							),
+						);
 						const response = createJsonResponse(
 							routeResult.payload as JsonRpcResponse,
 							routeResult.sessionId ?? sessionId,
+							routeResult.status,
 						);
 						trafficStore.logClientTraffic({
 							sessionId: routeResult.sessionId ?? sessionId,
@@ -519,13 +574,29 @@ const startServer = async (
 								}
 							};
 
+							const sendHeartbeat = () => {
+								if (controllerState.closed) return;
+								try {
+									// Send a comment as heartbeat to keep connection alive
+									controller.enqueue(encoder.encode(': heartbeat\n\n'));
+								} catch (error) {
+									closeStream?.();
+									throw error;
+								}
+							};
+
 							try {
 								sendIfChanged();
 								for await (const _ of setInterval(2000, undefined, {
 									signal: abortController.signal,
 								})) {
 									if (controllerState.closed) break;
+									const previousPayload = lastPayload;
 									sendIfChanged();
+									// Send heartbeat if no data was sent (payload unchanged)
+									if (lastPayload === previousPayload) {
+										sendHeartbeat();
+									}
 								}
 							} catch (error) {
 								if ((error as Error).name !== 'AbortError') {
@@ -636,6 +707,7 @@ const startServer = async (
 	logger.info(`Gateway listening on http://localhost:${port}`);
 
 	const stop = async () => {
+		logger.info(`Stopping gateway, clearing ${sessions.size} active sessions`);
 		server.stop();
 		sessions.clear();
 	};

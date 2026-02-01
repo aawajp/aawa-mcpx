@@ -1,0 +1,13 @@
+# Whitelist approach - only allow what's needed
+*
+
+# Allow package files
+!package.json
+!bun.lock
+!bunfig.toml
+
+# Allow source code
+!src/
+!bun-env.d.ts
+!components.json
+!tsconfig.json

@@ -18,6 +18,7 @@ import type {
 	GetPromptParams,
 	PromptsMap,
 	ReadResourceParams,
+	RequestQueue,
 	ResourcesMap,
 	ToolsMap,
 } from '@/backend/types';
@@ -26,6 +27,8 @@ import { logger } from '@/utils/logger';
 
 const HEALTH_CHECK_INTERVAL_MS = 5000;
 const RECONNECT_INTERVAL_MS = 5000;
+const DEFAULT_TRAFFIC_LIMIT = 1;
+const MIN_INTERVAL_MS = 1000;
 
 const createBackendManager = (
 	params: CreateBackendManagerParams,
@@ -42,6 +45,7 @@ const createBackendManager = (
 	const resourcesCache: ResourcesMap = new Map();
 	const statuses = new Map<string, BackendStatus>();
 	const reconnectTimers = new Map<string, Timer>();
+	const requestQueues = new Map<string, RequestQueue>();
 	let healthCheckTimer: Timer | null = null;
 
 	const getTimeout = (serverName: string): number => {
@@ -49,16 +53,57 @@ const createBackendManager = (
 		return serverConfig?.timeout ?? 30000;
 	};
 
+	const getTrafficLimit = (serverName: string): number => {
+		const serverConfig = serverConfigs.get(serverName);
+		return serverConfig?.trafficLimit ?? DEFAULT_TRAFFIC_LIMIT;
+	};
+
+	const getOrCreateQueue = (serverName: string): RequestQueue => {
+		let queue = requestQueues.get(serverName);
+		if (!queue) {
+			queue = {
+				pending: [],
+				isProcessing: false,
+				lastRequestTime: 0,
+			};
+			requestQueues.set(serverName, queue);
+		}
+		return queue;
+	};
+
+	const waitForRateLimit = async (serverName: string): Promise<void> => {
+		const queue = getOrCreateQueue(serverName);
+		const now = Date.now();
+		const trafficLimit = getTrafficLimit(serverName);
+		const minInterval = MIN_INTERVAL_MS / trafficLimit;
+		const timeSinceLastRequest = now - queue.lastRequestTime;
+
+		if (timeSinceLastRequest < minInterval) {
+			const waitTime = minInterval - timeSinceLastRequest;
+			await Bun.sleep(waitTime);
+		}
+
+		queue.lastRequestTime = Date.now();
+	};
+
 	// Mark backend as down: remove from clients, update status, schedule reconnect
 	const markBackendDown = (serverName: string, error: string): void => {
 		const existingClient = clients.get(serverName);
 		const existingTransport = transports.get(serverName);
 		if (existingClient) {
-			existingClient.close().catch(() => undefined);
+			existingClient.close().catch((err) => {
+				logger.error(
+					`Error closing client for "${serverName}": ${(err as Error).message}`,
+				);
+			});
 			clients.delete(serverName);
 		}
 		if (existingTransport) {
-			existingTransport.close().catch(() => undefined);
+			existingTransport.close().catch((err) => {
+				logger.error(
+					`Error closing transport for "${serverName}": ${(err as Error).message}`,
+				);
+			});
 			transports.delete(serverName);
 		}
 		const serverConfig = serverConfigs.get(serverName);
@@ -111,10 +156,15 @@ const createBackendManager = (
 		if (!client) return false;
 
 		try {
+			// Enforce rate limit for health checks
+			await waitForRateLimit(serverName);
 			// Try to ping the backend (lightweight check)
 			await client.ping({ timeout: 5000 });
 			return true;
-		} catch {
+		} catch (error) {
+			logger.warn(
+				`Health check failed for "${serverName}": ${(error as Error).message}`,
+			);
 			return false;
 		}
 	};
@@ -283,6 +333,15 @@ const createBackendManager = (
 		}
 		reconnectTimers.clear();
 
+		// Clear request queues
+		for (const [serverName, queue] of requestQueues) {
+			// Reject all pending requests
+			for (const { reject } of queue.pending) {
+				reject(new Error(`Backend "${serverName}" is disconnecting`));
+			}
+		}
+		requestQueues.clear();
+
 		// Close all clients
 		for (const [serverName, client] of clients) {
 			try {
@@ -295,11 +354,13 @@ const createBackendManager = (
 		}
 
 		// Close all transports
-		for (const [, transport] of transports) {
+		for (const [serverName, transport] of transports) {
 			try {
 				await transport.close();
-			} catch {
-				// ignore transport close errors
+			} catch (error) {
+				logger.error(
+					`Error closing transport for "${serverName}": ${(error as Error).message}`,
+				);
 			}
 		}
 
@@ -334,6 +395,9 @@ const createBackendManager = (
 			return emptyToolsResult();
 		}
 
+		// Enforce rate limit
+		await waitForRateLimit(serverName);
+
 		try {
 			const result = await client.listTools(
 				{},
@@ -350,10 +414,11 @@ const createBackendManager = (
 			return result;
 		} catch (error) {
 			if (isMethodNotFoundError(error)) {
+				logger.info(`Backend "${serverName}" does not support tools/list`);
 				toolsCache.set(serverName, emptyToolsResult());
 				return emptyToolsResult();
 			}
-			logger.warn(
+			logger.error(
 				`Failed to list tools for "${serverName}": ${(error as Error).message}`,
 			);
 			statuses.set(serverName, {
@@ -376,6 +441,9 @@ const createBackendManager = (
 			return emptyPromptsResult();
 		}
 
+		// Enforce rate limit
+		await waitForRateLimit(serverName);
+
 		try {
 			const result = await client.listPrompts(
 				{},
@@ -395,9 +463,13 @@ const createBackendManager = (
 			return result;
 		} catch (error) {
 			if (isMethodNotFoundError(error)) {
+				logger.info(`Backend "${serverName}" does not support prompts/list`);
 				promptsCache.set(serverName, emptyPromptsResult());
 				return emptyPromptsResult();
 			}
+			logger.error(
+				`Failed to list prompts for "${serverName}": ${(error as Error).message}`,
+			);
 			promptsCache.set(serverName, emptyPromptsResult());
 			trafficStore?.logBackendTraffic({
 				backend: serverName,
@@ -425,6 +497,9 @@ const createBackendManager = (
 			return emptyResourcesResult();
 		}
 
+		// Enforce rate limit
+		await waitForRateLimit(serverName);
+
 		try {
 			const result = await client.listResources(
 				{},
@@ -444,9 +519,13 @@ const createBackendManager = (
 			return result;
 		} catch (error) {
 			if (isMethodNotFoundError(error)) {
+				logger.info(`Backend "${serverName}" does not support resources/list`);
 				resourcesCache.set(serverName, emptyResourcesResult());
 				return emptyResourcesResult();
 			}
+			logger.error(
+				`Failed to list resources for "${serverName}": ${(error as Error).message}`,
+			);
 			resourcesCache.set(serverName, emptyResourcesResult());
 			trafficStore?.logBackendTraffic({
 				backend: serverName,
@@ -493,6 +572,9 @@ const createBackendManager = (
 			};
 		}
 
+		// Enforce rate limit
+		await waitForRateLimit(serverName);
+
 		try {
 			const result = await client.callTool(
 				{ name: toolName, arguments: args },
@@ -512,6 +594,9 @@ const createBackendManager = (
 			// If legacy support is needed in the future, normalize the result here.
 			return result as CallToolResult;
 		} catch (error) {
+			logger.error(
+				`Failed to call tool "${toolName}" on "${serverName}": ${(error as Error).message}`,
+			);
 			trafficStore?.logBackendTraffic({
 				backend: serverName,
 				method: `tools/call:${toolName}`,
@@ -537,6 +622,9 @@ const createBackendManager = (
 			throw new Error(`Backend "${serverName}" is not available`);
 		}
 
+		// Enforce rate limit
+		await waitForRateLimit(serverName);
+
 		try {
 			const result = await client.getPrompt(
 				{ name: promptName, arguments: args },
@@ -550,6 +638,9 @@ const createBackendManager = (
 			});
 			return result;
 		} catch (error) {
+			logger.error(
+				`Failed to get prompt "${promptName}" from "${serverName}": ${(error as Error).message}`,
+			);
 			trafficStore?.logBackendTraffic({
 				backend: serverName,
 				method: `prompts/get:${promptName}`,
@@ -569,6 +660,9 @@ const createBackendManager = (
 			throw new Error(`Backend "${serverName}" is not available`);
 		}
 
+		// Enforce rate limit
+		await waitForRateLimit(serverName);
+
 		try {
 			const result = await client.readResource(
 				{ uri },
@@ -582,6 +676,9 @@ const createBackendManager = (
 			});
 			return result;
 		} catch (error) {
+			logger.error(
+				`Failed to read resource "${uri}" from "${serverName}": ${(error as Error).message}`,
+			);
 			trafficStore?.logBackendTraffic({
 				backend: serverName,
 				method: `resources/read:${uri}`,

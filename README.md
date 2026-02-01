@@ -41,6 +41,7 @@ The gateway reads backend server definitions from `mcp.json` in the project root
 | `headers` | object | No | Custom headers (supports `${ENV_VAR}` expansion) |
 | `timeout` | number | No | Request timeout in ms (default: 30000) |
 | `enabled` | boolean | No | Set `false` to disable without removing |
+| `trafficLimit` | number | No | Max requests per second (default: 1) |
 
 ### Stdio transport (not yet supported)
 
@@ -72,6 +73,8 @@ Stdio transport support is planned for a future release:
 
 ## Run the gateway
 
+### Local development
+
 ```bash
 # Development with hot reload
 bun dev
@@ -83,8 +86,25 @@ bun start
 PORT=4000 bun src/index.ts
 ```
 
+### Docker
+
+```bash
+# Build and run with docker-compose
+docker-compose up --build
+
+# Or build and run manually
+docker build -t aawa-mcpx .
+docker run -p 4567:4567 -v $(pwd)/mcp.json:/app/mcp.json:ro -v $(pwd)/db:/app/db aawa-mcpx
+```
+
+The docker-compose setup mounts `mcp.json` and the `db` directory for configuration and persistence.
+
 The MCP endpoint is served at `http://localhost:<PORT>/mcp` (default port `4567` if `PORT` is unset).
 The gateway responds with MCP `protocolVersion` `2025-11-25`.
+
+### Session management
+
+The gateway creates a unique session ID for each client on initialization. Sessions are stored in-memory and are cleared when the gateway restarts. If a client sends a request with an unknown session ID (e.g., after a gateway restart), the gateway returns HTTP 404, which triggers the MCP client to automatically re-initialize.
 
 ## Endpoints
 

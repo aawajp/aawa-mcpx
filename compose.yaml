@@ -1,0 +1,16 @@
+services:
+  aawa-mcpx:
+    # entrypoint: ["/bin/ash", "-eu", "-o", "pipefail", "-c"]
+    # command: ["sleep 1h"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aawa-mcpx
+    ports:
+      - "4567:4567"
+    volumes:
+      # Mount mcp.json for configuration
+      - ./mcp.json:/home/app/mcp.json:ro
+      # Mount db directory for SQLite persistence
+      - ./db:/home/app/db
+    restart: unless-stopped

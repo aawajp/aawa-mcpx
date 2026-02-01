@@ -4,8 +4,10 @@
 # Allow directories to be traversable
 !*/
 
+!.github/**
 !src/**
 
+!.dockerignore
 !.gitignore
 !AGENTS.md
 !biome.jsonc
@@ -13,6 +15,8 @@
 !bun.lock
 !bunfig.toml
 !components.json
+!compose.yaml
+!Dockerfile
 !index.html
 !package.json
 !plan.md
