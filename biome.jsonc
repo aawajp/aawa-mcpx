@@ -1,0 +1,98 @@
+{
+	// https://next.biomejs.dev/reference/configuration/
+	"$schema": "https://biomejs.dev/schemas/latest/schema.json",
+	"root": true,
+	"vcs": {
+		"enabled": false
+		// "enabled": true,
+		// "clientKind": "git",
+		// "useIgnoreFile": true,
+		// "defaultBranch": "main"
+	},
+	"files": {
+		"includes": [
+			"*.ts",
+			"*.json",
+			"*.jsonc",
+			"src/**/*.ts"
+		],
+		"ignoreUnknown": true,
+		"maxSize": 524288 // 512kB; ignore files bigger than this
+	},
+	"linter": {
+		"enabled": true,
+		"domains": {
+			// disable at root and enable for those modules that need them
+			"project": "all",
+			"react": "all",
+			"test": "all",
+			"types": "all"
+		},
+		"rules": {
+			"correctness": {
+				"noUndeclaredDependencies": "warn",
+				"noUnusedFunctionParameters": "warn",
+				"noUnusedImports": "warn",
+				"noUnusedLabels": "warn",
+				"noUnusedPrivateClassMembers": "warn",
+				"noUnusedVariables": "warn",
+				"noUnresolvedImports": "off", // unnecessary when using tsc
+				"useImportExtensions": "off"
+			},
+			"style": {
+				"noExportedImports": "warn"
+			}
+		}
+	},
+	"assist": {
+		"enabled": true,
+		"actions": {
+			"source": {
+				"organizeImports": {
+					"level": "on",
+					"options": {
+						"groups": [
+							":URL:",
+							":BLANK_LINE:",
+							":PACKAGE:",
+							":BLANK_LINE:",
+							":NODE:",
+							":BLANK_LINE:",
+							":ALIAS:",
+							":BLANK_LINE:",
+							":PATH:"
+						]
+					}
+				}
+			}
+		}
+	},
+	"formatter": {
+		"enabled": true,
+		"expand": "always",
+		"indentStyle": "tab",
+		"lineEnding": "lf",
+		"trailingNewline": true
+	},
+	"javascript": {
+		"parser": {
+			"jsxEverywhere": false
+		},
+		"formatter": {
+			"enabled": true,
+			"quoteProperties": "preserve",
+			"quoteStyle": "single"
+		},
+		"linter": {
+			"enabled": true
+		}
+	},
+	"json": {
+		"formatter": {
+			"enabled": true
+		},
+		"linter": {
+			"enabled": true
+		}
+	}
+}

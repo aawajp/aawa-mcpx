@@ -1,0 +1,48 @@
+{
+	"include": [
+		"src/**/*",
+		"*.json",
+		"*.jsonc",
+		"*.ts"
+	],
+	"compilerOptions": {
+		"paths": {
+			"@/*": [
+				"./src/*"
+			],
+			"@modelcontextprotocol/sdk/*": [
+				"./node_modules/@modelcontextprotocol/sdk/dist/esm/*"
+			]
+		},
+		"allowImportingTsExtensions": false, // import without extensions
+		"allowJs": false,
+		"composite": true,
+		"isolatedModules": true,
+		"jsx": "react-jsx",
+		"lib": [
+			"dom",
+			"dom.iterable",
+			"esnext"
+		],
+		"module": "Preserve",
+		"moduleDetection": "force",
+		"moduleResolution": "bundler",
+		"noEmit": true,
+		"noFallthroughCasesInSwitch": true,
+		"noImplicitOverride": true,
+		"noUncheckedIndexedAccess": true,
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+		"resolveJsonModule": true, // allow json imports
+		"skipLibCheck": true, // prevent type errors due to conflicts in e.g. bun, node, and react types
+		"strict": true,
+		"target": "ESNext",
+		"typeRoots": [
+			"./node_modules/@types" // prevent types being included from outside module dirs
+		],
+		"types": [
+			"bun"
+		],
+		"verbatimModuleSyntax": true // force 'type' specifier for type imports
+	}
+}
