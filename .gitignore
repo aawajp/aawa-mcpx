@@ -1,0 +1,22 @@
+*
+
+# Whitelist - explicitly allow files to git
+!/.dockerignore
+!/.env.example
+!.gitignore
+!/AGENTS.md
+!/Dockerfile
+!/README.md
+!/biome.jsonc
+!/bun-env.d.ts
+!/bun.lock
+!/bunfig.toml
+!/components.json
+!/compose.yaml
+!/package.json
+!/DESIGN.md
+!/scripts
+!/scripts/**
+!/src
+!/src/**
+!/tsconfig.json
