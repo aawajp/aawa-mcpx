@@ -1,0 +1,25 @@
+#!/bin/bash
+# Calculate SHA256 checksum of Docker build context
+# Uses ripgrep with .dockerignore to get files that would be included in build context
+
+set -e
+
+# Get all files that would be included in Docker build context
+# Using ripgrep with .dockerignore whitelist patterns
+FILES=$(rg -uuu --files --sort=path --ignore-file .dockerignore)
+echo "${FILES}" > files.txt
+
+# Calculate SHA256 of each file and combine
+COMBINED_HASH=""
+while IFS= read -r file; do
+  if [ -f "$file" ]; then
+    FILE_HASH=$(sha256sum "$file" | awk '{print $1}')
+    COMBINED_HASH="${COMBINED_HASH}${FILE_HASH}"
+  fi
+done <<< "$FILES"
+
+# Calculate final checksum
+CHECKSUM=$(echo -n "$COMBINED_HASH" | sha256sum | awk '{print $1}')
+
+# Output only the checksum value
+echo "$CHECKSUM" > checksum.txt

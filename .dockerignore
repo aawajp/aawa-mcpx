@@ -1,0 +1,12 @@
+*
+
+# Whitelist - explicitly allow files to image build context
+!/bun.lock
+!/bun-env.d.ts
+!/bunfig.toml
+!/components.json
+!/LICENSE
+!/package.json
+!/src
+!/src/**
+!/tsconfig.json
