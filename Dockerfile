@@ -1,7 +1,7 @@
 ARG TARGETARCH
 
 # Use the base image with Bun runtime
-FROM aawajp/bun:1.4.0
+FROM aawajp/bun:1.4.1
 
 SHELL ["/bin/ash", "-eu", "-o", "pipefail", "-c"]
 
