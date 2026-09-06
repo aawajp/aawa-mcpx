@@ -1,4 +1,3 @@
-import type { Client } from '@modelcontextprotocol/sdk/client';
 import type {
 	ListPromptsResult,
 	ListResourcesResult,
@@ -10,11 +9,13 @@ import { type } from 'arktype';
 import { saveToolState } from '@/config/loader';
 import type { McpConfig } from '@/config/schema';
 import type {
+	Client,
 	McpUpstreamClientsMap,
 	McpUpstreamPromptsMap,
 	McpUpstreamResourcesMap,
 	McpUpstreamServer,
 	McpUpstreamToolsMap,
+	OnValidationError,
 	ToggleToolParams,
 } from '@/mcp_upstreams/types';
 import { logger } from '@/server/logger';
@@ -25,13 +26,6 @@ import {
 	listResourcesResultType,
 	listToolsResultType,
 } from '@/shared/mcp_schemas';
-
-type OnValidationError = (params: {
-	server: McpUpstreamServer;
-	method: string;
-	error: type.errors;
-	request?: unknown;
-}) => void;
 
 type CreateMcpUpstreamCatalogParams = {
 	attemptReconnect: (server: McpUpstreamServer) => Promise<void>;
@@ -249,6 +243,7 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 			if (invalidEnabledTools.length > 0) {
 				const error = `Configuration error: enabledTools has unknown tools: ${invalidEnabledTools.join(', ')}`;
 				trafficStore?.logBackendTraffic({
+					protocolVersion: client.protocolVersion,
 					backend: serverName,
 					method: 'tools/list:configuration_error',
 					request: {
@@ -268,6 +263,7 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 			}
 			configErrorBackends.delete(serverName);
 			trafficStore?.logBackendTraffic({
+				protocolVersion: client.protocolVersion,
 				backend: serverName,
 				method: 'tools/list',
 				request: {},
@@ -299,171 +295,118 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 		}
 	};
 
-	const fetchPrompts = async (
+	// Prompts and resources share cache/error policy. Tools also persist exposure
+	// configuration and retain their cache on runtime errors, so use their own flow.
+	const fetchCatalog = async <T>(
 		server: McpUpstreamServer,
-	): Promise<ListPromptsResult> => {
+		options: {
+			method: string;
+			empty: () => T;
+			cache: Map<string, T>;
+			fetch: (client: Client) => Promise<T>;
+			validate: (result: T) => unknown;
+			persist: (result: T) => void;
+		},
+	): Promise<T> => {
 		const serverName = server.serverName;
 		const client = clients.get(serverName);
-		if (!client) {
-			return emptyPromptsResult();
-		}
-
+		if (!client) return options.empty();
+		const isCurrent = (): boolean =>
+			isCurrentCatalogClient({
+				server,
+				client,
+			});
 		try {
 			await waitForRateLimit(server);
-			if (
-				!isCurrentCatalogClient({
-					server,
-					client,
-				})
-			)
-				return emptyPromptsResult();
-			const result = await client.listPrompts(
-				{},
-				{
-					timeout: server.serverConfig.timeout,
-				},
-			);
-			if (
-				!isCurrentCatalogClient({
-					server,
-					client,
-				})
-			)
-				return emptyPromptsResult();
-			const parsed = listPromptsResultType(result);
-			if (parsed instanceof type.errors) {
+			if (!isCurrent()) return options.empty();
+			const result = await options.fetch(client);
+			// A backend may be disabled or reconnected while the request is in flight.
+			if (!isCurrent()) return options.empty();
+			const parsed = options.validate(result);
+			if (parsed instanceof type.errors)
 				onValidationError({
 					server,
-					method: 'prompts/list',
+					method: options.method,
 					error: parsed,
 				});
-			}
-			promptsCache.set(serverName, result);
+			options.cache.set(serverName, result);
 			trafficStore?.logBackendTraffic({
+				protocolVersion: client.protocolVersion,
 				backend: serverName,
-				method: 'prompts/list',
+				method: options.method,
 				request: {},
 				response: result,
 			});
-			trafficStore?.upsertPrompts({
-				backend: serverName,
-				prompts: result.prompts,
-			});
+			options.persist(result);
 			return result;
-		} catch (err) {
-			if (
-				!isCurrentCatalogClient({
-					server,
-					client,
-				})
-			)
-				return emptyPromptsResult();
-			if (isMethodNotFoundError(err)) {
+		} catch (error) {
+			if (!isCurrent()) return options.empty();
+			const empty = options.empty();
+			options.cache.set(serverName, empty);
+			if (isMethodNotFoundError(error)) {
 				logger.info(
-					`MCP upstream "${serverName}" does not support prompts/list`,
+					`MCP upstream "${serverName}" does not support ${options.method}`,
 				);
-				promptsCache.set(serverName, emptyPromptsResult());
-				return emptyPromptsResult();
+				return empty;
 			}
 			logger.error(
-				`Failed to list prompts for MCP upstream "${serverName}": ${errorMessage(err)}`,
+				`Failed to fetch ${options.method} for MCP upstream "${serverName}": ${errorMessage(error)}`,
 			);
-			promptsCache.set(serverName, emptyPromptsResult());
 			trafficStore?.logBackendTraffic({
+				protocolVersion: client.protocolVersion,
 				backend: serverName,
-				method: 'prompts/list',
+				method: options.method,
 				request: {},
 				response: {
-					error: errorMessage(err),
+					error: errorMessage(error),
 				},
 			});
-			setMcpUpstreamStatusError(server, errorMessage(err));
-			return emptyPromptsResult();
+			setMcpUpstreamStatusError(server, errorMessage(error));
+			return empty;
 		}
 	};
-
-	const fetchResources = async (
+	const fetchPrompts = (
 		server: McpUpstreamServer,
-	): Promise<ListResourcesResult> => {
-		const serverName = server.serverName;
-		const client = clients.get(serverName);
-		if (!client) {
-			return emptyResourcesResult();
-		}
-
-		try {
-			await waitForRateLimit(server);
-			if (
-				!isCurrentCatalogClient({
-					server,
-					client,
-				})
-			)
-				return emptyResourcesResult();
-			const result = await client.listResources(
-				{},
-				{
-					timeout: server.serverConfig.timeout,
-				},
-			);
-			if (
-				!isCurrentCatalogClient({
-					server,
-					client,
-				})
-			)
-				return emptyResourcesResult();
-			const parsed = listResourcesResultType(result);
-			if (parsed instanceof type.errors) {
-				onValidationError({
-					server,
-					method: 'resources/list',
-					error: parsed,
-				});
-			}
-			resourcesCache.set(serverName, result);
-			trafficStore?.logBackendTraffic({
-				backend: serverName,
-				method: 'resources/list',
-				request: {},
-				response: result,
-			});
-			trafficStore?.upsertResources({
-				backend: serverName,
-				resources: result.resources,
-			});
-			return result;
-		} catch (err) {
-			if (
-				!isCurrentCatalogClient({
-					server,
-					client,
-				})
-			)
-				return emptyResourcesResult();
-			if (isMethodNotFoundError(err)) {
-				logger.info(
-					`MCP upstream "${serverName}" does not support resources/list`,
-				);
-				resourcesCache.set(serverName, emptyResourcesResult());
-				return emptyResourcesResult();
-			}
-			logger.error(
-				`Failed to list resources for MCP upstream "${serverName}": ${errorMessage(err)}`,
-			);
-			resourcesCache.set(serverName, emptyResourcesResult());
-			trafficStore?.logBackendTraffic({
-				backend: serverName,
-				method: 'resources/list',
-				request: {},
-				response: {
-					error: errorMessage(err),
-				},
-			});
-			setMcpUpstreamStatusError(server, errorMessage(err));
-			return emptyResourcesResult();
-		}
-	};
+	): Promise<ListPromptsResult> =>
+		fetchCatalog(server, {
+			method: 'prompts/list',
+			empty: emptyPromptsResult,
+			cache: promptsCache,
+			fetch: (client) =>
+				client.listPrompts(
+					{},
+					{
+						timeout: server.serverConfig.timeout,
+					},
+				),
+			validate: listPromptsResultType,
+			persist: (result) =>
+				trafficStore?.upsertPrompts({
+					backend: server.serverName,
+					prompts: result.prompts,
+				}),
+		});
+	const fetchResources = (
+		server: McpUpstreamServer,
+	): Promise<ListResourcesResult> =>
+		fetchCatalog(server, {
+			method: 'resources/list',
+			empty: emptyResourcesResult,
+			cache: resourcesCache,
+			fetch: (client) =>
+				client.listResources(
+					{},
+					{
+						timeout: server.serverConfig.timeout,
+					},
+				),
+			validate: listResourcesResultType,
+			persist: (result) =>
+				trafficStore?.upsertResources({
+					backend: server.serverName,
+					resources: result.resources,
+				}),
+		});
 
 	const listAllTools = (): McpUpstreamToolsMap => {
 		return new Map(toolsCache);

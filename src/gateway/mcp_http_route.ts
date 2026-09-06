@@ -11,13 +11,29 @@ import {
 import type { createMcpSessionManager } from '@/gateway/mcp_session';
 import { logger } from '@/server/logger';
 import type { TrafficStore } from '@/server/traffic_store';
+import { parseClientInfo } from '@/shared/client_info';
 import { errorMessage } from '@/shared/common';
+import {
+	CLIENT_CAPABILITIES_META,
+	CLIENT_INFO_META,
+	CURRENT_PROTOCOL_VERSION,
+	decodeHeaderValue,
+	PROTOCOL_VERSION_META,
+	protocolHeaders,
+	recordOf,
+	SUPPORTED_PROTOCOL_VERSIONS,
+} from '@/shared/mcp_protocol';
+
+type ClientTrafficEntry = Parameters<TrafficStore['logClientTraffic']>[0] & {
+	sessionId?: string;
+};
 
 type McpSessionManager = ReturnType<typeof createMcpSessionManager>;
 
 type RouteRequest = (
 	request: IncomingJsonRpcRequest,
 	sessionId: string | undefined,
+	protocolVersion?: string,
 ) => Promise<RouteResult>;
 
 type LogResponseError = (params: {
@@ -54,6 +70,9 @@ type CreateMcpHttpRouteParams = {
 	parseSessionId: (request: Request) => string | undefined;
 	routeRequest: RouteRequest;
 	trafficStore: TrafficStore;
+	getToolSchema?: (name: string) => unknown;
+	onRequestMetadata?: (metadata: Record<string, unknown>) => void;
+	refreshCatalogs?: () => Promise<void>;
 	waitForInitialization: (params: {
 		method: string;
 		sessionId: string | undefined;
@@ -85,6 +104,47 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 		trafficStore,
 		waitForInitialization,
 	} = params;
+	const getTrafficProtocolVersion = (
+		entry: ClientTrafficEntry,
+	): string | undefined => {
+		if (entry.protocolVersion !== undefined) return entry.protocolVersion;
+
+		// For 2025-11-25 and 2025-06-18 initialization, log the selected
+		// response version: it can differ from the client's proposal.
+		const response = recordOf(entry.response);
+		const result = recordOf(response?.result);
+		if (typeof result?.protocolVersion === 'string')
+			return result.protocolVersion;
+
+		// 2026-07-28 carries its version on each request, without a session.
+		const request = recordOf(entry.request);
+		const requestParams = recordOf(request?.params);
+		const metadata = recordOf(requestParams?._meta);
+		const requestVersion = metadata?.[PROTOCOL_VERSION_META];
+		if (typeof requestVersion === 'string') return requestVersion;
+
+		// Later 2025-11-25 / 2025-06-18 messages use the initialized session.
+		return mcpSessions.getProtocolVersion(entry.sessionId);
+	};
+	const logClientTraffic = (entry: ClientTrafficEntry): void => {
+		const requestParams = recordOf(recordOf(entry.request)?.params);
+		const metadata = recordOf(requestParams?._meta);
+		const client =
+			entry.protocolVersion === CURRENT_PROTOCOL_VERSION
+				? recordOf(metadata?.[CLIENT_INFO_META])
+				: mcpSessions.getClient(entry.sessionId);
+		const name = typeof client?.name === 'string' ? client.name : 'unknown';
+		const version =
+			typeof client?.version === 'string' ? client.version : 'unknown';
+		// Store the version now so subsequent session changes cannot rewrite history.
+		trafficStore.logClientTraffic({
+			client: `${name}@${version}`,
+			method: entry.method,
+			request: entry.request,
+			response: entry.response,
+			protocolVersion: getTrafficProtocolVersion(entry),
+		});
+	};
 
 	return {
 		GET(request: Request) {
@@ -162,6 +222,147 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 				return createJsonResponse(payload, sessionId, 400);
 			}
 
+			const metadata = recordOf(recordOf(message.params)?._meta);
+			const versionHeader = request.headers.get('MCP-Protocol-Version');
+			// Classify before session validation: 2026-07-28 requests ignore session
+			// IDs. Unknown newer revisions also reach the explicit version error path.
+			if (
+				(metadata && PROTOCOL_VERSION_META in metadata) ||
+				versionHeader === CURRENT_PROTOCOL_VERSION ||
+				(versionHeader && versionHeader > '2025-11-25')
+			) {
+				const fail = (
+					code: number,
+					text: string,
+					data?: Record<string, unknown>,
+				): Response =>
+					createJsonResponse(
+						{
+							jsonrpc: '2.0',
+							id: message.id,
+							error: {
+								code,
+								message: text,
+								data,
+							},
+						},
+						undefined,
+						400,
+					);
+				if (
+					isIncomingJsonRpcNotification(message) ||
+					isIncomingJsonRpcResponse(message)
+				)
+					return fail(-32600, 'MCP 2026-07-28 HTTP accepts requests only');
+				const version = metadata?.[PROTOCOL_VERSION_META];
+				if (!versionHeader || versionHeader !== version)
+					return fail(-32020, 'Missing or mismatched protocol version header');
+				if (version !== CURRENT_PROTOCOL_VERSION)
+					return fail(-32022, 'Unsupported protocol version', {
+						requested: version,
+						supported: [
+							...SUPPORTED_PROTOCOL_VERSIONS,
+						],
+					});
+				if (!recordOf(metadata?.[CLIENT_CAPABILITIES_META]))
+					return fail(-32602, 'Missing client capabilities');
+				if (request.headers.get('Mcp-Method') !== message.method)
+					return fail(-32020, 'Missing or mismatched Mcp-Method');
+				const bodyParams = recordOf(message.params);
+				if (
+					bodyParams &&
+					('requestState' in bodyParams || 'inputResponses' in bodyParams)
+				)
+					return fail(-32602, 'Interactive continuations are not supported');
+				if (
+					metadata?.[CLIENT_INFO_META] !== undefined &&
+					!parseClientInfo(metadata[CLIENT_INFO_META])
+				)
+					return fail(
+						-32602,
+						'Client info must include string name and version fields.',
+					);
+				params.onRequestMetadata?.(metadata ?? {});
+				if (message.method !== 'server/discover') {
+					// Discovery describes the gateway itself and need not wait for backends.
+					const unavailable = await waitForInitialization({
+						method: message.method,
+						sessionId: undefined,
+						id: message.id,
+					});
+					if (unavailable) return unavailable;
+					await params.refreshCatalogs?.();
+				}
+				if (
+					[
+						'tools/call',
+						'prompts/get',
+						'resources/read',
+					].includes(message.method)
+				) {
+					const name =
+						message.method === 'resources/read'
+							? bodyParams?.uri
+							: bodyParams?.name;
+					try {
+						const header = request.headers.get('Mcp-Name');
+						if (header === null || decodeHeaderValue(header) !== name)
+							return fail(-32020, 'Missing or mismatched Mcp-Name');
+					} catch {
+						return fail(-32020, 'Malformed Mcp-Name');
+					}
+				}
+				// MCP 2026-07-28 mirrors annotated tool arguments into headers. Use
+				// the same encoder on both boundaries, then compare decoded values.
+				try {
+					for (const [name, expected] of protocolHeaders(
+						message.method,
+						bodyParams ?? {},
+						params.getToolSchema?.(String(bodyParams?.name)),
+					)) {
+						if (!name.startsWith('mcp-param-')) continue;
+						const actual = request.headers.get(name);
+						if (
+							actual === null ||
+							decodeHeaderValue(actual) !== decodeHeaderValue(expected)
+						)
+							return fail(-32020, `Missing or mismatched ${name}`);
+					}
+				} catch {
+					return fail(-32020, 'Invalid mirrored tool parameter');
+				}
+				try {
+					const result = await routeRequest(
+						message,
+						undefined,
+						CURRENT_PROTOCOL_VERSION,
+					);
+					logClientTraffic({
+						protocolVersion: CURRENT_PROTOCOL_VERSION,
+						method: message.method,
+						request: message,
+						response: result.payload,
+					});
+					return createJsonResponse(
+						result.payload as OutgoingJsonRpcResponse,
+						undefined,
+						result.status,
+					);
+				} catch {
+					return createJsonResponse(
+						{
+							jsonrpc: '2.0',
+							id: message.id,
+							error: {
+								code: -32603,
+								message: 'Internal server error',
+							},
+						},
+						undefined,
+					);
+				}
+			}
+
 			if (isIncomingJsonRpcNotification(message)) {
 				const notification = message;
 				const initializationError = await waitForInitialization({
@@ -202,7 +403,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 						payload: routeResult.payload,
 						status: routeResult.status,
 					});
-					trafficStore.logClientTraffic({
+					logClientTraffic({
 						sessionId: routeResult.sessionId ?? sessionId,
 						method: notification.method,
 						request: notification,
@@ -221,7 +422,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 						notification.params,
 					),
 				);
-				trafficStore.logClientTraffic({
+				logClientTraffic({
 					sessionId: routeResult.sessionId ?? sessionId,
 					method: notification.method,
 					request: notification,
@@ -260,7 +461,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 						payload: routeResult.payload,
 						status: routeResult.status,
 					});
-					trafficStore.logClientTraffic({
+					logClientTraffic({
 						sessionId: routeResult.sessionId ?? sessionId,
 						method: 'response',
 						request: message,
@@ -273,7 +474,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 					);
 				}
 				logger.info(buildInboundMessageLog('response', sessionId));
-				trafficStore.logClientTraffic({
+				logClientTraffic({
 					sessionId: routeResult.sessionId ?? sessionId,
 					method: 'response',
 					request: message,
@@ -337,7 +538,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 					payload: routeResult.payload,
 					status: routeResult.status,
 				});
-				trafficStore.logClientTraffic({
+				logClientTraffic({
 					sessionId: routeResult.sessionId ?? sessionId,
 					method: jsonRpcRequest.method,
 					request: jsonRpcRequest,
@@ -348,7 +549,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 				logger.error(
 					`Handler error: ${buildLogFields(jsonRpcRequest.method, sessionId, jsonRpcRequest.params)}, message=${errorMessage(err)}`,
 				);
-				trafficStore.logClientTraffic({
+				logClientTraffic({
 					sessionId,
 					method: jsonRpcRequest.method,
 					request: jsonRpcRequest,
@@ -368,6 +569,15 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 		},
 		async DELETE(request: Request) {
 			if (!isValidOrigin(request)) return createOriginForbiddenResponse();
+			if (
+				request.headers.get('MCP-Protocol-Version') === CURRENT_PROTOCOL_VERSION
+			)
+				return new Response(null, {
+					status: 405,
+					headers: {
+						Allow: 'POST',
+					},
+				});
 			const sessionId = parseSessionId(request);
 			const closeResult = mcpSessions.close(sessionId);
 			if (closeResult.status === 202) {

@@ -53,7 +53,7 @@ const listResourcesResultType = type({
 const callToolResultType = type({
 	content: 'unknown[]',
 	'isError?': 'boolean',
-	'structuredContent?': 'Record<string, unknown>',
+	'structuredContent?': 'unknown',
 	'_meta?': 'Record<string, unknown>',
 	'[string]': 'unknown',
 }).or({

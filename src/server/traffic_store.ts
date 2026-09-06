@@ -7,6 +7,7 @@ type TrafficKind = 'client' | 'backend';
 type TrafficEventType = 'success' | 'error' | 'validation_error';
 
 type TrafficRecord = {
+	protocolVersion?: string;
 	id: number;
 	kind: TrafficKind;
 	peer: string;
@@ -25,13 +26,15 @@ type TrafficQueryResult = {
 };
 
 type LogClientTrafficParams = {
-	sessionId?: string;
+	protocolVersion?: string;
+	client?: string;
 	method?: string;
 	request: unknown;
 	response: unknown;
 };
 
 type LogBackendTrafficParams = {
+	protocolVersion?: string;
 	backend: string;
 	method?: string;
 	request: unknown;
@@ -75,8 +78,9 @@ const safeParse = (value: string): unknown => {
 	}
 };
 
-const createTrafficStore = (): TrafficStore => {
-	const dbPath = path.join(process.cwd(), DATABASE_FILENAME);
+const createTrafficStore = (
+	dbPath = path.join(process.cwd(), DATABASE_FILENAME),
+): TrafficStore => {
 	const dbDir = path.dirname(dbPath);
 	if (!existsSync(dbDir)) {
 		try {
@@ -96,6 +100,7 @@ const createTrafficStore = (): TrafficStore => {
 			kind TEXT NOT NULL,
 			peer TEXT NOT NULL,
 			method TEXT,
+			protocol_version TEXT,
 			related_method TEXT,
 			event_type TEXT NOT NULL,
 			is_error INTEGER NOT NULL,
@@ -152,7 +157,7 @@ const createTrafficStore = (): TrafficStore => {
 	`);
 
 	const insertStmt = db.prepare(
-		'INSERT INTO traffic (kind, peer, method, related_method, event_type, is_error, request, response, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+		'INSERT INTO traffic (kind, peer, method, related_method, event_type, is_error, request, response, created_at, protocol_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
 	);
 	const upsertBackendStmt = db.prepare(
 		`
@@ -239,46 +244,36 @@ const createTrafficStore = (): TrafficStore => {
 		};
 	};
 
-	const logClientTraffic = (params: LogClientTrafficParams) => {
-		const { sessionId, method, request, response } = params;
-		const event = classifyEvent({
-			method,
-			response,
-		});
+	const logTraffic = (
+		kind: TrafficKind,
+		peer: string,
+		params: LogClientTrafficParams | LogBackendTrafficParams,
+	): void => {
+		const event = classifyEvent(params);
 		insertStmt.run(
-			'client',
-			sessionId ?? 'unknown',
-			method ?? null,
+			kind,
+			peer,
+			params.method ?? null,
 			event.relatedMethod ?? null,
 			event.eventType,
 			event.isError,
-			JSON.stringify(request ?? {}),
-			JSON.stringify(response ?? {}),
+			JSON.stringify(params.request ?? {}),
+			JSON.stringify(params.response ?? {}),
 			Date.now(),
+			params.protocolVersion ?? null,
 		);
 	};
-
-	const logBackendTraffic = (params: LogBackendTrafficParams) => {
-		const { backend, method, request, response } = params;
-		const event = classifyEvent({
-			method,
-			response,
-		});
-		insertStmt.run(
-			'backend',
-			backend,
-			method ?? null,
-			event.relatedMethod ?? null,
-			event.eventType,
-			event.isError,
-			JSON.stringify(request ?? {}),
-			JSON.stringify(response ?? {}),
-			Date.now(),
-		);
-	};
+	const logClientTraffic = (params: LogClientTrafficParams): void =>
+		logTraffic('client', params.client ?? 'unknown', params);
+	const logBackendTraffic = (params: LogBackendTrafficParams): void =>
+		logTraffic('backend', params.backend, params);
 
 	const mapRows = (rows: Array<Record<string, unknown>>): TrafficRecord[] =>
 		rows.map((row) => ({
+			protocolVersion:
+				typeof row.protocol_version === 'string'
+					? row.protocol_version
+					: undefined,
 			id: Number(row.id),
 			kind: row.kind as TrafficKind,
 			peer: String(row.peer),
@@ -293,168 +288,61 @@ const createTrafficStore = (): TrafficStore => {
 			createdAt: Number(row.created_at),
 		}));
 
-	const getClientTraffic = (params: {
-		limit: number;
-		offset: number;
-		errorsOnly?: boolean;
-	}) => {
-		const { limit, offset, errorsOnly } = params;
-		if (errorsOnly) {
-			const rows = db
-				.prepare(
-					'\
-						SELECT id, kind, peer, method, related_method, event_type, is_error, request, response, created_at\
-						FROM traffic WHERE kind = ? AND is_error = 1\
-						ORDER BY id DESC\
-						LIMIT ? OFFSET ?\
-					',
-				)
-				.all('client', limit, offset) as Array<Record<string, unknown>>;
-
-			const totalRow = db
-				.prepare(
-					'SELECT COUNT(*) as count FROM traffic WHERE kind = ? AND is_error = 1',
-				)
-				.get('client') as {
-				count: number;
-			};
-
-			return {
-				records: mapRows(rows),
-				total: Number(totalRow.count),
-			};
-		}
-
-		const rows = db
-			.prepare(
-				'\
-					SELECT id, kind, peer, method, related_method, event_type, is_error, request, response, created_at\
-					FROM traffic WHERE kind = ?\
-					ORDER BY id DESC\
-					LIMIT ? OFFSET ?\
-				',
-			)
-			.all('client', limit, offset) as Array<Record<string, unknown>>;
-
-		const totalRow = db
-			.prepare('SELECT COUNT(*) as count FROM traffic WHERE kind = ?')
-			.get('client') as {
-			count: number;
-		};
-
-		return {
-			records: mapRows(rows),
-			total: Number(totalRow.count),
-		};
-	};
-
-	const getBackendTraffic = (params: {
-		backend: string;
+	const getTraffic = (params: {
+		kind: TrafficKind;
+		backend?: string;
 		method?: string;
 		limit: number;
 		offset: number;
 		errorsOnly?: boolean;
-	}) => {
-		const { backend, method, limit, offset, errorsOnly } = params;
-		if (method && errorsOnly) {
-			const rows = db
-				.prepare(
-					'\
-						SELECT id, kind, peer, method, related_method, event_type, is_error, request, response, created_at\
-						FROM traffic WHERE kind = ? AND peer = ? AND method = ? AND is_error = 1\
-						ORDER BY id DESC\
-						LIMIT ? OFFSET ?\
-					',
-				)
-				.all('backend', backend, method, limit, offset) as Array<
-				Record<string, unknown>
-			>;
-			const totalRow = db
-				.prepare(
-					'SELECT COUNT(*) as count FROM traffic WHERE kind = ? AND peer = ? AND method = ? AND is_error = 1',
-				)
-				.get('backend', backend, method) as {
-				count: number;
-			};
-			return {
-				records: mapRows(rows),
-				total: Number(totalRow.count),
-			};
+	}): TrafficQueryResult => {
+		const conditions = [
+			'kind = ?',
+		];
+		const bindings: Array<string | number> = [
+			params.kind,
+		];
+		if (params.backend !== undefined) {
+			conditions.push('peer = ?');
+			bindings.push(params.backend);
 		}
-
-		if (errorsOnly) {
-			const rows = db
-				.prepare(
-					'\
-						SELECT id, kind, peer, method, related_method, event_type, is_error, request, response, created_at\
-						FROM traffic WHERE kind = ? AND peer = ? AND is_error = 1\
-						ORDER BY id DESC\
-						LIMIT ? OFFSET ?\
-					',
-				)
-				.all('backend', backend, limit, offset) as Array<
-				Record<string, unknown>
-			>;
-			const totalRow = db
-				.prepare(
-					'SELECT COUNT(*) as count FROM traffic WHERE kind = ? AND peer = ? AND is_error = 1',
-				)
-				.get('backend', backend) as {
-				count: number;
-			};
-			return {
-				records: mapRows(rows),
-				total: Number(totalRow.count),
-			};
+		if (params.method) {
+			conditions.push('method = ?');
+			bindings.push(params.method);
 		}
-
-		const rows = method
-			? (db
-					.prepare(
-						'\
-						SELECT id, kind, peer, method, related_method, event_type, is_error, request, response, created_at\
-						FROM traffic WHERE kind = ? AND peer = ? AND method = ?\
-						ORDER BY id DESC\
-						LIMIT ? OFFSET ?\
-					',
-					)
-					.all('backend', backend, method, limit, offset) as Array<
-					Record<string, unknown>
-				>)
-			: (db
-					.prepare(
-						'\
-						SELECT id, kind, peer, method, related_method, event_type, is_error, request, response, created_at\
-						FROM traffic WHERE kind = ? AND peer = ?\
-						ORDER BY id DESC\
-						LIMIT ? OFFSET ?\
-					',
-					)
-					.all('backend', backend, limit, offset) as Array<
-					Record<string, unknown>
-				>);
-
-		const totalRow = method
-			? (db
-					.prepare(
-						'SELECT COUNT(*) as count FROM traffic WHERE kind = ? AND peer = ? AND method = ?',
-					)
-					.get('backend', backend, method) as {
-					count: number;
-				})
-			: (db
-					.prepare(
-						'SELECT COUNT(*) as count FROM traffic WHERE kind = ? AND peer = ?',
-					)
-					.get('backend', backend) as {
-					count: number;
-				});
-
+		if (params.errorsOnly) conditions.push('is_error = 1');
+		// Build one filter for both queries so pagination totals cannot drift.
+		// Only fixed SQL fragments are interpolated; filter values remain bound.
+		const where = conditions.join(' AND ');
+		const rows = db
+			.prepare(`
+			SELECT protocol_version, id, kind, peer, method, related_method,
+				event_type, is_error, request, response, created_at
+			FROM traffic WHERE ${where} ORDER BY id DESC LIMIT ? OFFSET ?
+		`)
+			.all(...bindings, params.limit, params.offset) as Array<
+			Record<string, unknown>
+		>;
+		const totalRow = db
+			.prepare(`SELECT COUNT(*) as count FROM traffic WHERE ${where}`)
+			.get(...bindings) as {
+			count: number;
+		};
 		return {
 			records: mapRows(rows),
 			total: Number(totalRow.count),
 		};
 	};
+	const getClientTraffic: TrafficStore['getClientTraffic'] = (params) =>
+		getTraffic({
+			...params,
+			kind: 'client',
+		});
+	const getBackendTraffic: TrafficStore['getBackendTraffic'] = (params) =>
+		getTraffic({
+			...params,
+			kind: 'backend',
+		});
 
 	const upsertBackendInfo = (params: {
 		backend: string;

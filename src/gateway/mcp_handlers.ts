@@ -15,9 +15,11 @@ import {
 	parsePrefix,
 	parseResourceUri,
 } from '@/gateway/mcp_namespaces';
+import { BackendRpcError } from '@/mcp_upstreams/protocol_client';
 import type { McpUpstreamManager } from '@/mcp_upstreams/types';
 import { logger } from '@/server/logger';
 import { errorMessage } from '@/shared/common';
+import { toolErrorResult } from '@/shared/mcp_results';
 
 type CreateHandlersParams = {
 	mcpUpstreamManager: McpUpstreamManager;
@@ -109,27 +111,11 @@ const createHandlers = (params: CreateHandlersParams) => {
 		try {
 			parsed = parsePrefix(name);
 		} catch (err) {
-			return {
-				content: [
-					{
-						type: 'text',
-						text: errorMessage(err),
-					},
-				],
-				isError: true,
-			};
+			return toolErrorResult(errorMessage(err));
 		}
 
 		if (!parsed) {
-			return {
-				content: [
-					{
-						type: 'text',
-						text: 'Failed to parse tool name',
-					},
-				],
-				isError: true,
-			};
+			return toolErrorResult('Failed to parse tool name');
 		}
 
 		try {
@@ -140,15 +126,8 @@ const createHandlers = (params: CreateHandlersParams) => {
 			});
 		} catch (err) {
 			logger.error(`Tool call failed for "${name}": ${errorMessage(err)}`);
-			return {
-				content: [
-					{
-						type: 'text',
-						text: errorMessage(err),
-					},
-				],
-				isError: true,
-			};
+			if (err instanceof BackendRpcError) throw err;
+			return toolErrorResult(errorMessage(err));
 		}
 	};
 

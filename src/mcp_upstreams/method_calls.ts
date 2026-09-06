@@ -3,30 +3,25 @@ import type {
 	GetPromptResult,
 	ReadResourceResult,
 } from '@modelcontextprotocol/sdk/types';
-import { type } from 'arktype';
 
+import { runLoggedRequest } from '@/mcp_upstreams/logged_request';
+import { BackendRpcError } from '@/mcp_upstreams/protocol_client';
 import type {
 	CallToolParams,
 	GetPromptParams,
 	McpUpstreamClientsMap,
 	McpUpstreamServer,
+	OnValidationError,
 	ReadResourceParams,
 } from '@/mcp_upstreams/types';
-import { logger } from '@/server/logger';
 import type { TrafficStore } from '@/server/traffic_store';
 import { errorMessage } from '@/shared/common';
+import { toolErrorResult } from '@/shared/mcp_results';
 import {
 	callToolResultType,
 	getPromptResultType,
 	readResourceResultType,
 } from '@/shared/mcp_schemas';
-
-type OnValidationError = (params: {
-	server: McpUpstreamServer;
-	method: string;
-	error: type.errors;
-	request?: unknown;
-}) => void;
 
 type CreateMcpUpstreamOperationsParams = {
 	clients: McpUpstreamClientsMap;
@@ -56,82 +51,47 @@ const createMcpUpstreamOperations = (
 		const server = getServer(serverName);
 		const client = clients.get(serverName);
 		if (!server || !client) {
-			return {
-				content: [
-					{
-						type: 'text',
-						text: `MCP upstream "${serverName}" is not available`,
-					},
-				],
-				isError: true,
-			};
+			return toolErrorResult(`MCP upstream "${serverName}" is not available`);
 		}
 		const enabledTools = getEnabledTools({
 			serverName,
 		});
 		if (!enabledTools.includes(toolName)) {
-			return {
-				content: [
-					{
-						type: 'text',
-						text: `Tool "${toolName}" is disabled on MCP upstream "${serverName}"`,
-					},
-				],
-				isError: true,
-			};
+			return toolErrorResult(
+				`Tool "${toolName}" is disabled on MCP upstream "${serverName}"`,
+			);
 		}
 
 		await waitForRateLimit(server);
 		try {
-			const result = await client.callTool(
-				{
+			return await runLoggedRequest<CallToolResult>({
+				server,
+				client,
+				method: `tools/call:${toolName}`,
+				request: args,
+				validationRequest: {
 					name: toolName,
-					arguments: args,
 				},
-				undefined,
-				{
-					timeout: server.serverConfig.timeout,
-				},
-			);
-			const parsed = callToolResultType(result);
-			if (parsed instanceof type.errors) {
-				onValidationError({
-					server,
-					method: `tools/call:${toolName}`,
-					error: parsed,
-					request: {
-						name: toolName,
-					},
-				});
-			}
-			trafficStore?.logBackendTraffic({
-				backend: serverName,
-				method: `tools/call:${toolName}`,
-				request: args,
-				response: result,
+				invoke: () =>
+					client.callTool(
+						{
+							name: toolName,
+							arguments: args,
+						},
+						undefined,
+						{
+							timeout: server.serverConfig.timeout,
+						},
+					),
+				validate: callToolResultType,
+				onValidationError,
+				trafficStore,
 			});
-			return result as CallToolResult;
-		} catch (err) {
-			logger.error(
-				`Failed to call tool "${toolName}" on "${serverName}": ${errorMessage(err)}`,
+		} catch (error) {
+			if (error instanceof BackendRpcError) throw error;
+			return toolErrorResult(
+				`Server "${serverName}" error: ${errorMessage(error)}`,
 			);
-			trafficStore?.logBackendTraffic({
-				backend: serverName,
-				method: `tools/call:${toolName}`,
-				request: args,
-				response: {
-					error: errorMessage(err),
-				},
-			});
-			return {
-				content: [
-					{
-						type: 'text',
-						text: `Server "${serverName}" error: ${errorMessage(err)}`,
-					},
-				],
-				isError: true,
-			};
 		}
 	};
 
@@ -146,48 +106,28 @@ const createMcpUpstreamOperations = (
 		}
 
 		await waitForRateLimit(server);
-		try {
-			const result = await client.getPrompt(
-				{
-					name: promptName,
-					arguments: args,
-				},
-				{
-					timeout: server.serverConfig.timeout,
-				},
-			);
-			const parsed = getPromptResultType(result);
-			if (parsed instanceof type.errors) {
-				onValidationError({
-					server,
-					method: `prompts/get:${promptName}`,
-					error: parsed,
-					request: {
+		return runLoggedRequest<GetPromptResult>({
+			server,
+			client,
+			method: `prompts/get:${promptName}`,
+			request: args,
+			validationRequest: {
+				name: promptName,
+			},
+			invoke: () =>
+				client.getPrompt(
+					{
 						name: promptName,
+						arguments: args,
 					},
-				});
-			}
-			trafficStore?.logBackendTraffic({
-				backend: serverName,
-				method: `prompts/get:${promptName}`,
-				request: args,
-				response: result,
-			});
-			return result;
-		} catch (err) {
-			logger.error(
-				`Failed to get prompt "${promptName}" from "${serverName}": ${errorMessage(err)}`,
-			);
-			trafficStore?.logBackendTraffic({
-				backend: serverName,
-				method: `prompts/get:${promptName}`,
-				request: args,
-				response: {
-					error: errorMessage(err),
-				},
-			});
-			throw new Error(`Server "${serverName}" error: ${errorMessage(err)}`);
-		}
+					{
+						timeout: server.serverConfig.timeout,
+					},
+				),
+			validate: getPromptResultType,
+			onValidationError,
+			trafficStore,
+		});
 	};
 
 	const readResource = async (
@@ -201,51 +141,29 @@ const createMcpUpstreamOperations = (
 		}
 
 		await waitForRateLimit(server);
-		try {
-			const result = await client.readResource(
-				{
-					uri,
-				},
-				{
-					timeout: server.serverConfig.timeout,
-				},
-			);
-			const parsed = readResourceResultType(result);
-			if (parsed instanceof type.errors) {
-				onValidationError({
-					server,
-					method: `resources/read:${uri}`,
-					error: parsed,
-					request: {
+		return runLoggedRequest<ReadResourceResult>({
+			server,
+			client,
+			method: `resources/read:${uri}`,
+			request: {
+				uri,
+			},
+			validationRequest: {
+				uri,
+			},
+			invoke: () =>
+				client.readResource(
+					{
 						uri,
 					},
-				});
-			}
-			trafficStore?.logBackendTraffic({
-				backend: serverName,
-				method: `resources/read:${uri}`,
-				request: {
-					uri,
-				},
-				response: result,
-			});
-			return result;
-		} catch (err) {
-			logger.error(
-				`Failed to read resource "${uri}" from "${serverName}": ${errorMessage(err)}`,
-			);
-			trafficStore?.logBackendTraffic({
-				backend: serverName,
-				method: `resources/read:${uri}`,
-				request: {
-					uri,
-				},
-				response: {
-					error: errorMessage(err),
-				},
-			});
-			throw new Error(`Server "${serverName}" error: ${errorMessage(err)}`);
-		}
+					{
+						timeout: server.serverConfig.timeout,
+					},
+				),
+			validate: readResourceResultType,
+			onValidationError,
+			trafficStore,
+		});
 	};
 
 	return {

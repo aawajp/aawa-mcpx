@@ -1,7 +1,6 @@
-import type { Client } from '@modelcontextprotocol/sdk/client';
-
 import type { McpConfig } from '@/config/schema';
 import { createMcpUpstreamCatalog } from '@/mcp_upstreams/catalog';
+import type { ProtocolClient as Client } from '@/mcp_upstreams/protocol_client';
 import type {
 	McpUpstreamClientsMap,
 	McpUpstreamPromptsMap,

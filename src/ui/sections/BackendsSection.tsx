@@ -81,10 +81,18 @@ const BackendsSection = ({
 										{t('status.configurationError')}
 									</span>
 								) : null}
+								{backend.errorState === 'protocol' ? (
+									<span className="rounded border border-rose-400/35 bg-rose-500/15 px-2 py-1 text-xs font-medium text-rose-200">
+										{t('status.protocolError')}
+									</span>
+								) : null}
 							</div>
 						</div>
 						{backend.error ? (
 							<p className="text-sm text-rose-300">{backend.error}</p>
+						) : null}
+						{backend.errorState === 'protocol' ? (
+							<p className="text-sm text-amber-300">{t('status.protocolRetryStopped')}</p>
 						) : null}
 					{backend.actionRequired ? (
 							<p className="text-xs font-semibold text-rose-200">
@@ -115,6 +123,7 @@ const BackendsSection = ({
 								<h3 className="text-base font-semibold">
 									{t('implementation.title')}
 								</h3>
+								<p className="text-sm">{t('protocol.title')}: {backend.protocolVersion ?? '—'}</p>
 								{backend.implementation ? (
 									<div className="text-sm space-y-1">
 										<div className="font-semibold">

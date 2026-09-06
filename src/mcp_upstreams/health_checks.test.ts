@@ -1,6 +1,5 @@
-import type { Client } from '@modelcontextprotocol/sdk/client';
-
 import { createMcpUpstreamHealthChecks } from '@/mcp_upstreams/health_checks';
+import type { ProtocolClient as Client } from '@/mcp_upstreams/protocol_client';
 import type {
 	McpUpstreamClientsMap,
 	McpUpstreamServer,

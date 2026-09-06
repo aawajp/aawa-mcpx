@@ -25,26 +25,17 @@ const implementationInfoType = type({
 const capabilitiesInfoType = type('Record<string, unknown>');
 
 const clientInfoType = type({
-	'name?': 'string',
+	name: 'string',
 	'title?': 'string',
-	'version?': 'string',
+	version: 'string',
 	'[string]': 'unknown',
 });
 
-const clientSessionStatusType = type(
-	"'connected' | 'disconnected' | 'expired'",
-);
-
-const clientSessionType = type({
-	sessionId: 'string',
+const clientActivityType = type({
 	client: clientInfoType,
-	'protocolVersion?': 'string',
-	status: clientSessionStatusType,
-	createdAt: 'number.integer',
+	protocolVersion: 'string',
+	firstSeen: 'number.integer',
 	lastSeen: 'number.integer',
-	'disconnectedAt?': 'number.integer',
-	'lastStatus?': 'string',
-	'[string]': 'unknown',
 });
 
 const clientToolType = type({
@@ -57,11 +48,12 @@ const clientToolType = type({
 
 const backendStatusSharedFields = {
 	serverName: 'string',
+	'protocolVersion?': 'string',
 	enabled: 'boolean',
 	enabledTools: 'string[]',
 	connected: 'boolean',
 	'error?': 'string',
-	'errorState?': "'runtime' | 'configuration'",
+	'errorState?': "'runtime' | 'configuration' | 'protocol'",
 	'actionRequired?': 'boolean',
 	'implementation?': implementationInfoType,
 	'capabilities?': capabilitiesInfoType,
@@ -88,6 +80,7 @@ const backendStatusType = type(
 
 const overviewResponseType = type({
 	'protocolVersion?': 'string',
+	'supportedProtocolVersions?': 'string[]',
 	aggregated: {
 		tools: clientToolType.array(),
 		prompts: promptType.array(),
@@ -95,11 +88,12 @@ const overviewResponseType = type({
 		'[string]': 'unknown',
 	},
 	backends: backendStatusType.array(),
-	clients: clientSessionType.array(),
+	clients: clientActivityType.array(),
 	'[string]': 'unknown',
 });
 
 const trafficRecordType = type({
+	'protocolVersion?': 'string',
 	id: 'number.integer',
 	kind: "'client' | 'backend'",
 	peer: 'string',
@@ -150,7 +144,7 @@ type ListResourcesWithMeta = typeof listResourcesWithMetaType.infer;
 type ImplementationInfo = typeof implementationInfoType.infer;
 type CapabilitiesInfo = typeof capabilitiesInfoType.infer;
 type McpUpstreamStatus = typeof backendStatusType.infer;
-type ClientSession = typeof clientSessionType.infer;
+type ClientActivity = typeof clientActivityType.infer;
 type OverviewResponse = typeof overviewResponseType.infer;
 type TrafficRecord = typeof trafficRecordType.infer;
 type TrafficPage = typeof trafficPageType.infer;
@@ -160,7 +154,7 @@ type BackendTrafficResponse = typeof backendTrafficResponseType.infer;
 export type {
 	BackendTrafficResponse,
 	CapabilitiesInfo,
-	ClientSession,
+	ClientActivity,
 	ClientTool,
 	DebugSummaryResponse,
 	ImplementationInfo,
@@ -179,7 +173,7 @@ export {
 	backendStatusType,
 	backendTrafficResponseType,
 	capabilitiesInfoType,
-	clientSessionType,
+	clientActivityType,
 	clientToolType,
 	debugSummaryResponseType,
 	implementationInfoType,

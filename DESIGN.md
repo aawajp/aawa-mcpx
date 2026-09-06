@@ -58,6 +58,7 @@ The gateway layer owns the public HTTP surface:
 - `mcp_http_route.ts` owns MCP HTTP method handling for `/mcp`.
 - `mcp_request_router.ts` routes JSON-RPC requests by MCP method.
 - `mcp_session.ts` owns session lifecycle and protocol negotiation.
+- `client_activity.ts` tracks dashboard clients by reported name and version across all supported revisions. First and last activity survive protocol-session closure; the bounded in-memory history resets on gateway restart. Session IDs and connection status remain internal protocol details and are not part of the dashboard client contract.
 - `mcp_handlers.ts` maps public MCP methods to upstream operations.
 - `mcp_namespaces.ts` maps public names to and from upstream names.
 - `ui_routes.ts` serves dashboard API endpoints and UI event streams.
@@ -74,7 +75,7 @@ The MCP upstream layer owns outbound MCP client behavior:
 - `health_checks.ts` owns periodic upstream health checks.
 - `catalog.ts` owns cached tools, prompts, resources, and tool exposure state.
 - `method_calls.ts` calls upstream tools, prompts, and resources.
-- `transport.ts` creates HTTP and stdio transports.
+- `protocol_client.ts` owns backend JSON-RPC, version selection, HTTP/SSE and stdio transport behavior; SDK imports supply types only.
 
 Health checks run only for enabled, connected backends after their catalog
 refresh completes. Checks use bounded timeouts and run independently across
@@ -121,21 +122,75 @@ The public MCP endpoint is `/mcp`.
 | Area | Status | Reason |
 | ---- | ------ | ------ |
 | `POST /mcp` JSON-RPC messages | Supported | Required by Streamable HTTP. Requests receive JSON-RPC responses. |
-| `DELETE /mcp` session termination | Supported | Allows clients to explicitly close stateful sessions. |
-| Session IDs | Supported | `mcp-session-id` is issued on successful `initialize`; later requests must use the same header. |
-| Protocol negotiation | Accepted versions are pinned | Initialization accepts `2025-11-25`, `2025-06-18`, and `2025-03-26`. |
-| `MCP-Protocol-Version` header | Validated when present | Unsupported versions and mismatches against the negotiated session version are rejected. |
+| `DELETE /mcp` session termination | Supported for 2025 revisions | Allows clients using `2025-11-25` or `2025-06-18` to close protocol sessions. |
+| Session IDs | Internal to 2025 protocol handling | `mcp-session-id` is issued on successful `initialize`; subsequent requests using that session must carry it. |
+| Protocol versions | Explicit supported registry | `2026-07-28` uses per-request metadata; `2025-11-25` and `2025-06-18` use initialization. |
+| `MCP-Protocol-Version` header | Required for `2026-07-28` | Must match request metadata. For either supported 2025 revision, a supplied header must match the initialized session version. |
 | `GET /mcp` server-event stream | Intentionally not supported | The gateway does not send server-initiated MCP messages to clients, so the optional stream is unnecessary. |
 | SSE response streams from `POST /mcp` | Intentionally not supported | Gateway operations currently complete synchronously and return one JSON-RPC response. |
 | Public stdio transport | Not applicable | The gateway is HTTP-facing for clients. It can connect to stdio MCP upstreams, but it does not expose stdio to clients. |
 | Origin validation | Supported when `Origin` is present | Required by Streamable HTTP security guidance to reduce DNS rebinding risk. |
 
-JSON-RPC notifications and responses are accepted with HTTP 202 and no body
-where required by the MCP Streamable HTTP rules.
+For `2025-11-25` and `2025-06-18`, JSON-RPC notifications and responses are accepted with HTTP 202 and no body where required. The `2026-07-28` HTTP path accepts requests without sessions, implements discovery, validates mirrored headers, and adds complete-result and cache fields. Methods removed in `2026-07-28` return HTTP 404 with JSON-RPC method-not-found. DELETE requests identifying `2026-07-28` do not terminate sessions established using either supported 2025 revision.
+
+The ordered registry in `shared/mcp_protocol.ts` is the single supported-version source. `CURRENT_PROTOCOL_VERSION` identifies its newest entry. Initialization proposes the highest supported revision that requires initialization (`2025-11-25`). Backend selection belongs to the manager and survives connection epochs and toggles. Reconnecting with `2025-11-25` or `2025-06-18` verifies the retained selection in the new initialization response; restart is required to negotiate a different version.
+
+Backend catalog caches for `2026-07-28` use receipt time and the minimum page TTL, scoped to one configured backend credential context. Expired catalogs refresh on access, with concurrent refresh deduplication. All pages are materialized before namespacing; upstream cursors are not exposed as aggregate cursors. Public `2026-07-28` cache hints are private with zero TTL. Unsupported interactive results fail explicitly. Structured tool content that is not an object is wrapped in a `value` field when sent using `2025-11-25` or `2025-06-18`.
+
+Protocol contracts follow the [2026-07-28 versioning rules](https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning), [HTTP binding](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http), and [caching rules](https://modelcontextprotocol.io/specification/2026-07-28/server/utilities/caching). Parameterized local fixtures cover each supported backend version over both transports and all three external revisions through the core tool route. Public HTTP tests cover `2026-07-28` requests and sessions using `2025-11-25` and `2025-06-18`.
 
 The implementation keeps HTTP terminology and JSON-RPC terminology distinct.
 HTTP has requests and responses. JSON-RPC has messages, and those messages can
 be requests, notifications, or responses.
+
+### Session handling by protocol revision
+
+Session state is confined to protocol transport handling. The following table
+distinguishes specification requirements from gateway implementation choices.
+
+| Concern | `2025-06-18` and `2025-11-25` | `2026-07-28` |
+| ------- | --------------------------- | ------------ |
+| Protocol context | Initialization establishes the selected version and client information. | Each request carries its version and client metadata; no initialization session is required. |
+| HTTP session ID in the spec | A server may issue `Mcp-Session-Id` during initialization. If issued, the client must send it on subsequent HTTP requests. | Requests do not use protocol sessions or require a session ID. |
+| Public gateway behavior | The gateway chooses to issue an ID and requires it for subsequent session requests. It resolves the negotiated version and client identity from its internal session map. | The gateway reads request metadata directly and does not issue or use session IDs. |
+| Backend HTTP behavior | The gateway retains an ID only if the backend issues one and sends it on subsequent requests to that backend. Backends that omit the ID remain supported. | The gateway removes session headers from outgoing requests and does not retain a returned ID. |
+| Backend stdio behavior | Initialization retains protocol context on the connection; there is no HTTP session header. | Per-request metadata supplies protocol context; there is no HTTP session header. |
+| Session termination | The public gateway accepts session DELETE requests and removes the oldest session for a client name/version pair when a new initialization exceeds its configured limit. Missing IDs are rejected with HTTP 400; unknown or removed IDs with HTTP 404. | Session termination is not part of this request path; a DELETE identifying this revision cannot close a session belonging to a supported 2025 revision. |
+
+The optional session-ID rules are specified in the session-management sections
+of the [2025-06-18 transport specification](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#session-management)
+and [2025-11-25 transport specification](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#session-management).
+The request-scoped model follows the [2026-07-28 HTTP binding](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http).
+Issuing IDs on the public 2025 paths is an implementation choice permitted by
+those specifications, not a requirement that every MCP server maintain sessions.
+Removing that state would require replacing its version and identity lookup;
+removing the header alone would break the current request validation.
+
+Public session IDs and backend session IDs belong to separate connections and
+are never forwarded between them. Backend protocol selection survives reconnects
+and enable/disable changes until gateway restart, while an HTTP session ID belongs
+to the individual initialized connection and is obtained again on reconnect.
+Protocol negotiation failures stop automatic reconnect attempts; an explicit
+disable/re-enable permits another attempt with any retained version selection.
+
+### Client identity and observability
+
+The dashboard groups clients by reported name and version across all supported
+revisions. Session closure or limit-based removal does not remove client activity history.
+This grouping assumes local use: separate clients reporting the same name and
+version intentionally appear as one client. It is not an authentication identity;
+remote authenticated client differentiation remains outside the current design.
+
+Session IDs are excluded from gateway-generated logs, traffic-record identity,
+and dashboard API contracts. Logs identify clients by name and version where
+available. The session map contains only retained sessions, without lifecycle status, timestamps,
+idle expiration, or cleanup timers. `MCP_MAX_SESSIONS_PER_CLIENT` defaults to 10.
+Map insertion order determines the oldest initialization; request activity does not
+change that order. The limit applies across both supported 2025 revisions for each
+name/version pair, allowing multiple agents with the same reported identity. Each
+successful initialization beyond the limit removes one oldest session; invalid
+initialization requests remove none. Explicit DELETE removes the matching session
+immediately. The client UI does not expose connected/disconnected status.
 
 ## Namespacing
 

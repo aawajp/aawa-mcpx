@@ -2,7 +2,6 @@ import { saveBackendEnabled } from '@/config/loader';
 import { createMcpUpstreamCatalog } from '@/mcp_upstreams/catalog';
 import { createMcpUpstreamConnections } from '@/mcp_upstreams/connections';
 import { createMcpUpstreamOperations } from '@/mcp_upstreams/method_calls';
-import type { McpUpstreamTransport } from '@/mcp_upstreams/transport';
 import type {
 	CreateMcpUpstreamManagerParams,
 	McpUpstreamClientsMap,
@@ -14,6 +13,7 @@ import type {
 	McpUpstreamStatus,
 	McpUpstreamToolsMap,
 } from '@/mcp_upstreams/types';
+import { CURRENT_PROTOCOL_VERSION, recordOf } from '@/shared/mcp_protocol';
 
 const createMcpUpstreamManager = (
 	params: CreateMcpUpstreamManagerParams,
@@ -29,7 +29,6 @@ const createMcpUpstreamManager = (
 		]),
 	);
 	const clients: McpUpstreamClientsMap = new Map();
-	const transports = new Map<string, McpUpstreamTransport>();
 	const toolsCache: McpUpstreamToolsMap = new Map();
 	const promptsCache: McpUpstreamPromptsMap = new Map();
 	const resourcesCache: McpUpstreamResourcesMap = new Map();
@@ -39,6 +38,8 @@ const createMcpUpstreamManager = (
 	const healthCheckFailures = new Map<string, number>();
 	const suppressClientErrorsUntil = new Map<string, number>();
 	const configErrorBackends = new Set<string>();
+	const catalogExpiresAt = new Map<string, number>();
+	const catalogRefreshes = new Map<string, Promise<void>>();
 
 	let refreshCatalog = async (_server: McpUpstreamServer): Promise<void> => {
 		// Reassigned after the catalog is created; connection callbacks close over it.
@@ -57,7 +58,6 @@ const createMcpUpstreamManager = (
 		suppressClientErrorsUntil,
 		toolsCache,
 		trafficStore,
-		transports,
 		refreshCatalog: (server) => refreshCatalog(server),
 	});
 	const catalog = createMcpUpstreamCatalog({
@@ -77,11 +77,53 @@ const createMcpUpstreamManager = (
 		waitForRateLimit: connections.waitForRateLimit,
 	});
 	refreshCatalog = async (server: McpUpstreamServer): Promise<void> => {
-		await Promise.allSettled([
-			catalog.fetchTools(server),
-			catalog.fetchPrompts(server),
-			catalog.fetchResources(server),
-		]);
+		// Multiple requests can observe the same expired 2026-07-28 catalog.
+		// Share its refresh; each backend retains its own credential/cache context.
+		const pending = catalogRefreshes.get(server.serverName);
+		if (pending) return pending;
+		const refresh = async (): Promise<void> => {
+			const startedAt = Date.now();
+			await Promise.allSettled([
+				catalog.fetchTools(server),
+				catalog.fetchPrompts(server),
+				catalog.fetchResources(server),
+			]);
+			const results = [
+				toolsCache.get(server.serverName),
+				promptsCache.get(server.serverName),
+				resourcesCache.get(server.serverName),
+			];
+			const ttl = Math.min(
+				// The first catalog to expire makes the combined snapshot stale.
+				...results.map((result) => Number(recordOf(result)?.ttlMs ?? 0)),
+			);
+			// A slower sibling catalog must not extend the freshness of an earlier result.
+			catalogExpiresAt.set(server.serverName, startedAt + Math.max(0, ttl));
+		};
+		const promise = refresh();
+		catalogRefreshes.set(server.serverName, promise);
+		try {
+			await promise;
+		} finally {
+			if (catalogRefreshes.get(server.serverName) === promise)
+				catalogRefreshes.delete(server.serverName);
+		}
+	};
+	const refreshStaleCatalogs = async (): Promise<void> => {
+		await Promise.all(
+			connections
+				.getStatuses()
+				.filter(
+					(status) =>
+						status.connected &&
+						status.protocolVersion === CURRENT_PROTOCOL_VERSION &&
+						Date.now() >= (catalogExpiresAt.get(status.serverName) ?? 0),
+				)
+				.map(async (status) => {
+					const server = servers.get(status.serverName);
+					if (server) await refreshCatalog(server);
+				}),
+		);
 	};
 
 	const operations = createMcpUpstreamOperations({
@@ -111,6 +153,7 @@ const createMcpUpstreamManager = (
 	};
 
 	return {
+		refreshStaleCatalogs,
 		initialize: connections.initialize,
 		getClient: connections.getClient,
 		getAllClients: connections.getAllClients,

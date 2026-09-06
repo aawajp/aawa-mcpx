@@ -1,9 +1,10 @@
-import type { Client } from '@modelcontextprotocol/sdk/client';
 import { type } from 'arktype';
 
 import type {
+	Client,
 	McpUpstreamClientsMap,
 	McpUpstreamServer,
+	OnValidationError,
 } from '@/mcp_upstreams/types';
 import { logger } from '@/server/logger';
 import { errorMessage } from '@/shared/common';
@@ -12,13 +13,6 @@ import { pingResultType } from '@/shared/mcp_schemas';
 const HEALTH_CHECK_INTERVAL_MS = 10_000;
 const HEALTH_CHECK_TIMEOUT_MS = HEALTH_CHECK_INTERVAL_MS - 1000;
 const HEALTH_CHECK_FAILURE_THRESHOLD = 2;
-
-type OnValidationError = (params: {
-	server: McpUpstreamServer;
-	method: string;
-	error: type.errors;
-	request?: unknown;
-}) => void;
 
 type CreateMcpUpstreamHealthChecksParams = {
 	clients: McpUpstreamClientsMap;

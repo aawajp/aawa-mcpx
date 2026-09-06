@@ -2,6 +2,13 @@ import { type } from 'arktype';
 
 import type { IncomingJsonRpcRequest, RouteResult } from '@/gateway/json_rpc';
 import type { createHandlers } from '@/gateway/mcp_handlers';
+import { BackendRpcError } from '@/mcp_upstreams/protocol_client';
+import {
+	CACHEABLE_METHODS,
+	CURRENT_PROTOCOL_VERSION,
+	SERVER_INFO_META,
+	SUPPORTED_PROTOCOL_VERSIONS,
+} from '@/shared/mcp_protocol';
 
 const namedArgumentsParamsType = type({
 	name: 'string',
@@ -23,6 +30,7 @@ type RequireSession = (
 ) => RouteResult | null;
 
 type CreateMcpRequestRouterParams = {
+	beforeRequest?: () => Promise<void>;
 	handlers: GatewayHandlers;
 	requireSession: RequireSession;
 	handleInitialize: (
@@ -52,269 +60,240 @@ const createMcpRequestRouter = (
 ): ((
 	request: IncomingJsonRpcRequest,
 	sessionId: string | undefined,
+	protocolVersion?: string,
 ) => Promise<RouteResult>) => {
-	const { handlers, requireSession, handleInitialize } = params;
+	const { handlers, handleInitialize } = params;
 
-	return async (request, sessionId) => {
-		const method: string = request.method;
-		switch (method) {
-			case 'initialize':
-				return await handleInitialize(request, sessionId);
-			case 'tools/list': {
-				const invalid = requireSession(sessionId, request.id, request.method);
-				if (invalid) return invalid;
-				const result = handlers.listTools();
-				return {
-					payload: {
-						jsonrpc: '2.0',
-						id: request.id,
-						result,
+	const route = async (
+		request: IncomingJsonRpcRequest,
+		sessionId: string | undefined,
+		protocolVersion?: string,
+	): Promise<RouteResult> => {
+		const usesRequestMetadata = protocolVersion === CURRENT_PROTOCOL_VERSION;
+		const requireSession: RequireSession = usesRequestMetadata
+			? () => null
+			: params.requireSession;
+		if (usesRequestMetadata && request.method === 'server/discover')
+			return {
+				payload: {
+					jsonrpc: '2.0',
+					id: request.id,
+					result: {
+						supportedVersions: [
+							...SUPPORTED_PROTOCOL_VERSIONS,
+						],
+						capabilities: {
+							tools: {},
+							prompts: {},
+							resources: {},
+						},
 					},
-					sessionId,
-				};
-			}
-			case 'prompts/list': {
-				const invalid = requireSession(sessionId, request.id, request.method);
-				if (invalid) return invalid;
-				const result = handlers.listPrompts();
-				return {
-					payload: {
-						jsonrpc: '2.0',
-						id: request.id,
-						result,
+				},
+			};
+		if (
+			(usesRequestMetadata &&
+				[
+					'initialize',
+					'ping',
+					'logging/setLevel',
+					'completion/complete',
+				].includes(request.method)) ||
+			request.method.startsWith('tasks/')
+		)
+			return {
+				status: usesRequestMetadata ? 404 : undefined,
+				payload: {
+					jsonrpc: '2.0',
+					id: request.id,
+					error: {
+						code: -32601,
+						message: 'Method not supported',
 					},
-					sessionId,
-				};
-			}
-			case 'resources/list': {
-				const invalid = requireSession(sessionId, request.id, request.method);
-				if (invalid) return invalid;
-				const result = handlers.listResources();
-				return {
-					payload: {
-						jsonrpc: '2.0',
-						id: request.id,
-						result,
-					},
-					sessionId,
-				};
-			}
-			case 'tools/call': {
-				const invalid = requireSession(sessionId, request.id, request.method);
-				if (invalid) return invalid;
-				if (!namedArgumentsParamsType.allows(request.params)) {
+				},
+			};
+		if (request.method === 'initialize')
+			return await handleInitialize(request, sessionId);
+		const invalid = requireSession(sessionId, request.id, request.method);
+		if (invalid) return invalid;
+
+		const success = (result: Record<string, unknown>): RouteResult => ({
+			payload: {
+				jsonrpc: '2.0',
+				id: request.id,
+				result,
+			},
+			sessionId,
+		});
+		const unsupported = (message: string): RouteResult => ({
+			payload: {
+				jsonrpc: '2.0',
+				id: request.id,
+				error: {
+					code: -32601,
+					message,
+				},
+			},
+			sessionId,
+		});
+		switch (request.method) {
+			case 'tools/list':
+				return success(handlers.listTools());
+			case 'prompts/list':
+				return success(handlers.listPrompts());
+			case 'resources/list':
+				return success(handlers.listResources());
+			case 'tools/call':
+			case 'prompts/get': {
+				if (!namedArgumentsParamsType.allows(request.params))
 					return createInvalidParamsError(
 						request.id,
-						'Invalid tools/call params.',
+						`Invalid ${request.method} params.`,
 					);
-				}
 				const callParams = namedArgumentsParamsType.assert(request.params);
-				const result = await handlers.callTool({
+				const args = {
 					name: callParams.name,
 					args: callParams.arguments ?? {},
-				});
-				return {
-					payload: {
-						jsonrpc: '2.0',
-						id: request.id,
-						result,
-					},
-					sessionId,
 				};
-			}
-			case 'prompts/get': {
-				const invalid = requireSession(sessionId, request.id, request.method);
-				if (invalid) return invalid;
-				if (!namedArgumentsParamsType.allows(request.params)) {
-					return createInvalidParamsError(
-						request.id,
-						'Invalid prompts/get params.',
-					);
-				}
-				const promptParams = namedArgumentsParamsType.assert(request.params);
-				const result = await handlers.getPrompt({
-					name: promptParams.name,
-					args: promptParams.arguments ?? {},
-				});
-				return {
-					payload: {
-						jsonrpc: '2.0',
-						id: request.id,
-						result,
-					},
-					sessionId,
-				};
+				return success(
+					await (request.method === 'tools/call'
+						? handlers.callTool(args)
+						: handlers.getPrompt(args)),
+				);
 			}
 			case 'resources/read': {
-				const invalid = requireSession(sessionId, request.id, request.method);
-				if (invalid) return invalid;
-				if (!resourceReadParamsType.allows(request.params)) {
+				if (!resourceReadParamsType.allows(request.params))
 					return createInvalidParamsError(
 						request.id,
 						'Invalid resources/read params.',
 					);
-				}
 				const resourceParams = resourceReadParamsType.assert(request.params);
-				const result = await handlers.readResource({
-					uri: resourceParams.uri,
+				return success(
+					await handlers.readResource({
+						uri: resourceParams.uri,
+					}),
+				);
+			}
+			case 'resources/templates/list':
+				return success({
+					resourceTemplates: [],
 				});
-				return {
-					payload: {
-						jsonrpc: '2.0',
-						id: request.id,
-						result,
-					},
-					sessionId,
-				};
-			}
-			case 'resources/templates/list': {
-				const invalid = requireSession(sessionId, request.id, request.method);
-				if (invalid) return invalid;
-				return {
-					payload: {
-						jsonrpc: '2.0',
-						id: request.id,
-						result: {
-							resourceTemplates: [],
-						},
-					},
-					sessionId,
-				};
-			}
 			case 'resources/subscribe':
-			case 'resources/unsubscribe': {
-				const invalid = requireSession(sessionId, request.id, request.method);
-				if (invalid) return invalid;
-				return {
-					payload: {
-						jsonrpc: '2.0',
-						id: request.id,
-						error: {
-							code: -32601,
-							message: 'Resource subscriptions not supported',
-						},
+			case 'resources/unsubscribe':
+				return unsupported('Resource subscriptions not supported');
+			case 'completion/complete':
+				return success({
+					completion: {
+						values: [],
+						hasMore: false,
 					},
-					sessionId,
-				};
-			}
-			case 'completion/complete': {
-				const invalid = requireSession(sessionId, request.id, request.method);
-				if (invalid) return invalid;
-				return {
-					payload: {
-						jsonrpc: '2.0',
-						id: request.id,
-						result: {
-							completion: {
-								values: [],
-								hasMore: false,
-							},
-						},
-					},
-					sessionId,
-				};
-			}
-			case 'logging/setLevel': {
-				const invalid = requireSession(sessionId, request.id, request.method);
-				if (invalid) return invalid;
-				return {
-					payload: {
-						jsonrpc: '2.0',
-						id: request.id,
-						result: {},
-					},
-					sessionId,
-				};
-			}
-			case 'tasks/list': {
-				const invalid = requireSession(sessionId, request.id, request.method);
-				if (invalid) return invalid;
-				return {
-					payload: {
-						jsonrpc: '2.0',
-						id: request.id,
-						result: {
-							tasks: [],
-						},
-					},
-					sessionId,
-				};
-			}
-			case 'tasks/get':
-			case 'tasks/result':
-			case 'tasks/cancel': {
-				const invalid = requireSession(sessionId, request.id, request.method);
-				if (invalid) return invalid;
-				return {
-					payload: {
-						jsonrpc: '2.0',
-						id: request.id,
-						error: {
-							code: -32601,
-							message: 'Tasks not supported',
-						},
-					},
-					sessionId,
-				};
-			}
-			case 'sampling/createMessage': {
-				const invalid = requireSession(sessionId, request.id, request.method);
-				if (invalid) return invalid;
-				return {
-					payload: {
-						jsonrpc: '2.0',
-						id: request.id,
-						error: {
-							code: -32601,
-							message: 'Sampling not supported',
-						},
-					},
-					sessionId,
-				};
-			}
-			case 'elicitation/create': {
-				const invalid = requireSession(sessionId, request.id, request.method);
-				if (invalid) return invalid;
-				return {
-					payload: {
-						jsonrpc: '2.0',
-						id: request.id,
-						error: {
-							code: -32601,
-							message: 'Elicitation not supported',
-						},
-					},
-					sessionId,
-				};
-			}
-			case 'ping': {
-				const invalid = requireSession(sessionId, request.id, request.method);
-				if (invalid) return invalid;
-				return {
-					payload: {
-						jsonrpc: '2.0',
-						id: request.id,
-						result: {},
-					},
-					sessionId,
-				};
-			}
-			default: {
-				const invalid = requireSession(sessionId, request.id, request.method);
-				if (invalid) return invalid;
-				return {
-					payload: {
-						jsonrpc: '2.0',
-						id: request.id,
-						error: {
-							code: -32601,
-							message: `Method not found: ${request.method}`,
-						},
-					},
-					sessionId,
-				};
-			}
+				});
+			case 'logging/setLevel':
+			case 'ping':
+				return success({});
+			case 'sampling/createMessage':
+				return unsupported('Sampling not supported');
+			case 'elicitation/create':
+				return unsupported('Elicitation not supported');
+			default:
+				return unsupported(`Method not found: ${request.method}`);
 		}
+	};
+	return async (request, sessionId, protocolVersion) => {
+		// The 2026-07-28 HTTP path already refreshes before mirrored-header
+		// validation. Refreshing again here would fetch zero-TTL catalogs twice.
+		if (
+			protocolVersion !== CURRENT_PROTOCOL_VERSION &&
+			[
+				'tools/list',
+				'tools/call',
+				'prompts/list',
+				'prompts/get',
+				'resources/list',
+				'resources/read',
+			].includes(request.method)
+		)
+			await params.beforeRequest?.();
+		let result: RouteResult;
+		try {
+			result = await route(request, sessionId, protocolVersion);
+		} catch (error) {
+			if (!(error instanceof BackendRpcError)) throw error;
+			result = {
+				payload: {
+					jsonrpc: '2.0',
+					id: request.id,
+					error: {
+						code: error.code,
+						message: error.message,
+						data: error.data,
+					},
+				},
+				sessionId,
+			};
+		}
+		if (!result.payload) return result;
+		if (protocolVersion !== CURRENT_PROTOCOL_VERSION) {
+			// The client and backend select versions independently. Strip the
+			// 2026-07-28 result fields when replying with either supported 2025 revision.
+			if ('result' in result.payload) {
+				const sessionResult = {
+					...result.payload.result,
+				};
+				delete sessionResult.resultType;
+				delete sessionResult.ttlMs;
+				delete sessionResult.cacheScope;
+				const structured = sessionResult.structuredContent;
+				// Both 2025 revisions require an object here; wrapping preserves scalar,
+				// array, and null values returned by a 2026-07-28 backend.
+				if (
+					structured !== undefined &&
+					(structured === null ||
+						typeof structured !== 'object' ||
+						Array.isArray(structured))
+				)
+					sessionResult.structuredContent = {
+						value: structured,
+					};
+				return {
+					...result,
+					payload: {
+						...result.payload,
+						result: sessionResult,
+					},
+				};
+			}
+			return result;
+		}
+		if ('error' in result.payload)
+			return {
+				...result,
+				status: result.payload.error.code === -32601 ? 404 : result.status,
+			};
+		return {
+			...result,
+			sessionId: undefined,
+			// These are gateway cache hints, not a promise copied from one backend.
+			payload: {
+				...result.payload,
+				result: {
+					...result.payload.result,
+					resultType: 'complete',
+					_meta: {
+						...result.payload.result._meta,
+						[SERVER_INFO_META]: {
+							name: 'aawa-mcpx',
+							version: '1.0.0',
+						},
+					},
+					...(CACHEABLE_METHODS.has(request.method)
+						? {
+								ttlMs: 0,
+								cacheScope: 'private',
+							}
+						: {}),
+				},
+			},
+		};
 	};
 };
 

@@ -1,5 +1,3 @@
-import { type } from 'arktype';
-
 import { randomUUID } from 'node:crypto';
 
 import {
@@ -9,52 +7,35 @@ import {
 	type RouteResult,
 } from '@/gateway/json_rpc';
 import { logger } from '@/server/logger';
-
-type ClientInfo = {
-	name?: string;
-	title?: string;
-	version?: string;
-};
-
-type SessionStatus = 'connected' | 'disconnected' | 'expired';
+import { type ClientInfo, parseClientInfo } from '@/shared/client_info';
+import {
+	isProtocolVersion,
+	type ProtocolVersion,
+	requiresInitialization,
+	SUPPORTED_PROTOCOL_VERSIONS,
+} from '@/shared/mcp_protocol';
 
 type SessionInfo = {
 	client: ClientInfo;
-	protocolVersion?: string;
-	status: SessionStatus;
-	createdAt: number;
-	lastSeen: number;
-	disconnectedAt?: number;
-	lastStatus?: string;
-};
-
-type ClientSession = SessionInfo & {
-	sessionId: string;
+	protocolVersion: string;
 };
 
 type CloseSessionResult = {
-	reason?: 'inactive-session' | 'missing-session' | 'unknown-session';
+	reason?: 'missing-session' | 'unknown-session';
 	status: 202 | 400 | 404;
 };
 
 type CreateMcpSessionManagerParams = {
-	historyLimit: number;
+	maxSessionsPerClient?: number;
+	onClientActivity?: (client: ClientInfo, protocolVersion: string) => void;
 	protocolHeaderName: string;
-	sessionTtlMs: number;
-	sweepIntervalMs: number;
 	supportedProtocolVersions: readonly string[];
 };
 
-const clientInfoType = type({
-	'name?': 'string',
-	'title?': 'string',
-	'version?': 'string',
-	'[string]': 'unknown',
-});
-
-const gatewayProtocolVersionType = type(
-	"'2025-11-25' | '2025-06-18' | '2025-03-26'",
-);
+const isSupportedSessionVersion = (
+	version: unknown,
+): version is ProtocolVersion =>
+	isProtocolVersion(version) && requiresInitialization(version);
 
 const getString = (value: unknown): string | undefined => {
 	return typeof value === 'string' && value.trim() !== '' ? value : undefined;
@@ -79,101 +60,21 @@ const createProtocolError = (params: {
 };
 
 const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
+	// 2025-06-18 and 2025-11-25 requests use the issued ID to recover their
+	// negotiated version and client identity. It is transport state, not a client ID.
 	const sessions = new Map<string, SessionInfo>();
-	let sessionSweepTimer: Timer | null = null;
-
-	const activeCount = (): number => {
-		let count = 0;
-		for (const session of sessions.values()) {
-			if (session.status === 'connected') {
-				count++;
-			}
-		}
-		return count;
-	};
-
-	const pruneHistory = (): void => {
-		if (sessions.size <= params.historyLimit) return;
-		const inactive = Array.from(sessions.entries())
-			.filter(([, session]) => session.status !== 'connected')
-			.sort((a, b) => a[1].lastSeen - b[1].lastSeen);
-		while (sessions.size > params.historyLimit && inactive.length > 0) {
-			const next = inactive.shift();
-			if (next) {
-				sessions.delete(next[0]);
-			}
-		}
-	};
-
-	const touch = (sessionId: string): void => {
-		const session = sessions.get(sessionId);
-		if (!session) return;
-		if (session.status !== 'connected') return;
-		session.lastSeen = Date.now();
-	};
-
-	const sweepExpired = (): number => {
-		const now = Date.now();
-		let expired = 0;
-		for (const [sessionId, session] of sessions.entries()) {
-			if (
-				session.status === 'connected' &&
-				now - session.lastSeen > params.sessionTtlMs
-			) {
-				const idleMs = now - session.lastSeen;
-				const durationMs = now - session.createdAt;
-				session.status = 'expired';
-				session.disconnectedAt = now;
-				session.lastStatus = 'Session expired';
-				expired++;
-				logger.info(
-					`MCP session ended: ${formatSessionLifecycleFields({
-						sessionId,
-						trigger: 'session-sweeper',
-						reason: 'idle-timeout',
-						durationMs,
-						idleMs,
-					})}`,
-				);
-			}
-		}
-		if (expired > 0) {
-			pruneHistory();
-		}
-		return expired;
-	};
-
-	const startSweeper = (): void => {
-		if (sessionSweepTimer) return;
-		sessionSweepTimer = setInterval(() => {
-			const removed = sweepExpired();
-			if (removed > 0) {
-				logger.info(
-					`MCP session sweep completed: trigger=session-sweeper, reason=idle-timeout, expired=${removed}, active=${activeCount()}`,
-				);
-			}
-		}, params.sweepIntervalMs);
-	};
-
-	const stopSweeper = (): void => {
-		if (!sessionSweepTimer) return;
-		clearInterval(sessionSweepTimer);
-		sessionSweepTimer = null;
-	};
+	const limit = params.maxSessionsPerClient ?? 10;
+	if (!Number.isSafeInteger(limit) || limit < 1)
+		throw new Error('Session limit must be a positive integer');
+	const activeCount = (): number => sessions.size;
 
 	const getClientInfo = (value: unknown): ClientInfo | undefined => {
 		const record = getRecord(value);
-		if (!clientInfoType.allows(record?.clientInfo)) return undefined;
-		const clientInfo = record.clientInfo;
-		return {
-			name: getString(clientInfo.name),
-			title: getString(clientInfo.title),
-			version: getString(clientInfo.version),
-		};
+		return parseClientInfo(record?.clientInfo);
 	};
 
 	const formatClientInfo = (client: ClientInfo): string => {
-		const name = client.name ?? 'missing-client-info';
+		const name = client.name;
 		const version = client.version;
 		return version ? `${name}@${version}` : name;
 	};
@@ -184,92 +85,20 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 	): string => {
 		const requestClient = getClientInfo(requestParams);
 		if (requestClient) return formatClientInfo(requestClient);
-		if (!sessionId) return 'no-session';
+		if (!sessionId) return 'unknown';
 		const session = sessions.get(sessionId);
-		if (!session) return 'unknown-session';
+		if (!session) return 'unknown';
 		return formatClientInfo(session.client);
-	};
-
-	const formatSessionLifecycleFields = (fields: {
-		sessionId: string;
-		trigger: 'client-delete' | 'request-validation' | 'session-sweeper';
-		reason: 'client-requested' | 'idle-timeout' | 'inactive-session';
-		method?: string;
-		status?: SessionStatus;
-		durationMs?: number;
-		idleMs?: number;
-	}): string => {
-		let message = `client=${formatClient(fields.sessionId)}, session=${fields.sessionId}`;
-		if (fields.method) {
-			message += `, method=${fields.method}`;
-		}
-		message += `, trigger=${fields.trigger}, reason=${fields.reason}`;
-		if (fields.status) {
-			message += `, status=${fields.status}`;
-		}
-		if (typeof fields.durationMs === 'number') {
-			message += `, durationMs=${fields.durationMs}`;
-		}
-		if (typeof fields.idleMs === 'number') {
-			message += `, idleMs=${fields.idleMs}`;
-		}
-		message += `, active=${activeCount()}`;
-		return message;
-	};
-
-	const logStateMismatch = (mismatch: {
-		method: string;
-		sessionId: string | undefined;
-		reason?: 'expired-session' | 'inactive-session';
-	}): void => {
-		if (!mismatch.sessionId) {
-			logger.warn(
-				`Session mismatch: session=none, method=${mismatch.method}, reason=missing-session, active=${activeCount()}`,
-			);
-			return;
-		}
-		const session = sessions.get(mismatch.sessionId);
-		if (!session) {
-			logger.warn(
-				`Session mismatch: session=${mismatch.sessionId}, method=${mismatch.method}, reason=unknown-session, active=${activeCount()}`,
-			);
-			return;
-		}
-		if (mismatch.reason === 'expired-session') {
-			logger.warn(
-				`Session mismatch: session=${mismatch.sessionId}, method=${mismatch.method}, reason=expired-session, status=${session.status}, active=${activeCount()}`,
-			);
-			return;
-		}
-		if (
-			session.status !== 'connected' ||
-			mismatch.reason === 'inactive-session'
-		) {
-			logger.warn(
-				`Session mismatch: session=${mismatch.sessionId}, method=${mismatch.method}, reason=inactive-session, status=${session.status}, active=${activeCount()}`,
-			);
-		}
-	};
-
-	const countActiveForClient = (client: ClientInfo): number => {
-		let count = 0;
-		for (const session of sessions.values()) {
-			if (session.status !== 'connected') continue;
-			if (session.client.name !== client.name) continue;
-			if (session.client.version !== client.version) continue;
-			count++;
-		}
-		return count;
 	};
 
 	const getInitializeParams = (
 		request: IncomingJsonRpcRequest,
 	): {
-		client: ClientInfo;
+		client: ClientInfo | undefined;
 		protocolVersion?: string;
 	} => {
 		const requestParams = getRecord(request.params);
-		const client = getClientInfo(request.params) ?? {};
+		const client = getClientInfo(request.params);
 		return {
 			client,
 			protocolVersion: getString(requestParams?.protocolVersion),
@@ -279,8 +108,10 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 	const negotiateProtocolVersion = (
 		requested: string | undefined,
 	): string | null => {
-		if (gatewayProtocolVersionType.allows(requested)) return requested;
-		return null;
+		if (isSupportedSessionVersion(requested)) return requested;
+		return requested
+			? (SUPPORTED_PROTOCOL_VERSIONS.find(requiresInitialization) ?? null)
+			: null;
 	};
 
 	const handleInitialize = async (
@@ -294,6 +125,18 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 			});
 		}
 		const requested = getInitializeParams(request);
+		if (!requested.client)
+			return {
+				status: 400,
+				payload: {
+					jsonrpc: '2.0',
+					id: request.id,
+					error: {
+						code: -32602,
+						message: 'Client info must include string name and version fields.',
+					},
+				},
+			};
 		const protocolVersion = negotiateProtocolVersion(requested.protocolVersion);
 		if (!protocolVersion) {
 			return {
@@ -312,18 +155,25 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 			};
 		}
 		const sessionId = randomUUID();
-		const now = Date.now();
-		const sameClientActive = countActiveForClient(requested.client);
+		const client = requested.client;
+		// Local retention policy, not a protocol identity guarantee: multiple agents
+		// may share name/version. Map insertion order keeps the oldest initialization
+		// first; activity does not reorder it. Only this client's excess session is removed.
+		const clientSessions = Array.from(sessions).filter(
+			([, session]) =>
+				session.client.name === client.name &&
+				session.client.version === client.version,
+		);
+		if (clientSessions.length >= limit) {
+			const oldest = clientSessions[0];
+			if (oldest) sessions.delete(oldest[0]);
+		}
 		sessions.set(sessionId, {
 			client: requested.client,
 			protocolVersion,
-			status: 'connected',
-			createdAt: now,
-			lastSeen: now,
-			lastStatus: 'Connected',
 		});
-		pruneHistory();
-		const clientLabel = formatClient(sessionId);
+		params.onClientActivity?.(requested.client, protocolVersion);
+		const clientLabel = formatClientInfo(requested.client);
 		const title = requested.client.title
 			? `, title=${requested.client.title}`
 			: '';
@@ -332,13 +182,8 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 			requested.protocolVersion && requested.protocolVersion !== protocolVersion
 				? `, requestedMcpProtocol=${requested.protocolVersion}`
 				: '';
-		const duplicate =
-			sameClientActive > 0 ? `, sameClientActive=${sameClientActive}` : '';
-		const incoming = incomingSessionId
-			? `, incomingSession=${incomingSessionId}`
-			: '';
 		logger.info(
-			`New MCP session: client=${clientLabel}${title}${protocol}${requestedProtocol}, session=${sessionId}${duplicate}${incoming}, active=${activeCount()}`,
+			`New MCP session: client=${clientLabel}${title}${protocol}${requestedProtocol}, active=${activeCount()}`,
 		);
 
 		return {
@@ -365,13 +210,9 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 	const requireSession = (
 		sessionId: string | undefined,
 		id: string | number | undefined,
-		method: string,
+		_method: string,
 	): RouteResult | null => {
 		if (!sessionId) {
-			logStateMismatch({
-				method,
-				sessionId,
-			});
 			return createProtocolError({
 				id,
 				message: 'Missing MCP session',
@@ -379,10 +220,6 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 		}
 		const session = sessions.get(sessionId);
 		if (!session) {
-			logStateMismatch({
-				method,
-				sessionId,
-			});
 			return createProtocolError({
 				id,
 				message:
@@ -390,40 +227,7 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 				status: 404,
 			});
 		}
-		if (
-			session.status !== 'connected' ||
-			Date.now() - session.lastSeen > params.sessionTtlMs
-		) {
-			const now = Date.now();
-			const idleMs = now - session.lastSeen;
-			const durationMs = now - session.createdAt;
-			if (session.status === 'connected') {
-				session.status = 'expired';
-				session.disconnectedAt = now;
-				session.lastStatus = 'Session expired';
-				logger.info(
-					`MCP session ended: ${formatSessionLifecycleFields({
-						sessionId,
-						method,
-						trigger: 'request-validation',
-						reason: 'idle-timeout',
-						durationMs,
-						idleMs,
-					})}`,
-				);
-			}
-			logStateMismatch({
-				method,
-				sessionId,
-				reason: session.status === 'expired' ? 'expired-session' : undefined,
-			});
-			return createProtocolError({
-				id,
-				message: 'Session expired. Please re-initialize by calling initialize.',
-				status: 404,
-			});
-		}
-		touch(sessionId);
+		params.onClientActivity?.(session.client, session.protocolVersion);
 		return null;
 	};
 
@@ -436,7 +240,7 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 		if (method === 'initialize') return null;
 		const header = request.headers.get(params.protocolHeaderName);
 		if (!header) return null;
-		if (!gatewayProtocolVersionType.allows(header)) {
+		if (!isSupportedSessionVersion(header)) {
 			return createProtocolError({
 				id,
 				message: `Unsupported MCP protocol version header: ${header}`,
@@ -486,53 +290,20 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 		}
 		if (!session) {
 			logger.warn(
-				`MCP session close rejected: reason=unknown-session, session=${sessionId}, active=${activeCount()}`,
+				`MCP session close rejected: reason=unknown-session, active=${activeCount()}`,
 			);
 			return {
 				reason: 'unknown-session',
 				status: 404,
 			};
 		}
-		if (session.status !== 'connected') {
-			logger.warn(
-				`MCP session close ignored: ${formatSessionLifecycleFields({
-					sessionId,
-					trigger: 'client-delete',
-					reason: 'inactive-session',
-					status: session.status,
-				})}`,
-			);
-			return {
-				reason: 'inactive-session',
-				status: 404,
-			};
-		}
-		const durationMs = Date.now() - session.createdAt;
-		session.status = 'disconnected';
-		session.disconnectedAt = Date.now();
-		session.lastSeen = session.disconnectedAt;
-		session.lastStatus = 'Client disconnected';
-		pruneHistory();
+		sessions.delete(sessionId);
 		logger.info(
-			`MCP session ended: ${formatSessionLifecycleFields({
-				sessionId,
-				trigger: 'client-delete',
-				reason: 'client-requested',
-				durationMs,
-			})}`,
+			`MCP session ended: client=${formatClientInfo(session.client)}, reason=client-requested, active=${activeCount()}`,
 		);
 		return {
 			status: 202,
 		};
-	};
-
-	const list = (): ClientSession[] => {
-		return Array.from(sessions.entries())
-			.map(([sessionId, session]) => ({
-				sessionId,
-				...session,
-			}))
-			.sort((a, b) => b.lastSeen - a.lastSeen);
 	};
 
 	return {
@@ -540,22 +311,19 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 		clear: () => sessions.clear(),
 		close,
 		formatClient,
+		getClient: (sessionId: string | undefined): ClientInfo | undefined =>
+			sessionId ? sessions.get(sessionId)?.client : undefined,
+		getProtocolVersion: (sessionId: string | undefined): string | undefined =>
+			sessionId ? sessions.get(sessionId)?.protocolVersion : undefined,
 		handleInitialize,
-		list,
 		requireSession,
 		routeNotification,
 		routeResponse,
-		startSweeper,
-		stopSweeper,
 		validateProtocolHeader,
 	};
 };
 
-export type {
-	ClientInfo,
-	ClientSession,
-	CloseSessionResult,
-	SessionInfo,
-	SessionStatus,
-};
+export type { ClientInfo } from '@/shared/client_info';
+
+export type { CloseSessionResult, SessionInfo };
 export { createMcpSessionManager };

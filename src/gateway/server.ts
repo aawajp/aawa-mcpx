@@ -6,6 +6,7 @@ import type {
 	Tool,
 } from '@modelcontextprotocol/sdk/types';
 
+import { createClientActivityTracker } from '@/gateway/client_activity';
 import type { OutgoingJsonRpcResponse } from '@/gateway/json_rpc';
 import { createHandlers } from '@/gateway/mcp_handlers';
 import { createMcpHttpRoute } from '@/gateway/mcp_http_route';
@@ -24,7 +25,13 @@ import { createUiRoutes } from '@/gateway/ui_routes';
 import type { McpUpstreamManager } from '@/mcp_upstreams/types';
 import { logger } from '@/server/logger';
 import type { TrafficStore } from '@/server/traffic_store';
+import { parseClientInfo } from '@/shared/client_info';
 import { errorMessage } from '@/shared/common';
+import {
+	CLIENT_INFO_META,
+	CURRENT_PROTOCOL_VERSION,
+	SUPPORTED_PROTOCOL_VERSIONS,
+} from '@/shared/mcp_protocol';
 
 import indexHtml from '../index.html';
 
@@ -32,16 +39,10 @@ import indexHtml from '../index.html';
 const MCP_SESSION_HEADER = 'mcp-session-id';
 const MCP_PROTOCOL_VERSION_HEADER = 'mcp-protocol-version';
 
-const DEFAULT_SESSION_TTL_MS = 5 * 60 * 1000;
-const DEFAULT_SESSION_SWEEP_INTERVAL_MS = 60 * 1000;
-const CLIENT_SESSION_HISTORY_LIMIT = 200;
+const DEFAULT_MAX_SESSIONS_PER_CLIENT = 10;
+const CLIENT_ACTIVITY_HISTORY_LIMIT = 200;
 
-// TODO: should confirm actual compatibility with each version
-const SUPPORTED_GATEWAY_PROTOCOL_VERSIONS = [
-	'2025-11-25',
-	'2025-06-18',
-	'2025-03-26',
-] as const;
+const SUPPORTED_GATEWAY_PROTOCOL_VERSIONS = SUPPORTED_PROTOCOL_VERSIONS;
 const DEFAULT_GATEWAY_PROTOCOL_VERSION = SUPPORTED_GATEWAY_PROTOCOL_VERSIONS[0];
 
 const createJsonResponse = (
@@ -106,7 +107,7 @@ const resolveNumberEnv = (key: string, fallback: number): number => {
 	const raw = process.env[key];
 	if (!raw) return fallback;
 	const parsed = Number(raw);
-	return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+	return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
 };
 
 type StartServerParams = {
@@ -132,20 +133,18 @@ const startServer = async (
 	const handlers = createHandlers({
 		mcpUpstreamManager,
 	});
+	const clientActivity = createClientActivityTracker(
+		CLIENT_ACTIVITY_HISTORY_LIMIT,
+	);
 	const mcpSessions = createMcpSessionManager({
-		historyLimit: CLIENT_SESSION_HISTORY_LIMIT,
+		onClientActivity: clientActivity.observe,
 		protocolHeaderName: MCP_PROTOCOL_VERSION_HEADER,
-		sessionTtlMs: resolveNumberEnv(
-			'MCP_SESSION_TTL_MS',
-			DEFAULT_SESSION_TTL_MS,
-		),
-		sweepIntervalMs: resolveNumberEnv(
-			'MCP_SESSION_SWEEP_INTERVAL_MS',
-			DEFAULT_SESSION_SWEEP_INTERVAL_MS,
+		maxSessionsPerClient: resolveNumberEnv(
+			'MCP_MAX_SESSIONS_PER_CLIENT',
+			DEFAULT_MAX_SESSIONS_PER_CLIENT,
 		),
 		supportedProtocolVersions: SUPPORTED_GATEWAY_PROTOCOL_VERSIONS,
 	});
-	mcpSessions.startSweeper();
 
 	// All data is cached - no network calls, pure synchronous
 	const buildOverview = () => {
@@ -196,10 +195,13 @@ const startServer = async (
 					resources: [],
 				} satisfies ListResourcesResult),
 		}));
-		const clients = mcpSessions.list();
+		const clients = clientActivity.list();
 
 		return {
 			protocolVersion: DEFAULT_GATEWAY_PROTOCOL_VERSION,
+			supportedProtocolVersions: [
+				...SUPPORTED_PROTOCOL_VERSIONS,
+			],
 			aggregated: {
 				tools: aggregatedTools,
 				prompts: prompts.prompts,
@@ -260,6 +262,7 @@ const startServer = async (
 	};
 
 	const routeRequest = createMcpRequestRouter({
+		beforeRequest: mcpUpstreamManager.refreshStaleCatalogs,
 		handlers,
 		requireSession: mcpSessions.requireSession,
 		handleInitialize: mcpSessions.handleInitialize,
@@ -272,7 +275,7 @@ const startServer = async (
 		params?: unknown,
 	): string => {
 		let message = `client=${mcpSessions.formatClient(sessionId, params)}`;
-		message += `, session=${sessionId ?? 'none'}, method=${method}`;
+		message += `, method=${method}`;
 		if (method === 'tools/call' && namedArgumentsParamsType.allows(params)) {
 			const toolName = params.name;
 			try {
@@ -314,7 +317,7 @@ const startServer = async (
 	const isJsonRpcErrorResponse = (
 		payload: OutgoingJsonRpcResponse | null,
 	): payload is JSONRPCErrorResponse => {
-		return !!payload && 'error' in payload;
+		return payload !== null && 'error' in payload;
 	};
 
 	const logResponseError = (params: {
@@ -370,6 +373,13 @@ const startServer = async (
 		port,
 		routes: {
 			'/mcp': createMcpHttpRoute({
+				onRequestMetadata: (metadata) => {
+					const info = parseClientInfo(metadata[CLIENT_INFO_META]);
+					clientActivity.observe(info, CURRENT_PROTOCOL_VERSION);
+				},
+				getToolSchema: (name) =>
+					handlers.listTools().tools.find((tool) => tool.name === name)
+						?.inputSchema,
 				acceptsContentType,
 				buildInboundMessageLog,
 				buildLogFields,
@@ -407,7 +417,6 @@ const startServer = async (
 		logger.info(
 			`Stopping gateway, clearing ${mcpSessions.activeCount()} active session(s)`,
 		);
-		mcpSessions.stopSweeper();
 		uiShutdownController.abort();
 		await server.stop();
 		mcpSessions.clear();

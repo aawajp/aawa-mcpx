@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { t } from '@/ui/i18n';
 import {
 	backendTrafficResponseType,
-	debugSummaryResponseType,
+	overviewResponseType,
 	type TrafficPage,
 	type TrafficRecord,
 	trafficPageType,
@@ -82,6 +82,7 @@ const TrafficTable = ({ records }: { records: TrafficRecord[] }) => {
 							</div>
 						</div>
 						<div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+							<span>{record.protocolVersion ?? '—'}</span>
 							<span>
 								{t('traffic.header.related')}: {getRelatedMethod(record)}
 							</span>
@@ -156,11 +157,29 @@ const filterButtonClass = (active: boolean): string => {
 	}`;
 };
 
+const TrafficErrorFilter = ({ errorsOnly, onChange }: {
+	errorsOnly: boolean;
+	onChange: (errorsOnly: boolean) => void;
+}) => (
+	<div className="flex items-center gap-2">
+		{[false, true].map((value) => (
+			<button key={String(value)} type="button" onClick={() => onChange(value)}
+				className={filterButtonClass(errorsOnly === value)}>
+				{t(value ? 'debug.errorsOnly' : 'debug.showAll')}
+			</button>
+		))}
+	</div>
+);
+
 type DebugPageProps = {
 	onNavigate: (route: 'main') => void;
 };
 
 const DebugPage = ({ onNavigate }: DebugPageProps) => {
+	const [activeTab, setActiveTab] = useState<'client' | 'backend'>('client');
+	const [selectedBackend, setSelectedBackend] = useState('');
+	const clientRequest = useRef(0);
+	const backendRequests = useRef(new Map<string, number>());
 	const [debugClient, setDebugClient] = useState<TrafficPage | null>(null);
 	const [clientErrorsOnly, setClientErrorsOnly] = useState(false);
 	const [clientPage, setClientPage] = useState(0);
@@ -173,25 +192,21 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 	const loadDebugSummary = useCallback(async () => {
 		try {
 			setDebugError(null);
-			const res = await fetch('/api/debug', { cache: 'no-store' });
+			const res = await fetch('/api/overview', { cache: 'no-store' });
 			if (!res.ok) {
 				throw new Error(`Debug request failed with status ${res.status}`);
 			}
-			const data = debugSummaryResponseType.assert(await res.json());
-			setDebugClient(data.client);
+			const data = overviewResponseType.assert(await res.json());
 			const nextEntries: Record<string, BackendEntry> = {};
 			data.backends.forEach((entry) => {
-				nextEntries[entry.backend] = {
-					name: entry.backend,
+				nextEntries[entry.serverName] = {
+					name: entry.serverName,
 					page: 0,
-					data: entry.data,
 					methodFilter: '',
 					errorsOnly: false,
 				};
 			});
 			setBackendEntries(nextEntries);
-			setClientPage(0);
-			setClientErrorsOnly(false);
 		} catch (err) {
 			setDebugError(errorMessage(err));
 		}
@@ -203,6 +218,7 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 
 	const loadClientPage = useCallback(
 		async (page: number, errorsOnly: boolean) => {
+			const generation = ++clientRequest.current;
 			try {
 				const offset = page * debugLimit;
 				const errorsOnlyParam = errorsOnly ? '&errorsOnly=1' : '';
@@ -214,9 +230,12 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 					throw new Error(`Client debug fetch failed (${res.status})`);
 				}
 				const data = trafficPageType.assert(await res.json());
+				if (generation !== clientRequest.current) return;
+				setDebugError(null);
 				setDebugClient(data);
 				setClientPage(page);
 			} catch (err) {
+				if (generation !== clientRequest.current) return;
 				setDebugError(errorMessage(err));
 			}
 		},
@@ -230,6 +249,8 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 			method?: string,
 			errorsOnly?: boolean,
 		) => {
+			const generation = (backendRequests.current.get(backend) ?? 0) + 1;
+			backendRequests.current.set(backend, generation);
 			try {
 				const offset = page * debugLimit;
 				const methodParam =
@@ -247,6 +268,8 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 					);
 				}
 				const data = backendTrafficResponseType.assert(await res.json());
+				if (generation !== backendRequests.current.get(backend)) return;
+				setDebugError(null);
 				setBackendEntries((current) => ({
 					...current,
 					[backend]: {
@@ -264,6 +287,7 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 					},
 				}));
 			} catch (err) {
+				if (generation !== backendRequests.current.get(backend)) return;
 				setDebugError(errorMessage(err));
 			}
 		},
@@ -277,6 +301,17 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 			),
 		[backendEntries],
 	);
+	useEffect(() => {
+		if (activeTab === 'client') void loadClientPage(clientPage, clientErrorsOnly);
+		return () => { clientRequest.current += 1; };
+	}, [activeTab, loadClientPage]);
+	useEffect(() => {
+		if (activeTab !== 'backend') return;
+		const name = selectedBackend || Object.keys(backendEntries).sort()[0];
+		const entry = name ? backendEntries[name] : undefined;
+		if (entry) void loadBackendPage(entry.name, entry.page, entry.methodFilter, entry.errorsOnly);
+		return () => { if (name) backendRequests.current.set(name, (backendRequests.current.get(name) ?? 0) + 1); };
+	}, [activeTab, selectedBackend, loadBackendPage, Object.keys(backendEntries).join(',')]);
 
 	return (
 		<div className="app-shell container mx-auto max-w-[1600px] p-6 space-y-6">
@@ -297,7 +332,7 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 				</button>
 				<button
 					type="button"
-					onClick={() => void loadDebugSummary()}
+						onClick={() => { if (activeTab === 'client') { void loadClientPage(clientPage, clientErrorsOnly); return; } const entry = backendEntries[selectedBackend || backendList[0]?.name || '']; if (entry) void loadBackendPage(entry.name, entry.page, entry.methodFilter, entry.errorsOnly); }}
 					className="inline-flex items-center rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted transition"
 				>
 					{t('debug.refresh')}
@@ -307,36 +342,21 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 				) : null}
 			</div>
 
-			<div className="grid gap-6 xl:grid-cols-12">
-				<Card className="xl:col-span-8">
+			<div role="tablist" aria-label={t('debug.title')} className="flex gap-2">
+				{(['client', 'backend'] as const).map((tab) => <button key={tab} id={`debug-${tab}-tab`} role="tab" type="button" aria-selected={activeTab === tab} aria-controls={`debug-${tab}-panel`} tabIndex={activeTab === tab ? 0 : -1} className={filterButtonClass(activeTab === tab)} onClick={() => setActiveTab(tab)} onKeyDown={(event) => { if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) { event.preventDefault(); const next = event.key === 'Home' ? 'client' : event.key === 'End' ? 'backend' : tab === 'client' ? 'backend' : 'client'; setActiveTab(next); document.getElementById(`debug-${next}-tab`)?.focus(); } }}>{t(tab === 'client' ? 'debug.client.title' : 'debug.backend.title')}</button>)}
+			</div>
+			<div className="space-y-6">
+				<Card id="debug-client-panel" role="tabpanel" aria-labelledby="debug-client-tab" hidden={activeTab !== 'client'}>
 					<CardHeader>
 						<div className="flex flex-wrap items-start justify-between gap-3">
 							<div>
 								<CardTitle>{t('debug.client.title')}</CardTitle>
 								<CardDescription>{t('debug.client.subtitle')}</CardDescription>
 							</div>
-							<div className="flex items-center gap-2">
-								<button
-									type="button"
-									onClick={() => {
-										setClientErrorsOnly(false);
-										void loadClientPage(0, false);
-									}}
-									className={filterButtonClass(!clientErrorsOnly)}
-								>
-									{t('debug.showAll')}
-								</button>
-								<button
-									type="button"
-									onClick={() => {
-										setClientErrorsOnly(true);
-										void loadClientPage(0, true);
-									}}
-									className={filterButtonClass(clientErrorsOnly)}
-								>
-									{t('debug.errorsOnly')}
-								</button>
-							</div>
+							<TrafficErrorFilter errorsOnly={clientErrorsOnly} onChange={(errorsOnly) => {
+								setClientErrorsOnly(errorsOnly);
+								void loadClientPage(0, errorsOnly);
+							}} />
 						</div>
 					</CardHeader>
 					<CardContent className="space-y-3">
@@ -352,13 +372,14 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 					</CardContent>
 				</Card>
 
-				<Card className="xl:col-span-4">
+				<Card id="debug-backend-panel" role="tabpanel" aria-labelledby="debug-backend-tab" hidden={activeTab !== 'backend'}>
 					<CardHeader>
 						<CardTitle>{t('debug.backend.title')}</CardTitle>
 						<CardDescription>{t('debug.backend.subtitle')}</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-4">
-						{backendList.map((entry) => (
+						<label className="flex items-center gap-3">{t('debug.backend.title')}<select className="rounded border bg-background p-2" value={selectedBackend || backendList[0]?.name || ''} onChange={(event) => setSelectedBackend(event.target.value)}>{backendList.map((entry) => <option key={entry.name} value={entry.name}>{entry.name}</option>)}</select></label>
+						{backendList.filter((entry) => entry.name === (selectedBackend || backendList[0]?.name)).map((entry) => (
 							<div key={entry.name} className="rounded-lg border p-4 space-y-3">
 								<div className="space-y-1">
 									<h3 className="backend-name backend-name-strong text-lg break-all">
@@ -398,50 +419,13 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 									>
 										{t('backends.refresh')}
 									</button>
-									<button
-										type="button"
-										onClick={() => {
-											setBackendEntries((current) => ({
-												...current,
-												[entry.name]: {
-													...(current[entry.name] ?? entry),
-													errorsOnly: false,
-													page: 0,
-												},
-											}));
-											void loadBackendPage(
-												entry.name,
-												0,
-												entry.methodFilter,
-												false,
-											);
-										}}
-										className={filterButtonClass(!entry.errorsOnly)}
-									>
-										{t('debug.showAll')}
-									</button>
-									<button
-										type="button"
-										onClick={() => {
-											setBackendEntries((current) => ({
-												...current,
-												[entry.name]: {
-													...(current[entry.name] ?? entry),
-													errorsOnly: true,
-													page: 0,
-												},
-											}));
-											void loadBackendPage(
-												entry.name,
-												0,
-												entry.methodFilter,
-												true,
-											);
-										}}
-										className={filterButtonClass(entry.errorsOnly)}
-									>
-										{t('debug.errorsOnly')}
-									</button>
+									<TrafficErrorFilter errorsOnly={entry.errorsOnly} onChange={(errorsOnly) => {
+										setBackendEntries((current) => ({
+											...current,
+											[entry.name]: { ...(current[entry.name] ?? entry), errorsOnly, page: 0 },
+										}));
+										void loadBackendPage(entry.name, 0, entry.methodFilter, errorsOnly);
+									}} />
 								</div>
 								<div className="space-y-3">
 									<TrafficTable records={entry.data?.records ?? []} />

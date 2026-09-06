@@ -9,7 +9,7 @@ import {
 import { createMcpUpstreamManager } from '@/mcp_upstreams/manager';
 import type { McpUpstreamStatus } from '@/mcp_upstreams/types';
 
-import { expect, test } from 'bun:test';
+import { expect, spyOn, test } from 'bun:test';
 
 type JsonRpcRequest = {
 	id?: string | number;
@@ -105,6 +105,20 @@ test('backend lifecycle preserves tool exposure state', async () => {
 			}
 
 			let result: unknown;
+			if (message.method === 'server/discover')
+				return Response.json(
+					{
+						jsonrpc: '2.0',
+						id: message.id,
+						error: {
+							code: -32600,
+							message: 'Initialize first',
+						},
+					},
+					{
+						status: 400,
+					},
+				);
 			switch (message.method) {
 				case 'initialize': {
 					const barrier = initializeBarrier;
@@ -266,6 +280,11 @@ test('backend lifecycle preserves tool exposure state', async () => {
 		]);
 
 		const beforeDisable = requireMockServer(await readConfig());
+		const connectedClient = runtimeManager.getClient({
+			serverName: 'mock',
+		});
+		if (!connectedClient) throw new Error('Expected connected client');
+		const close = spyOn(connectedClient, 'close');
 		await writeFile(
 			path.join(testRoot, 'mcp.json'),
 			`${JSON.stringify(
@@ -287,6 +306,7 @@ test('backend lifecycle preserves tool exposure state', async () => {
 			enabled: false,
 		});
 		const afterDisableConfig = await readConfig();
+		expect(close).toHaveBeenCalledTimes(1);
 		expect(Object.keys(afterDisableConfig.mcpServers)).toEqual([
 			'mock',
 		]);
@@ -352,6 +372,18 @@ test('backend lifecycle preserves tool exposure state', async () => {
 			'alpha',
 		]);
 		expect(methods.filter((method) => method === 'initialize')).toHaveLength(3);
+		expect(
+			methods.filter((method) => method === 'server/discover'),
+		).toHaveLength(1);
+		expect(runtimeManager.getStatuses()[0]?.protocolVersion).toBe('2025-11-25');
+		const reconnectedClient = runtimeManager.getClient({
+			serverName: 'mock',
+		});
+		if (!reconnectedClient) throw new Error('Expected reconnected client');
+		const disconnectClose = spyOn(reconnectedClient, 'close');
+		await runtimeManager.disconnect();
+		expect(disconnectClose).toHaveBeenCalledTimes(1);
+		runtimeManager = null;
 	} finally {
 		await startupDisabledManager?.disconnect();
 		await runtimeManager?.disconnect();

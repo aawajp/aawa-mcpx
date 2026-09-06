@@ -130,26 +130,17 @@ container start aawa-mcpx
 Create `.env` from `.env.example` before using `--env-file=.env`. The `mcp.json` file and `db` directory are mounted read-write. Tool exposure changes persist in `mcp.json`; traffic history is reset when the gateway starts.
 
 The MCP endpoint is served at `http://localhost:<PORT>/mcp` (default port `4567` if `PORT` is unset).
-The gateway accepts MCP protocol versions `2025-11-25`, `2025-06-18`, and `2025-03-26`, and returns the version requested during initialization.
+The gateway supports MCP protocol versions `2026-07-28`, `2025-11-25`, and `2025-06-18` on both protocol boundaries. Requests using `2026-07-28` carry their version and capabilities in per-request metadata and require the matching HTTP protocol, method, and name headers. Clients using `2025-11-25` or `2025-06-18` initialize a session; an unsupported initialization proposal receives `2025-11-25`. `2025-03-26` is no longer an operational version.
+
+Backends select the highest mutually supported version on their first successful connection. The selection is retained across reconnects and enable/disable changes until the gateway restarts. Connections using `2025-11-25` or `2025-06-18` initialize a fresh session on reconnect using that selection. Backends using `2026-07-28` use discovery for health checks. Backend HTTP responses may be JSON or SSE; stdio uses newline-delimited JSON-RPC.
+
+Protocol negotiation failures stop automatic reconnects and appear in the backend UI with the failed method, attempted revision, and available HTTP/JSON-RPC error codes. Disable and re-enable the backend to retry; restart the gateway if its retained protocol selection needs to change.
 
 ### Session management
 
-The gateway creates a unique session ID for each client on initialization. Sessions are stored in memory and are cleared when the gateway restarts. Requests with an unknown session ID return HTTP 404 and must initialize a new session.
+For clients using `2025-11-25` or `2025-06-18`, the gateway creates a unique session ID on initialization. Sessions are stored in memory and are cleared when the gateway restarts. Requests using those revisions with an unknown session ID return HTTP 404 and must initialize a new session. Requests using `2026-07-28` do not create or require sessions; the dashboard tracks all clients by reported name and version, regardless of protocol revision. It shows first seen, last seen, and the most recently observed protocol version, without session IDs or connection status. Client activity is held in bounded memory and cleared on gateway restart. This local-use identity convention does not distinguish separate instances reporting the same name and version.
 
-You can configure session expiry behavior with environment variables:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MCP_SESSION_TTL_MS` | `300000` (5 minutes) | Session idle timeout in milliseconds. Sessions with no activity beyond this value are considered expired. |
-| `MCP_SESSION_SWEEP_INTERVAL_MS` | `60000` (1 minute) | Interval in milliseconds for marking idle sessions as expired. |
-
-Values must be positive numbers. Invalid or missing values fall back to the defaults above.
-
-Example:
-
-```bash
-MCP_SESSION_TTL_MS=600000 MCP_SESSION_SWEEP_INTERVAL_MS=30000 bun start
-```
+The gateway retains up to `MCP_MAX_SESSIONS_PER_CLIENT` sessions per client name/version pair (default `10`, positive integer). When a successful initialization exceeds this limit, the oldest session for that pair is deleted. Other clients are unaffected. Sessions do not expire on a timer; explicit DELETE removes a session immediately. Invalid configuration values fall back to the default.
 
 ## Endpoints
 
@@ -181,7 +172,14 @@ All non-MCP API endpoints are namespaced under `/api/*` to avoid collisions with
 - A disabled backend shows its configured enabled tools as inactive; their exposure settings are preserved when the backend is re-enabled.
 - Per-backend tool toggles (`Expose to clients`) are managed directly from the backend tool list.
 - Tool descriptions and input schemas are folded by default.
-- Debug UI is served at `/debug` and defaults to **Show all** traffic with **Errors only** as an optional filter.
+- Protocol lists every supported revision, and each backend shows its selected protocol separately from its software version.
+- Debug UI is served at `/debug`, with separate full-width **Client traffic** and **Backend traffic** tabs. Backend traffic has an alphabetical selector. Filters and pages survive tab changes; **Show all** is the default.
+
+### Protocol feature scope
+
+Core tools, prompts, and resources work across all three supported revisions. Interactive continuations, sampling, elicitation, subscriptions, and tasks are not advertised. Catalog results sent using `2026-07-28` include private, zero-TTL cache hints. Backend catalog pages are fully materialized, with stale `2026-07-28` catalogs refreshed on access and simultaneous refreshes deduplicated. Backend credentials define the catalog authorization context. When forwarding scalar, array, or null structured tool content to clients using `2025-11-25` or `2025-06-18`, it is represented as `{ "value": ... }` to preserve the data in the object shape required by those revisions.
+
+The gateway owns protocol negotiation, dispatch, and HTTP/stdio transport behavior. The installed SDK supplies TypeScript types; its client/server implementations are not used.
 
 ## Using the gateway
 

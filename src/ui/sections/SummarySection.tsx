@@ -135,7 +135,7 @@ const SummarySection = ({
 				</CardHeader>
 				<CardContent className="space-y-2 w-full">
 					<div className="text-2xl font-semibold">
-						{overview?.protocolVersion ?? '—'}
+						{overview?.supportedProtocolVersions?.map((version) => <div key={version}>{version}</div>) ?? '—'}
 					</div>
 					<div className="space-y-1 text-sm">
 						<div className="font-semibold">{t('protocol.apisTitle')}</div>

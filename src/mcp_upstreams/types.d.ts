@@ -1,4 +1,31 @@
-import type { Client } from '@modelcontextprotocol/sdk/client';
+import type { type } from 'arktype';
+
+import type { ProtocolClient } from '@/mcp_upstreams/protocol_client';
+
+type OnValidationError = (params: {
+	server: McpUpstreamServer;
+	method: string;
+	error: type.errors;
+	request?: unknown;
+}) => void;
+
+type Client = Pick<
+	ProtocolClient,
+	| 'getServerCapabilities'
+	| 'getServerVersion'
+	| 'getInstructions'
+	| 'ping'
+	| 'listTools'
+	| 'listPrompts'
+	| 'listResources'
+	| 'callTool'
+	| 'getPrompt'
+	| 'readResource'
+	| 'close'
+	| 'onerror'
+	| 'protocolVersion'
+>;
+
 import type {
 	CallToolResult,
 	GetPromptResult,
@@ -51,10 +78,11 @@ type ToggleBackendParams = {
 	enabled: boolean;
 };
 
-type McpUpstreamErrorState = 'runtime' | 'configuration';
+type McpUpstreamErrorState = 'runtime' | 'configuration' | 'protocol';
 
 type McpUpstreamStatusBase = {
 	serverName: string;
+	protocolVersion?: string;
 	enabled: boolean;
 	enabledTools: string[];
 	connected: boolean;
@@ -120,6 +148,7 @@ type McpUpstreamRequestQueue = {
 };
 
 type McpUpstreamManager = {
+	refreshStaleCatalogs?: () => Promise<void>;
 	initialize: () => Promise<void>;
 	getClient: (params: GetClientParams) => Client | undefined;
 	getAllClients: () => McpUpstreamClientsMap;
@@ -139,6 +168,7 @@ type McpUpstreamManager = {
 
 export type {
 	CallToolParams,
+	Client,
 	CreateMcpUpstreamManagerParams,
 	GetClientParams,
 	GetPromptParams,
@@ -151,6 +181,7 @@ export type {
 	McpUpstreamServer,
 	McpUpstreamStatus,
 	McpUpstreamToolsMap,
+	OnValidationError,
 	ReadResourceParams,
 	ToggleBackendParams,
 	ToggleToolParams,
