@@ -129,6 +129,9 @@ const createMcpUpstreamManager = (
 	const operations = createMcpUpstreamOperations({
 		clients,
 		getEnabledTools: catalog.getEnabledTools,
+		getOutputSchema: ({ serverName, toolName }) =>
+			toolsCache.get(serverName)?.tools.find((tool) => tool.name === toolName)
+				?.outputSchema,
 		getServer: connections.getServer,
 		onValidationError: connections.onValidationError,
 		trafficStore,

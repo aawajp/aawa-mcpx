@@ -1,5 +1,4 @@
 import type {
-	CallToolResult,
 	GetPromptResult,
 	ListPromptsResult,
 	ListResourcesResult,
@@ -19,7 +18,7 @@ import { BackendRpcError } from '@/mcp_upstreams/protocol_client';
 import type { McpUpstreamManager } from '@/mcp_upstreams/types';
 import { logger } from '@/server/logger';
 import { errorMessage } from '@/shared/common';
-import { toolErrorResult } from '@/shared/mcp_results';
+import { type ToolCallResult, toolErrorResult } from '@/shared/mcp_results';
 
 type CreateHandlersParams = {
 	mcpUpstreamManager: McpUpstreamManager;
@@ -104,7 +103,7 @@ const createHandlers = (params: CreateHandlersParams) => {
 
 	const callTool = async (
 		request: CallToolHandlerParams,
-	): Promise<CallToolResult> => {
+	): Promise<ToolCallResult> => {
 		const { name, args } = request;
 
 		let parsed: ParsePrefixResult | null = null;

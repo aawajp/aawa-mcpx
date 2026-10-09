@@ -75,6 +75,8 @@ The MCP upstream layer owns outbound MCP client behavior:
 - `health_checks.ts` owns periodic upstream health checks.
 - `catalog.ts` owns cached tools, prompts, resources, and tool exposure state.
 - `method_calls.ts` calls upstream tools, prompts, and resources.
+- `tool_result.ts` recovers missing structured output and removes duplicate JSON text.
+- `output_schema.ts` compiles and validates provider JSON Schemas without changing output data.
 - `protocol_client.ts` owns backend JSON-RPC, version selection, HTTP/SSE and stdio transport behavior; SDK imports supply types only.
 
 Health checks run only for enabled, connected backends after their catalog
@@ -95,6 +97,38 @@ fresh session initialization follows the [MCP session-management rules](https://
 
 The manager exposes a stable internal API to the gateway while hiding transport,
 cache, and lifecycle details.
+
+After recording the original backend tool response, `method_calls.ts` uses
+`tool_result.ts` to remove text blocks that parse as JSON equal to the entire
+`structuredContent` value. It preserves other content blocks and result metadata,
+keeps the required `content` array even when empty, and does not mutate the backend
+result. Filtering precedes client-version adaptation, including the legacy
+`value` wrapper for non-object structured results. The MCP endpoint and dashboard
+tool tester share this behavior.
+
+The complete-value comparison preserves independent text, JSON subsets, and JSON
+with additional fields. Dropping only the duplicate deliberately departs from the
+spec's backwards-compatibility `SHOULD` recommendation; it does not treat the
+presence of structured output as permission to remove other text. The required
+content array remains present even when empty. See
+[protocol feature scope](README.md#protocol-feature-scope) for the rationale and
+client compatibility confirmation still needed.
+
+Each tool call captures its output schema from the cached backend catalog before
+dispatch. Validation uses the provider's result shape before client-version
+adaptation. Provider violations of the spec's `MUST` conformity rule generate
+warnings while retaining the response. Compiled validators are cached by schema
+object with weak keys. Separate Ajv instances isolate provider schemas with
+identical `$id` values, while replacement catalog objects naturally compile fresh
+validators. Unsupported schemas and unresolved external references are cached as
+validation issues, without network resolution. See
+[output schemas](README.md#output-schemas) for recovery policy, dialects, limits,
+and the warning-only departure from the contract.
+
+The browser-safe `shared/mcp_output_schema.ts` handles legacy schema wrapping.
+The request router applies the same wrapper to tool catalogs and call results,
+preserving embedded schema resources so root-relative references remain scoped
+to the original provider schema. The dashboard displays the original schemas.
 
 ## UI layer
 

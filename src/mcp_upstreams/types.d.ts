@@ -29,7 +29,6 @@ type Client = Pick<
 >;
 
 import type {
-	CallToolResult,
 	GetPromptResult,
 	Prompt,
 	ReadResourceResult,
@@ -39,6 +38,7 @@ import type {
 
 import type { McpConfig, McpServerConfig } from '@/config/schema';
 import type { TrafficStore } from '@/server/traffic_store';
+import type { ToolCallResult } from '@/shared/mcp_results';
 
 type CreateMcpUpstreamManagerParams = {
 	config: McpConfig;
@@ -162,7 +162,7 @@ type McpUpstreamManager = {
 	getEnabledTools: (params: { serverName: string }) => string[];
 	toggleBackend: (params: ToggleBackendParams) => Promise<void>;
 	toggleTool: (params: ToggleToolParams) => Promise<string[]>;
-	callTool: (params: CallToolParams) => Promise<CallToolResult>;
+	callTool: (params: CallToolParams) => Promise<ToolCallResult>;
 	getPrompt: (params: GetPromptParams) => Promise<GetPromptResult>;
 	readResource: (params: ReadResourceParams) => Promise<ReadResourceResult>;
 	getStatuses: () => McpUpstreamStatus[];

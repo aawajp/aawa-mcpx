@@ -192,7 +192,7 @@ All non-MCP API endpoints are namespaced under `/api/*` to avoid collisions with
 - Backend controls connect or disconnect each backend and persist its `enabled` value.
 - A disabled backend shows its configured enabled tools as inactive; their exposure settings are preserved when the backend is re-enabled.
 - Per-backend tool toggles (`Expose to clients`) are managed directly from the backend tool list.
-- Tool descriptions and input schemas are folded by default.
+- Tool descriptions, input schemas, and provider output schemas are folded by default.
 - Protocol lists every supported revision, and each backend shows its selected protocol separately from its software version.
 - Debug UI is served at `/debug`, with separate full-width **Client traffic** and **Backend traffic** tabs. Backend traffic has an alphabetical selector. Filters and pages survive tab changes; **Show all** is the default.
 
@@ -201,6 +201,76 @@ All non-MCP API endpoints are namespaced under `/api/*` to avoid collisions with
 Core tools, prompts, and resources work across all three supported revisions. Interactive continuations, sampling, elicitation, subscriptions, and tasks are not advertised. Catalog results sent using `2026-07-28` include private, zero-TTL cache hints. Backend catalog pages are fully materialized, with stale `2026-07-28` catalogs refreshed on access and simultaneous refreshes deduplicated. Backend credentials define the catalog authorization context. When forwarding scalar, array, or null structured tool content to clients using `2025-11-25` or `2025-06-18`, it is represented as `{ "value": ... }` to preserve the data in the object shape required by those revisions.
 
 The gateway owns protocol negotiation, dispatch, and HTTP/stdio transport behavior. The installed SDK supplies TypeScript types; its client/server implementations are not used.
+
+Tool results retain `structuredContent` and remove only text blocks whose entire
+text parses as JSON equal to that structured value, ignoring JSON formatting and
+object key order. Other text, images, audio, resource links, and embedded resources
+remain in `content`. The required `content` field becomes `[]` when every block
+is a duplicate. This applies to MCP responses and dashboard tool testing; backend
+traffic records retain the original response.
+
+This deliberately departs from the spec's `SHOULD` recommendation to also send
+[serialized JSON text for backwards compatibility](https://modelcontextprotocol.io/specification/2025-06-18/server/tools#structured-content).
+The gateway supports revisions with structured output and avoids transmitting
+the same JSON twice. Presence of `structuredContent` does not imply that all text
+is redundant: independent text, JSON subsets, and JSON containing additional fields
+are preserved. The [spec's array-output example](https://modelcontextprotocol.io/specification/2026-07-28/server/tools#output-schema)
+includes a readable text summary alongside structured data. Client compatibility
+with an empty content array still needs confirmation in each consuming application.
+
+### Output schemas
+
+The gateway exposes provider `outputSchema` definitions in the tool catalog and
+dashboard. Successful tool results are validated using JSON Schema 2020-12 by
+default, or the declared draft-07 or 2019-09 dialect. Ajv and `ajv-formats` are
+declared as peer dependencies; ArkType continues to validate application shapes.
+
+If `structuredContent` is missing, the gateway attempts to recover it from complete
+JSON text blocks. A single distinct JSON value is recovered even if it does not
+match the schema. For multiple values, the schema must identify a unique match;
+an array schema can also recover an ordered array of JSON text blocks. Ambiguous
+or non-JSON content is retained without guessing. Recovery inspects text blocks
+up to 2 MiB each and reports missing or recovered structured output when a schema
+is advertised. Duplicate removal then follows the same complete-value comparison.
+
+Schema mismatches, invalid schemas, unsupported dialects, and unresolved references
+produce structured warnings with backend and tool identifiers. Responses still
+return normally; validation does not coerce values, insert defaults, or remove
+properties. Tool execution errors (`isError: true`) are not checked against the
+success schema. External references never trigger automatic network requests.
+Schema validation is bounded to 256 KiB, 10,000 visited values, and 64 levels of
+nesting; schemas exceeding those limits generate a warning.
+
+For `2025-06-18` and `2025-11-25` clients, schemas that permit non-object output
+are wrapped with a `value` property along with their structured results, including
+object values allowed by a union schema. This keeps the advertised schema aligned
+with the object-only result shape of those revisions. Modern clients and the
+dashboard retain the provider's original schema and result shape.
+
+| Client revision | Allowed `structuredContent` on the wire | Gateway adaptation |
+| --- | --- | --- |
+| `2025-06-18` | JSON object | Wrap non-object values as `{ "value": ... }`; wrap both schema and result when the schema permits non-object output |
+| `2025-11-25` | JSON object | Same adaptation as `2025-06-18` |
+| `2026-07-28` | Any JSON value | Preserve objects, arrays, strings, numbers, booleans, and `null` |
+
+Backend and client revisions are negotiated independently. A result from a modern
+backend is adapted to the requesting client's revision; an object from an older
+backend remains an object for a modern client. The adapter treats `false`, `0`,
+`""`, and `null` as present values. Object-only schemas and their matching object
+results are preserved on every revision. The installed SDK's `CallToolResult`
+still types structured output as an object, so the gateway uses its own wider
+result type and applies these restrictions at the client response boundary.
+See the structured-content definitions for
+[2025-06-18](https://modelcontextprotocol.io/specification/2025-06-18/server/tools#structured-content),
+[2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25/server/tools#structured-content),
+and [2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/server/tools#structured-content).
+
+The [MCP output-schema contract](https://modelcontextprotocol.io/specification/2026-07-28/server/tools#output-schema)
+says servers `MUST` return conforming structured results. The gateway deliberately
+tolerates provider violations to preserve usable backend data: it reports a warning
+and returns the result instead of failing the call. Consequently, advertising an
+output schema is not a guarantee that every forwarded provider result conforms.
+Reference handling follows the [MCP JSON Schema requirements](https://modelcontextprotocol.io/specification/2026-07-28/basic#json-schema-usage).
 
 ## Using the gateway
 

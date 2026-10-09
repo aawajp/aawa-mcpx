@@ -405,6 +405,68 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 						},
 					]);
 					expect(client.protocolVersion).toBe(version);
+					const structuredValues: unknown[] =
+						version === CURRENT_PROTOCOL_VERSION
+							? [
+									{
+										count: 2,
+									},
+									{},
+									[
+										1,
+										2,
+									],
+									[],
+									'hello',
+									'',
+									3.5,
+									0,
+									true,
+									false,
+									null,
+								]
+							: [
+									{
+										count: 2,
+									},
+									{},
+								];
+					for (const structured of structuredValues) {
+						const forwarded = await route(
+							{
+								jsonrpc: '2.0',
+								id: 3,
+								method: 'tools/call',
+								params: {
+									name: 'fixture__echo',
+									arguments: {
+										text: 'Hello, 世界',
+										structured,
+									},
+								},
+							},
+							initial?.sessionId,
+							externalVersion,
+						);
+						const result =
+							forwarded.payload && 'result' in forwarded.payload
+								? forwarded.payload.result
+								: undefined;
+						expect(result?.structuredContent).toEqual(
+							externalVersion === CURRENT_PROTOCOL_VERSION ||
+								recordOf(structured)
+								? structured
+								: {
+										value: structured,
+									},
+						);
+						expect(result?.content).toEqual([
+							{
+								type: 'text',
+								text: 'Hello, 世界',
+							},
+						]);
+					}
 				}
 				await client.close();
 				methods.length = 0;

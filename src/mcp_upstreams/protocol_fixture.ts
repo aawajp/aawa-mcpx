@@ -72,16 +72,23 @@ const fixtureReply = (
 				],
 			};
 			break;
-		case 'tools/call':
+		case 'tools/call': {
+			const args = recordOf(params.arguments) ?? {};
 			result = {
 				content: [
 					{
 						type: 'text',
-						text: String(recordOf(params.arguments)?.text ?? ''),
+						text: String(args.text ?? ''),
 					},
 				],
+				...('structured' in args
+					? {
+							structuredContent: args.structured,
+						}
+					: {}),
 			};
 			break;
+		}
 		case 'prompts/list':
 			result = {
 				prompts: [

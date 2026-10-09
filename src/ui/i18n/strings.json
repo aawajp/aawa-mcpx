@@ -41,6 +41,7 @@
 	"resources.title": "Resources",
 	"tool.fold.description": "Description",
 	"tool.fold.schema": "Input schema",
+	"tool.fold.outputSchema": "Output schema",
 	"list.empty.tools": "No tools available.",
 	"list.empty.prompts": "No prompts available.",
 	"list.empty.resources": "No resources available.",

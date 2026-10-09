@@ -43,11 +43,7 @@ const ToolList = <T extends Tool>({
 							</CardTitle>
 							{renderAction ? (
 								renderAction(tool)
-							) : (
-								<span className="text-xs text-muted-foreground">
-									inputSchema
-								</span>
-							)}
+							) : null}
 						</div>
 					</CardHeader>
 					<CardContent className="pt-0 space-y-1.5">
@@ -69,6 +65,16 @@ const ToolList = <T extends Tool>({
 								<JsonPreview data={tool.inputSchema} />
 							</div>
 						</details>
+						{tool.outputSchema !== undefined ? (
+							<details className="py-0.5">
+								<summary className="cursor-pointer text-sm font-semibold text-slate-200">
+									{t('tool.fold.outputSchema')}
+								</summary>
+								<div className="mt-2">
+									<JsonPreview data={tool.outputSchema} />
+								</div>
+							</details>
+						) : null}
 					</CardContent>
 				</Card>
 			))}

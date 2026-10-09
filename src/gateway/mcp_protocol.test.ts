@@ -1,8 +1,12 @@
+import type { Tool } from '@modelcontextprotocol/sdk/types';
+
 import { createHandlers } from '@/gateway/mcp_handlers';
 import { createMcpHttpRoute } from '@/gateway/mcp_http_route';
 import { createMcpRequestRouter } from '@/gateway/mcp_request_router';
 import { createMcpSessionManager } from '@/gateway/mcp_session';
+import { createOutputSchemaValidator } from '@/mcp_upstreams/output_schema';
 import { BackendRpcError } from '@/mcp_upstreams/protocol_client';
+import { createToolResultNormalizer } from '@/mcp_upstreams/tool_result';
 import type { McpUpstreamManager } from '@/mcp_upstreams/types';
 import type { TrafficStore } from '@/server/traffic_store';
 import {
@@ -13,6 +17,7 @@ import {
 	recordOf,
 	SUPPORTED_PROTOCOL_VERSIONS,
 } from '@/shared/mcp_protocol';
+import type { ToolCallResult } from '@/shared/mcp_results';
 
 import { expect, test } from 'bun:test';
 
@@ -208,6 +213,267 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 				tool: 'echo',
 			},
 		});
+	});
+
+for (const version of SUPPORTED_PROTOCOL_VERSIONS)
+	test(`public ${version}: output schema and structured result agree after adaptation`, async () => {
+		const { route, manager } = fixture();
+		const schema = {
+			type: [
+				'object',
+				'array',
+				'null',
+				'string',
+				'number',
+				'boolean',
+			],
+			$defs: {
+				item: {
+					type: 'integer',
+				},
+			},
+			properties: {
+				count: {
+					$ref: '#/$defs/item',
+				},
+			},
+			items: {
+				$ref: '#/$defs/item',
+			},
+		};
+		let outputSchema: unknown = schema;
+		manager.listEnabledTools = () =>
+			new Map([
+				[
+					'backend',
+					{
+						tools: [
+							{
+								name: 'echo',
+								inputSchema: {
+									type: 'object',
+								},
+								outputSchema: outputSchema as Tool['outputSchema'],
+							},
+						],
+					},
+				],
+			]);
+		let backendResult: ToolCallResult = {
+			content: [],
+			structuredContent: {
+				count: 2,
+			},
+		};
+		const normalize = createToolResultNormalizer();
+		manager.callTool = async () =>
+			normalize(backendResult, outputSchema, {
+				backend: 'backend',
+				tool: 'echo',
+			});
+		let session: string | undefined;
+		const send = async (
+			method: string,
+			params: Record<string, unknown> = {},
+		): Promise<Response> => {
+			const body =
+				version === CURRENT_PROTOCOL_VERSION
+					? {
+							...params,
+							_meta: {
+								[PROTOCOL_VERSION_META]: version,
+								[CLIENT_CAPABILITIES_META]: {},
+							},
+						}
+					: params;
+			const headers =
+				version === CURRENT_PROTOCOL_VERSION
+					? protocolHeaders(method, body)
+					: new Headers({
+							'MCP-Protocol-Version': version,
+						});
+			if (session) headers.set('Mcp-Session-Id', session);
+			return route.POST(
+				new Request('http://localhost/mcp', {
+					method: 'POST',
+					headers,
+					body: JSON.stringify({
+						jsonrpc: '2.0',
+						id: 1,
+						method,
+						params: body,
+					}),
+				}),
+			);
+		};
+		if (version !== CURRENT_PROTOCOL_VERSION) {
+			const response = await send('initialize', {
+				protocolVersion: version,
+				clientInfo: {
+					name: 'schema-test',
+					version: '1',
+				},
+				capabilities: {},
+			});
+			session = response.headers.get('Mcp-Session-Id') ?? undefined;
+		}
+		const catalog = await (await send('tools/list')).json();
+		const advertisedSchema: unknown = catalog.result.tools[0].outputSchema;
+		expect(recordOf(advertisedSchema)?.type).toEqual(
+			version === CURRENT_PROTOCOL_VERSION ? schema.type : 'object',
+		);
+		const validate = createOutputSchemaValidator();
+		const values = [
+			{
+				count: 2,
+			},
+			{},
+			[
+				1,
+				2,
+			],
+			[],
+			'hello',
+			'',
+			3.5,
+			0,
+			true,
+			false,
+			null,
+		];
+		const independentContent: ToolCallResult['content'] = [
+			{
+				type: 'text',
+				text: 'Independent diagnostic message.',
+			},
+			{
+				type: 'text',
+				text: '{"supplementary":"backend context"}',
+			},
+			{
+				type: 'image',
+				data: 'aW1hZ2U=',
+				mimeType: 'image/png',
+			},
+			{
+				type: 'resource_link',
+				name: 'report',
+				uri: 'file:///report',
+			},
+		];
+		for (const structuredContent of values) {
+			backendResult = {
+				content: [
+					{
+						type: 'text',
+						text: JSON.stringify(structuredContent),
+					},
+					...independentContent,
+				],
+				structuredContent,
+				_meta: {
+					trace: 'schema-test',
+				},
+			};
+			const result = (
+				await (
+					await send('tools/call', {
+						name: 'backend__echo',
+					})
+				).json()
+			).result;
+			expect(result.content).toEqual(independentContent);
+			expect(result._meta).toMatchObject({
+				trace: 'schema-test',
+			});
+			expect(result.structuredContent).toEqual(
+				version === CURRENT_PROTOCOL_VERSION
+					? structuredContent
+					: {
+							value: structuredContent,
+						},
+			);
+			expect(
+				validate(advertisedSchema, result.structuredContent),
+			).toBeUndefined();
+		}
+
+		// Schema-free results wrap only non-objects for either 2025 revision.
+		outputSchema = undefined;
+		const schemaFreeCatalog = await (await send('tools/list')).json();
+		expect(schemaFreeCatalog.result.tools[0].outputSchema).toBeUndefined();
+		for (const structuredContent of values) {
+			for (const recover of [
+				false,
+				true,
+			]) {
+				backendResult = {
+					content: [
+						{
+							type: 'text',
+							text: JSON.stringify(structuredContent),
+						},
+					],
+					...(recover
+						? {}
+						: {
+								structuredContent,
+							}),
+				};
+				const result = (
+					await (
+						await send('tools/call', {
+							name: 'backend__echo',
+						})
+					).json()
+				).result;
+				expect(result.content).toEqual([]);
+				expect(result.structuredContent).toEqual(
+					version === CURRENT_PROTOCOL_VERSION || recordOf(structuredContent)
+						? structuredContent
+						: {
+								value: structuredContent,
+							},
+				);
+			}
+		}
+
+		// Object-only schemas and values remain unchanged on all revisions.
+		outputSchema = {
+			type: 'object',
+			properties: {
+				count: {
+					type: 'integer',
+				},
+			},
+			required: [
+				'count',
+			],
+		};
+		backendResult = {
+			content: [],
+			structuredContent: {
+				count: 2,
+			},
+		};
+		const objectCatalog = await (await send('tools/list')).json();
+		expect(objectCatalog.result.tools[0].outputSchema).toEqual(outputSchema);
+		const objectResult = (
+			await (
+				await send('tools/call', {
+					name: 'backend__echo',
+				})
+			).json()
+		).result;
+		expect(objectResult.structuredContent).toEqual({
+			count: 2,
+		});
+		expect(
+			validate(
+				objectCatalog.result.tools[0].outputSchema,
+				objectResult.structuredContent,
+			),
+		).toBeUndefined();
 	});
 
 test('initialize proposals choose a supported alternative and enforce stored version', async () => {

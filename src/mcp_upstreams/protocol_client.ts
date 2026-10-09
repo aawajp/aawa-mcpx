@@ -1,5 +1,4 @@
 import type {
-	CallToolResult,
 	GetPromptResult,
 	Implementation,
 	ListPromptsResult,
@@ -27,6 +26,7 @@ import {
 	SUPPORTED_PROTOCOL_VERSIONS,
 	toolHeaderParameters,
 } from '@/shared/mcp_protocol';
+import type { ToolCallResult } from '@/shared/mcp_results';
 import {
 	callToolResultType,
 	getPromptResultType,
@@ -732,8 +732,8 @@ class ProtocolClient {
 		},
 		_schema?: unknown,
 		options?: RequestOptions,
-	): Promise<CallToolResult> {
-		return (await this.rpc('tools/call', params, options)) as CallToolResult;
+	): Promise<ToolCallResult> {
+		return (await this.rpc('tools/call', params, options)) as ToolCallResult;
 	}
 	async getPrompt(
 		params: {

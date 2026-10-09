@@ -43,6 +43,7 @@ const clientToolType = type({
 	'description?': 'string',
 	enabled: 'boolean',
 	inputSchema: 'unknown',
+	'outputSchema?': 'unknown',
 	'[string]': 'unknown',
 });
 

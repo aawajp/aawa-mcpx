@@ -4,8 +4,13 @@ import type { IncomingJsonRpcRequest, RouteResult } from '@/gateway/json_rpc';
 import type { createHandlers } from '@/gateway/mcp_handlers';
 import { BackendRpcError } from '@/mcp_upstreams/protocol_client';
 import {
+	requiresOutputWrapper,
+	wrapOutputSchema,
+} from '@/shared/mcp_output_schema';
+import {
 	CACHEABLE_METHODS,
 	CURRENT_PROTOCOL_VERSION,
+	recordOf,
 	SERVER_INFO_META,
 	SUPPORTED_PROTOCOL_VERSIONS,
 } from '@/shared/mcp_protocol';
@@ -242,12 +247,41 @@ const createMcpRequestRouter = (
 				delete sessionResult.resultType;
 				delete sessionResult.ttlMs;
 				delete sessionResult.cacheScope;
+				if (
+					request.method === 'tools/list' &&
+					Array.isArray(sessionResult.tools)
+				) {
+					sessionResult.tools = sessionResult.tools.map(
+						(tool: Record<string, unknown>) =>
+							tool.outputSchema === undefined
+								? tool
+								: {
+										...tool,
+										outputSchema: wrapOutputSchema(
+											tool.outputSchema,
+											String(tool.name),
+										),
+									},
+					);
+				}
 				const structured = sessionResult.structuredContent;
+				const outputSchema =
+					request.method === 'tools/call'
+						? handlers
+								.listTools()
+								.tools.find(
+									(tool) => tool.name === recordOf(request.params)?.name,
+								)?.outputSchema
+						: undefined;
 				// Both 2025 revisions require an object here; wrapping preserves scalar,
 				// array, and null values returned by a 2026-07-28 backend.
+				// Do not use truthiness: false, 0, an empty string, and null are real data.
+				// Union schemas also wrap object values so every call matches the catalog
+				// wrapper; object-only schemas and schema-free objects stay unchanged.
 				if (
 					structured !== undefined &&
-					(structured === null ||
+					(requiresOutputWrapper(outputSchema) ||
+						structured === null ||
 						typeof structured !== 'object' ||
 						Array.isArray(structured))
 				)

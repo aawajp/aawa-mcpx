@@ -8,6 +8,7 @@ import {
 } from '@/config/schema';
 import { createMcpUpstreamManager } from '@/mcp_upstreams/manager';
 import type { McpUpstreamStatus } from '@/mcp_upstreams/types';
+import { logger } from '@/server/logger';
 
 import { expect, spyOn, test } from 'bun:test';
 
@@ -80,6 +81,7 @@ test('backend lifecycle preserves tool exposure state', async () => {
 	const originalCwd = process.cwd();
 	const testRoot = await mkdtemp(path.join(originalCwd, '.mcpx-lifecycle-'));
 	const methods: string[] = [];
+	let returnedCount: number | string = 2;
 	let initializeBarrier: InitializeBarrier | null = null;
 	const mockServer = Bun.serve({
 		hostname: '127.0.0.1',
@@ -153,6 +155,17 @@ test('backend lifecycle preserves tool exposure state', async () => {
 						tools: [
 							{
 								name: 'alpha',
+								outputSchema: {
+									type: 'object',
+									properties: {
+										count: {
+											type: 'integer',
+										},
+									},
+									required: [
+										'count',
+									],
+								},
 								inputSchema: {
 									type: 'object',
 								},
@@ -178,6 +191,25 @@ test('backend lifecycle preserves tool exposure state', async () => {
 					break;
 				case 'ping':
 					result = {};
+					break;
+				case 'tools/call':
+					result = {
+						content: [
+							{
+								type: 'text',
+								text: JSON.stringify({
+									count: returnedCount,
+								}),
+							},
+							{
+								type: 'text',
+								text: 'Two items found.',
+							},
+						],
+						structuredContent: {
+							count: returnedCount,
+						},
+					};
 					break;
 				default:
 					return Response.json({
@@ -280,6 +312,57 @@ test('backend lifecycle preserves tool exposure state', async () => {
 		]);
 
 		const beforeDisable = requireMockServer(await readConfig());
+		expect(
+			await runtimeManager.callTool({
+				serverName: 'mock',
+				toolName: 'alpha',
+				args: {},
+			}),
+		).toEqual({
+			content: [
+				{
+					type: 'text',
+					text: 'Two items found.',
+				},
+			],
+			structuredContent: {
+				count: 2,
+			},
+		});
+		returnedCount = 'provider-mismatch';
+		const warning = spyOn(logger, 'warn').mockImplementation(() => undefined);
+		try {
+			expect(
+				await runtimeManager.callTool({
+					serverName: 'mock',
+					toolName: 'alpha',
+					args: {},
+				}),
+			).toEqual({
+				content: [
+					{
+						type: 'text',
+						text: 'Two items found.',
+					},
+				],
+				structuredContent: {
+					count: 'provider-mismatch',
+				},
+			});
+			expect(warning).toHaveBeenCalledTimes(1);
+			expect(JSON.parse(String(warning.mock.calls[0]?.[0]))).toMatchObject({
+				message: 'MCP tool output schema warning',
+				context: {
+					backend: 'mock',
+					tool: 'alpha',
+					reason: 'schema_mismatch',
+				},
+			});
+			expect(runtimeManager.getStatuses()[0]?.connected).toBe(true);
+		} finally {
+			warning.mockRestore();
+			returnedCount = 2;
+		}
 		const connectedClient = runtimeManager.getClient({
 			serverName: 'mock',
 		});

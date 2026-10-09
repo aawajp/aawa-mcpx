@@ -1,11 +1,11 @@
 import type {
-	CallToolResult,
 	GetPromptResult,
 	ReadResourceResult,
 } from '@modelcontextprotocol/sdk/types';
 
 import { runLoggedRequest } from '@/mcp_upstreams/logged_request';
 import { BackendRpcError } from '@/mcp_upstreams/protocol_client';
+import { createToolResultNormalizer } from '@/mcp_upstreams/tool_result';
 import type {
 	CallToolParams,
 	GetPromptParams,
@@ -16,7 +16,7 @@ import type {
 } from '@/mcp_upstreams/types';
 import type { TrafficStore } from '@/server/traffic_store';
 import { errorMessage } from '@/shared/common';
-import { toolErrorResult } from '@/shared/mcp_results';
+import { type ToolCallResult, toolErrorResult } from '@/shared/mcp_results';
 import {
 	callToolResultType,
 	getPromptResultType,
@@ -26,6 +26,10 @@ import {
 type CreateMcpUpstreamOperationsParams = {
 	clients: McpUpstreamClientsMap;
 	getEnabledTools: (params: { serverName: string }) => string[];
+	getOutputSchema: (params: {
+		serverName: string;
+		toolName: string;
+	}) => unknown;
 	getServer: (serverName: string) => McpUpstreamServer | undefined;
 	onValidationError: OnValidationError;
 	trafficStore?: TrafficStore;
@@ -43,10 +47,11 @@ const createMcpUpstreamOperations = (
 		trafficStore,
 		waitForRateLimit,
 	} = params;
+	const normalizeToolResult = createToolResultNormalizer();
 
 	const callTool = async (
 		callParams: CallToolParams,
-	): Promise<CallToolResult> => {
+	): Promise<ToolCallResult> => {
 		const { serverName, toolName, args } = callParams;
 		const server = getServer(serverName);
 		const client = clients.get(serverName);
@@ -63,8 +68,12 @@ const createMcpUpstreamOperations = (
 		}
 
 		await waitForRateLimit(server);
+		const outputSchema = params.getOutputSchema({
+			serverName,
+			toolName,
+		});
 		try {
-			return await runLoggedRequest<CallToolResult>({
+			const result = await runLoggedRequest<ToolCallResult>({
 				server,
 				client,
 				method: `tools/call:${toolName}`,
@@ -86,6 +95,11 @@ const createMcpUpstreamOperations = (
 				validate: callToolResultType,
 				onValidationError,
 				trafficStore,
+			});
+			return normalizeToolResult(result, outputSchema, {
+				backend: serverName,
+				tool: toolName,
+				protocolVersion: client.protocolVersion,
 			});
 		} catch (error) {
 			if (error instanceof BackendRpcError) throw error;

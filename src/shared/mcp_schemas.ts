@@ -4,6 +4,7 @@ const toolType = type({
 	name: 'string',
 	'description?': 'string',
 	inputSchema: 'unknown',
+	'outputSchema?': 'unknown',
 	'[string]': 'unknown',
 });
 
