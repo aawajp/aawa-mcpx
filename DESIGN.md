@@ -171,13 +171,19 @@ embedded schema resources preserve root-relative references and anchors.
 
 ## 5. Validation policy
 
-ArkType validates JSON-RPC envelopes, handled method parameters, HTTP API bodies,
-configuration, upstream response shapes, and UI overview/debug contracts. Ajv and
+ArkType validates JSON-RPC response envelopes, handled method parameters, HTTP API
+bodies, configuration, upstream response shapes, and UI overview/debug contracts. Ajv and
 `ajv-formats` validate dynamic provider output schemas as peer dependencies.
 
-Custom parsing handles headers (`Accept`, `Origin`, session/protocol IDs), URL
-pagination/filter coercion, schema-driven form inputs, SQLite row mapping, and
+Custom parsing handles request/notification envelopes, headers (`Accept`, `Origin`,
+session/protocol IDs), URL pagination/filter coercion, schema-driven form inputs, SQLite row mapping, and
 error normalization. `shared/` is the only intentional cross-runtime layer.
+
+Backend errors validate their envelope and request ID before forwarding. Tool
+content blocks validate before recovery or duplicate removal; malformed envelopes
+and content are rejected, while output-schema mismatches retain the warning-only
+policy. Both 2025 revisions require object-shaped backend `structuredContent`;
+2026-07-28 permits any JSON value. Client adaptation remains separate.
 
 ## 6. Open considerations
 

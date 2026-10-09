@@ -3,6 +3,8 @@ import type {
 	JSONRPCResultResponse,
 } from '@modelcontextprotocol/sdk/types';
 
+import { jsonRpcResponseType } from '@/shared/mcp_schemas';
+
 type IncomingJsonRpcRequest = {
 	jsonrpc: '2.0';
 	method: string;
@@ -66,25 +68,9 @@ const getRecord = (value: unknown): Record<string, unknown> | null => {
 };
 
 const getJsonRpcId = (value: unknown): string | number | null => {
-	if (typeof value === 'string' || typeof value === 'number') return value;
+	if (typeof value === 'string') return value;
+	if (typeof value === 'number' && Number.isInteger(value)) return value;
 	return null;
-};
-
-const getJsonRpcError = (
-	value: unknown,
-): IncomingJsonRpcErrorResponse['error'] | null => {
-	const record = getRecord(value);
-	if (!record) return null;
-	if (typeof record.code !== 'number') return null;
-	if (typeof record.message !== 'string') return null;
-	const error: IncomingJsonRpcErrorResponse['error'] = {
-		code: record.code,
-		message: record.message,
-	};
-	if ('data' in record) {
-		error.data = record.data;
-	}
-	return error;
 };
 
 const parseIncomingJsonRpcMessage = (
@@ -96,6 +82,8 @@ const parseIncomingJsonRpcMessage = (
 
 	if ('method' in record) {
 		if (typeof record.method !== 'string') return null;
+		if ('result' in record || 'error' in record) return null;
+		if ('params' in record && !getRecord(record.params)) return null;
 		if ('id' in record) {
 			const id = getJsonRpcId(record.id);
 			if (id === null) return null;
@@ -119,34 +107,7 @@ const parseIncomingJsonRpcMessage = (
 		return message;
 	}
 
-	const hasResult = 'result' in record;
-	const hasError = 'error' in record;
-	if (hasResult === hasError) return null;
-	if (hasResult) {
-		const id = getJsonRpcId(record.id);
-		if (id === null) return null;
-		return {
-			jsonrpc: '2.0',
-			id,
-			result: record.result,
-		};
-	}
-
-	const error = getJsonRpcError(record.error);
-	if (!error) return null;
-	if (!('id' in record)) {
-		return {
-			jsonrpc: '2.0',
-			error,
-		};
-	}
-	const id = getJsonRpcId(record.id);
-	if (id === null) return null;
-	return {
-		jsonrpc: '2.0',
-		id,
-		error,
-	};
+	return jsonRpcResponseType.allows(record) ? record : null;
 };
 
 const isIncomingJsonRpcNotification = (

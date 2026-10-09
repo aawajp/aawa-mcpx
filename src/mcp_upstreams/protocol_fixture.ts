@@ -74,6 +74,21 @@ const fixtureReply = (
 			break;
 		case 'tools/call': {
 			const args = recordOf(params.arguments) ?? {};
+			// Test-only modes let the integration tests exercise the wire validator
+			// over stdio without bypassing ProtocolClient's response parsing.
+			if (args.fixtureMode === 'envelope') {
+				const reply: Record<string, unknown> = {
+					jsonrpc: '2.0',
+					id: message.id,
+					...recordOf(args.reply),
+				};
+				if (args.omitId) delete reply.id;
+				return reply;
+			}
+			if (args.fixtureMode === 'result') {
+				result = recordOf(args.reply) ?? {};
+				break;
+			}
 			result = {
 				content: [
 					{

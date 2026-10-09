@@ -30,6 +30,7 @@ import type { ToolCallResult } from '@/shared/mcp_results';
 import {
 	callToolResultType,
 	getPromptResultType,
+	jsonRpcResponseType,
 	listPromptsResultType,
 	listResourcesResultType,
 	listToolsResultType,
@@ -494,6 +495,7 @@ class ProtocolClient {
 		try {
 			body = JSON.parse(text);
 		} catch {
+			if (response.ok) throw new Error('Invalid backend JSON response');
 			throw new BackendRpcError(
 				`Backend HTTP ${response.status}`,
 				-32000,
@@ -501,12 +503,46 @@ class ProtocolClient {
 				response.status,
 			);
 		}
-		if (!response.ok || recordOf(recordOf(body)?.error)) {
-			const error = recordOf(recordOf(body)?.error);
+		const bodyRecord = recordOf(body);
+		// HTTP failures without an RPC envelope still carry status for recovery and
+		// legacy negotiation. A claimed RPC error must validate before forwarding;
+		// otherwise a wrong ID or malformed code could bypass rpc() below.
+		if (
+			response.ok ||
+			(bodyRecord &&
+				('jsonrpc' in bodyRecord ||
+					'error' in bodyRecord ||
+					'result' in bodyRecord ||
+					'id' in bodyRecord))
+		) {
+			if (
+				!jsonRpcResponseType.allows(body) ||
+				('id' in message && body.id !== message.id)
+			) {
+				const error = new Error('Invalid backend RPC response');
+				// A transient HTTP failure remains recoverable even when its body is
+				// malformed. Never expose that body's unvalidated protocol code/data.
+				if (
+					response.status === 408 ||
+					response.status === 429 ||
+					response.status >= 500
+				)
+					throw new BackendTransportError(error);
+				throw error;
+			}
+			if (body.error)
+				throw new BackendRpcError(
+					body.error.message,
+					body.error.code,
+					body.error.data,
+					response.status,
+				);
+		}
+		if (!response.ok) {
 			throw new BackendRpcError(
-				String(error?.message ?? `Backend HTTP ${response.status}`),
-				typeof error?.code === 'number' ? error.code : -32000,
-				error?.data,
+				`Backend HTTP ${response.status}`,
+				-32000,
+				undefined,
 				response.status,
 			);
 		}
@@ -549,26 +585,20 @@ class ProtocolClient {
 				}
 			: params;
 		try {
-			const response = recordOf(
-				await this.send(
-					{
-						jsonrpc: '2.0',
-						id,
-						method,
-						params: bodyParams,
-					},
-					signal,
-				),
+			const response = await this.send(
+				{
+					jsonrpc: '2.0',
+					id,
+					method,
+					params: bodyParams,
+				},
+				signal,
 			);
-			if (response?.jsonrpc !== '2.0' || response.id !== id)
+			if (!jsonRpcResponseType.allows(response) || response.id !== id)
 				throw new Error('Invalid backend RPC response');
-			const error = recordOf(response.error);
+			const error = response.error;
 			if (error)
-				throw new BackendRpcError(
-					String(error.message),
-					Number(error.code),
-					error.data,
-				);
+				throw new BackendRpcError(error.message, error.code, error.data);
 			const result = recordOf(response.result);
 			if (!result) throw new Error('Missing backend result');
 			if (usesRequestMetadata && result.resultType !== 'complete')
@@ -598,6 +628,12 @@ class ProtocolClient {
 					break;
 				case 'tools/call':
 					callToolResultType.assert(result);
+					if (
+						requiresInitialization(this.protocolVersion ?? '') &&
+						result.structuredContent !== undefined &&
+						!recordOf(result.structuredContent)
+					)
+						throw new Error('MCP 2025 structuredContent must be a JSON object');
 					break;
 				case 'prompts/get':
 					getPromptResultType.assert(result);

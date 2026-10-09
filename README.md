@@ -179,6 +179,11 @@ on access with concurrent refresh deduplication. Backend credentials define thei
 authorization context. Public `2026-07-28` catalogs carry private, zero-TTL cache hints.
 The gateway owns dispatch and transports; the SDK supplies types, not client/server implementations.
 
+JSON-RPC envelopes require string/integer IDs, integer error codes, and matching response IDs. Backend
+tool results require a `content` array with valid text, image, audio, resource-link,
+or embedded-resource blocks, including Base64 data and optional metadata shapes.
+Malformed results are rejected before normalization; extension fields are preserved.
+
 Tool results remove only text blocks whose entire JSON value equals
 `structuredContent`, ignoring formatting and object key order. Independent text,
 JSON subsets or extra fields, images, audio, and resources remain. The required
