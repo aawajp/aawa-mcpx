@@ -520,6 +520,27 @@ class ProtocolClient {
 				('id' in message && body.id !== message.id)
 			) {
 				const error = new Error('Invalid backend RPC response');
+				// Legacy HTTP servers can reject an unrecognized discovery probe
+				// before associating its ID (for example, HTTP 400 with id:null).
+				// Only the first discovery probe may use this transport rejection to
+				// try initialization. Discard all unvalidated RPC code/message/data;
+				// pinned peers and application responses still require a matching ID.
+				if (
+					!this.selected &&
+					this.protocolVersion === CURRENT_PROTOCOL_VERSION &&
+					message.method === 'server/discover' &&
+					[
+						400,
+						404,
+						405,
+					].includes(response.status)
+				)
+					throw new BackendRpcError(
+						`Backend HTTP ${response.status} rejected discovery`,
+						-32000,
+						undefined,
+						response.status,
+					);
 				// A transient HTTP failure remains recoverable even when its body is
 				// malformed. Never expose that body's unvalidated protocol code/data.
 				if (

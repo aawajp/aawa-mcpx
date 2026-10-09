@@ -43,6 +43,14 @@ the relevant doc as part of the change.
 
 ## Boundary checks
 
+When changing protocol validation or negotiation, preserve the initial HTTP
+discovery fallback for legacy backends that reject the probe with HTTP
+`400`/`404`/`405` and an invalid RPC envelope (such as `id: null`). Use only the HTTP
+status for this fallback; keep initialization, pinned peers, and application
+responses strictly validated. Run the negotiation regressions in
+`src/mcp_upstreams/protocol_client.test.ts` and the envelope regressions in
+`src/mcp_upstreams/protocol_validation.test.ts`.
+
 Before finishing structural or naming changes, check:
 
 - `src/ui` does not import from `src/gateway`, `src/mcp_upstreams`,

@@ -144,6 +144,13 @@ Both client and backend connections support `2026-07-28`, `2025-11-25`, and `202
 
 Backend and client revisions are independent. Each backend selects the highest mutually supported revision on its first successful connection and retains it across reconnects and toggles until gateway restart. The 2025 backends initialize afresh on reconnect; `2026-07-28` backends use discovery for health checks. Stdio carries newline-delimited JSON-RPC.
 
+For compatibility with legacy HTTP backends, an initial discovery rejection with
+HTTP `400`/`404`/`405` can trigger initialization even if its RPC envelope is invalid
+(for example, `id: null`). Only the HTTP status is used; initialization and
+application responses still require valid envelopes and matching request IDs.
+Dropping that status during envelope validation incorrectly stops negotiation
+before a compatible 2025 backend can initialize.
+
 Negotiation failures stop automatic retries. The UI shows the failed method, attempted revision, and available HTTP/JSON-RPC codes. Disable/re-enable to retry; restart to change a retained revision.
 
 ### Network recovery

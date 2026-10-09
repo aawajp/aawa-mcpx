@@ -179,8 +179,10 @@ Custom parsing handles request/notification envelopes, headers (`Accept`, `Origi
 session/protocol IDs), URL pagination/filter coercion, schema-driven form inputs, SQLite row mapping, and
 error normalization. `shared/` is the only intentional cross-runtime layer.
 
-Backend errors validate their envelope and request ID before forwarding. Tool
-content blocks validate before recovery or duplicate removal; malformed envelopes
+Backend errors validate their envelope and request ID before forwarding. Initial
+HTTP discovery alone can fall back on a transport rejection with an invalid envelope;
+[protocol behavior](README.md#protocol-behavior) defines this compatibility case.
+Tool content blocks validate before recovery or duplicate removal; malformed envelopes
 and content are rejected, while output-schema mismatches retain the warning-only
 policy. Both 2025 revisions require object-shaped backend `structuredContent`;
 2026-07-28 permits any JSON value. Client adaptation remains separate.

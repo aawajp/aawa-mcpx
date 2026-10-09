@@ -345,6 +345,14 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 			});
 			for (const malformed of [
 				{
+					id: null,
+					error,
+				},
+				{
+					id: undefined,
+					error,
+				},
+				{
 					id: 'wrong',
 					error,
 				},

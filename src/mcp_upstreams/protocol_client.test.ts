@@ -198,6 +198,199 @@ for (const method of [
 	}
 }
 
+// Legacy servers may reject discovery before initialization with id:null (or
+// another uncorrelated ID). Strict envelope validation must not lose the HTTP
+// rejection status and prevent negotiation with an otherwise supported peer.
+for (const version of [
+	'2025-11-25',
+	'2025-06-18',
+] as const) {
+	for (const status of [
+		400,
+		404,
+		405,
+	]) {
+		test(`initial discovery HTTP ${status} with an uncorrelated error falls back to ${version}`, async () => {
+			for (const rejectedId of [
+				null,
+				undefined,
+				'unrelated',
+			]) {
+				const methods: string[] = [];
+				const endpoint = Bun.serve({
+					port: 0,
+					hostname: '127.0.0.1',
+					async fetch(request) {
+						const message = recordOf(await request.json()) ?? {};
+						methods.push(String(message.method));
+						if (message.method === 'server/discover')
+							return Response.json(
+								{
+									jsonrpc: '2.0',
+									id: rejectedId,
+									error: {
+										code: -32000,
+										message: 'Not initialized',
+										data: {
+											discarded: true,
+										},
+									},
+								},
+								{
+									status,
+								},
+							);
+						if (!('id' in message))
+							return new Response(null, {
+								status: 202,
+							});
+						return Response.json(fixtureReply(message, version));
+					},
+				});
+				const client = new ProtocolClient({
+					serverName: 'legacy',
+					serverConfig: {
+						type: 'http',
+						url: endpoint.url.href,
+						enabled: true,
+						timeout: 1000,
+						trafficLimit: 1000,
+					},
+				});
+				try {
+					await client.connect();
+					expect(client.protocolVersion).toBe(version);
+					expect((await client.listTools()).tools[0]?.name).toBe('echo');
+					expect(methods).toEqual([
+						'server/discover',
+						'initialize',
+						'notifications/initialized',
+						'tools/list',
+					]);
+				} finally {
+					await client.close();
+					endpoint.stop(true);
+				}
+			}
+		});
+	}
+}
+
+for (const status of [
+	200,
+	400,
+	401,
+	403,
+	429,
+	503,
+]) {
+	test(`uncorrelated HTTP ${status} discovery errors do not downgrade ${status === 400 ? 'a pinned modern peer' : 'without a legacy rejection'}`, async () => {
+		const methods: string[] = [];
+		const endpoint = Bun.serve({
+			port: 0,
+			hostname: '127.0.0.1',
+			async fetch(request) {
+				const message = recordOf(await request.json()) ?? {};
+				methods.push(String(message.method));
+				return Response.json(
+					{
+						jsonrpc: '2.0',
+						id: null,
+						error: {
+							code: -32000,
+							message: 'Rejected',
+						},
+					},
+					{
+						status,
+					},
+				);
+			},
+		});
+		const client = new ProtocolClient(
+			{
+				serverName: 'no-downgrade',
+				serverConfig: {
+					type: 'http',
+					url: endpoint.url.href,
+					enabled: true,
+					timeout: 1000,
+					trafficLimit: 1000,
+				},
+			},
+			status === 400 ? CURRENT_PROTOCOL_VERSION : undefined,
+		);
+		try {
+			await expect(client.connect()).rejects.toBeInstanceOf(
+				status === 429 || status === 503
+					? BackendTransportError
+					: ProtocolNegotiationError,
+			);
+			expect(methods).toEqual([
+				'server/discover',
+			]);
+		} finally {
+			await client.close();
+			endpoint.stop(true);
+		}
+	});
+}
+
+for (const code of [
+	-32020,
+	-32021,
+	-32022,
+]) {
+	test(`valid modern discovery error ${code} never triggers initialization`, async () => {
+		const methods: string[] = [];
+		const endpoint = Bun.serve({
+			port: 0,
+			hostname: '127.0.0.1',
+			async fetch(request) {
+				const message = recordOf(await request.json()) ?? {};
+				methods.push(String(message.method));
+				return Response.json(
+					{
+						jsonrpc: '2.0',
+						id: message.id,
+						error: {
+							code,
+							message: 'Protocol rejected',
+						},
+					},
+					{
+						status: 400,
+					},
+				);
+			},
+		});
+		const client = new ProtocolClient({
+			serverName: 'modern',
+			serverConfig: {
+				type: 'http',
+				url: endpoint.url.href,
+				enabled: true,
+				timeout: 1000,
+				trafficLimit: 1000,
+			},
+		});
+		try {
+			await expect(client.connect()).rejects.toMatchObject({
+				context: {
+					httpStatus: 400,
+					rpcCode: code,
+				},
+			});
+			expect(methods).toEqual([
+				'server/discover',
+			]);
+		} finally {
+			await client.close();
+			endpoint.stop(true);
+		}
+	});
+}
+
 for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 	for (const transport of [
 		'http',
