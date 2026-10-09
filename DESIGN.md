@@ -80,6 +80,17 @@ The MCP upstream layer owns outbound MCP client behavior:
 Health checks run only for enabled, connected backends after their catalog
 refresh completes. Checks use bounded timeouts and run independently across
 backends. Results invalidated by disable or reconnect events are discarded.
+Successful RPC traffic suppresses probes for 60 seconds; idle probes use the
+10-second scheduler and two-failure threshold. Transport failures are distinct
+from protocol negotiation errors, so a failed network handshake does not stop
+recovery permanently. Application transport failures and lost HTTP sessions
+retire the current client and schedule recovery without replaying the operation.
+Reconnects share one in-flight attempt per backend and connection epoch, use
+jittered exponential delays capped at 60 seconds, and reset after reconnection
+and catalog refresh. Shutdown invalidates epochs and cancels clients and timers.
+See [network recovery](README.md#network-recovery) for operational timing. The
+backoff/jitter choice follows [AWS retry guidance](https://docs.aws.amazon.com/sdkref/latest/guide/feature-retry-behavior.html);
+fresh session initialization follows the [MCP session-management rules](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#session-management).
 - `types.d.ts` defines MCP upstream manager types.
 
 The manager exposes a stable internal API to the gateway while hiding transport,

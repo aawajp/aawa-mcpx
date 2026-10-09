@@ -136,6 +136,27 @@ Backends select the highest mutually supported version on their first successful
 
 Protocol negotiation failures stop automatic reconnects and appear in the backend UI with the failed method, attempted revision, and available HTTP/JSON-RPC error codes. Disable and re-enable the backend to retry; restart the gateway if its retained protocol selection needs to change.
 
+### Network recovery
+
+Enabled backends recover automatically after network interruptions, request
+timeouts, temporary HTTP failures (`408`, `429`, or `5xx`), and lost initialized
+HTTP sessions. These failures remain retryable even during the handshake.
+
+Reconnect delays use exponential backoff with jitter: **5–10 seconds**, then
+**10–20**, **20–40**, and **30–60 seconds** for subsequent failures. Each delay
+starts after the preceding attempt finishes. Successful reconnection and catalog
+refresh reset the backoff. Recovery retains the selected protocol, initializes a
+fresh session when needed, and refreshes catalogs. Concurrent reconnects share
+one attempt; disabling a backend or shutting down stops recovery.
+
+Successful MCP requests suppress health probes for **60 seconds**. Idle backends
+are checked on the next 10-second scheduler tick, with a maximum 9-second probe
+timeout (or the configured timeout if shorter). Two consecutive failed probes
+mark the backend down. Application request transport failures trigger recovery
+immediately. Recovery probes only configured backends; it sends no separate
+internet-connectivity pings. A failed tool call is returned without automatic
+replay because its side effects may already have completed.
+
 ### Session management
 
 For clients using `2025-11-25` or `2025-06-18`, the gateway creates a unique session ID on initialization. Sessions are stored in memory and are cleared when the gateway restarts. Requests using those revisions with an unknown session ID return HTTP 404 and must initialize a new session. Requests using `2026-07-28` do not create or require sessions; the dashboard tracks all clients by reported name and version, regardless of protocol revision. It shows first seen, last seen, and the most recently observed protocol version, without session IDs or connection status. Client activity is held in bounded memory and cleared on gateway restart. This local-use identity convention does not distinguish separate instances reporting the same name and version.

@@ -5,7 +5,91 @@ import type {
 	McpUpstreamServer,
 } from '@/mcp_upstreams/types';
 
-import { expect, test } from 'bun:test';
+import { expect, spyOn, test } from 'bun:test';
+
+test('successful traffic suppresses idle pings and clears old failures', async () => {
+	const now = spyOn(Date, 'now').mockReturnValue(100_000);
+	const server = createServer('active');
+	let pings = 0;
+	const client = createClient(async () => {
+		pings += 1;
+		client.lastSuccessfulRequestAt = Date.now();
+		return {};
+	});
+	client.lastSuccessfulRequestAt = 99_000;
+	const failures = new Map([
+		[
+			'active',
+			1,
+		],
+	]);
+	const checks = createMcpUpstreamHealthChecks({
+		clients: new Map([
+			[
+				'active',
+				client,
+			],
+		]),
+		getServer: () => server,
+		healthCheckFailures: failures,
+		healthCheckReadyBackends: new Set([
+			'active',
+		]),
+		markMcpUpstreamDown: () => {
+			throw new Error('Unexpected down');
+		},
+		onValidationError: () => undefined,
+		waitForRateLimit: async () => undefined,
+	});
+	try {
+		await checks.runHealthChecks();
+		expect(pings).toBe(0);
+		expect(failures.size).toBe(0);
+		now.mockReturnValue(160_000);
+		await checks.runHealthChecks();
+		expect(pings).toBe(1);
+		now.mockReturnValue(170_000);
+		await checks.runHealthChecks();
+		expect(pings).toBe(1);
+	} finally {
+		now.mockRestore();
+	}
+});
+
+test('successful traffic during a failed health check keeps the backend healthy', async () => {
+	const server = createServer('active');
+	const client = createClient(async () => {
+		client.lastSuccessfulRequestAt = Date.now() + 1;
+		throw new Error('Probe response lost');
+	});
+	client.lastSuccessfulRequestAt = 0;
+	const failures = new Map([
+		[
+			'active',
+			1,
+		],
+	]);
+	const checks = createMcpUpstreamHealthChecks({
+		clients: new Map([
+			[
+				'active',
+				client,
+			],
+		]),
+		getServer: () => server,
+		healthCheckFailures: failures,
+		healthCheckReadyBackends: new Set([
+			'active',
+		]),
+		markMcpUpstreamDown: () => {
+			throw new Error('Unexpected down');
+		},
+		onValidationError: () => undefined,
+		waitForRateLimit: async () => undefined,
+	});
+	await checks.runHealthChecks();
+	expect(failures.size).toBe(0);
+});
 
 const createServer = (serverName: string): McpUpstreamServer => ({
 	serverName,

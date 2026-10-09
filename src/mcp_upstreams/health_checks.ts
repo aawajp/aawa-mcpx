@@ -13,6 +13,7 @@ import { pingResultType } from '@/shared/mcp_schemas';
 const HEALTH_CHECK_INTERVAL_MS = 10_000;
 const HEALTH_CHECK_TIMEOUT_MS = HEALTH_CHECK_INTERVAL_MS - 1000;
 const HEALTH_CHECK_FAILURE_THRESHOLD = 2;
+const HEALTH_CHECK_IDLE_MS = 60_000;
 
 type CreateMcpUpstreamHealthChecksParams = {
 	clients: McpUpstreamClientsMap;
@@ -104,6 +105,10 @@ const createMcpUpstreamHealthChecks = (
 				return {
 					state: 'stale',
 				};
+			if (client.lastSuccessfulRequestAt >= start)
+				return {
+					state: 'healthy',
+				};
 			const elapsed = Date.now() - start;
 			return {
 				state: 'unhealthy',
@@ -119,6 +124,14 @@ const createMcpUpstreamHealthChecks = (
 				const server = getServer(serverName);
 				const client = clients.get(serverName);
 				if (!server || !client) return;
+				// Any successful RPC proves reachability; busy backends need no ping.
+				if (
+					Date.now() - client.lastSuccessfulRequestAt <
+					HEALTH_CHECK_IDLE_MS
+				) {
+					healthCheckFailures.delete(serverName);
+					return;
+				}
 
 				const result = await checkMcpUpstreamHealth(server, client);
 				if (

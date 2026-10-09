@@ -51,6 +51,21 @@ class BackendRpcError extends Error {
 	}
 }
 
+class BackendTransportError extends Error {
+	constructor(cause: unknown) {
+		super(errorMessage(cause), {
+			cause,
+		});
+	}
+}
+
+const isTransientBackendError = (error: unknown): boolean =>
+	error instanceof BackendTransportError ||
+	(error instanceof BackendRpcError &&
+		(error.status === 408 ||
+			error.status === 429 ||
+			(error.status ?? 0) >= 500));
+
 class ProtocolNegotiationError extends Error {
 	constructor(
 		readonly context: {
@@ -74,7 +89,9 @@ class ProtocolNegotiationError extends Error {
 // One instance owns one connection. The manager owns the longer-lived version selection.
 class ProtocolClient {
 	protocolVersion?: ProtocolVersion;
+	lastSuccessfulRequestAt = 0;
 	onerror: (error: unknown) => void = () => undefined;
+	ontransporterror: (error: unknown) => void = () => undefined;
 	private sequence = 0;
 	private sessionId?: string;
 	private details: Record<string, unknown> = {};
@@ -115,7 +132,12 @@ class ProtocolClient {
 		try {
 			await this.establishConnection();
 		} catch (error) {
-			if (this.negotiationMethod === 'transport') throw error;
+			if (
+				this.negotiationMethod === 'transport' ||
+				isTransientBackendError(error) ||
+				this.isSessionLostError(error)
+			)
+				throw error;
 			throw new ProtocolNegotiationError(
 				{
 					method: this.negotiationMethod,
@@ -128,6 +150,15 @@ class ProtocolClient {
 				error,
 			);
 		}
+	}
+
+	private isSessionLostError(error: unknown): boolean {
+		return (
+			error instanceof BackendRpcError &&
+			error.status === 404 &&
+			this.protocolVersion !== CURRENT_PROTOCOL_VERSION &&
+			Boolean(this.sessionId)
+		);
 	}
 
 	private async establishConnection(): Promise<void> {
@@ -302,10 +333,13 @@ class ProtocolClient {
 					end = buffer.indexOf('\n');
 				}
 			}
-			if (!stderr && !this.closed) throw new Error('Backend stdout closed');
+			if (!stderr && !this.closed)
+				throw new BackendTransportError(new Error('Backend stdout closed'));
 		} catch (error) {
 			if (!this.closed) {
 				this.onerror(error);
+				if (error instanceof BackendTransportError)
+					this.ontransporterror(error);
 				for (const pending of this.pending.values()) pending.reject(error);
 			}
 		} finally {
@@ -317,10 +351,13 @@ class ProtocolClient {
 		message: Record<string, unknown>,
 		signal: AbortSignal,
 	): Promise<unknown> {
-		signal.throwIfAborted();
+		if (signal.aborted) throw new BackendTransportError(signal.reason);
 		const config = this.server.serverConfig;
 		if (config.type === 'stdio') {
-			if (!this.child) throw new Error('Backend process is not running');
+			if (!this.child)
+				throw new BackendTransportError(
+					new Error('Backend process is not running'),
+				);
 			const child = this.child;
 			const id = message.id;
 			if (typeof id !== 'string' && typeof id !== 'number') {
@@ -342,9 +379,8 @@ class ProtocolClient {
 						})}\n`,
 					);
 					reject(
-						new BackendRpcError(
-							'Backend request timed out or cancelled',
-							-32000,
+						new BackendTransportError(
+							new Error('Backend request timed out or cancelled'),
 						),
 					);
 				};
@@ -391,6 +427,8 @@ class ProtocolClient {
 			headers,
 			body: JSON.stringify(message),
 			signal,
+		}).catch((error: unknown) => {
+			throw new BackendTransportError(error);
 		});
 		if (
 			this.protocolVersion !== CURRENT_PROTOCOL_VERSION &&
@@ -409,7 +447,9 @@ class ProtocolClient {
 			let buffer = '';
 			try {
 				for (;;) {
-					const next = await reader.read();
+					const next = await reader.read().catch((error: unknown) => {
+						throw new BackendTransportError(error);
+					});
 					if (next.done) break;
 					buffer = (buffer + next.value).replaceAll('\r\n', '\n');
 					if (buffer.length > 8 * 1024 * 1024)
@@ -438,13 +478,18 @@ class ProtocolClient {
 						end = buffer.indexOf('\n\n');
 					}
 				}
-				throw new Error('Backend stream ended without a result');
+				throw new BackendTransportError(
+					new Error('Backend stream ended without a result'),
+				);
 			} finally {
-				await reader.cancel();
+				// An errored stream also rejects cancel(); preserve the transport error.
+				await reader.cancel().catch(() => undefined);
 				reader.releaseLock();
 			}
 		}
-		const text = await response.text();
+		const text = await response.text().catch((error: unknown) => {
+			throw new BackendTransportError(error);
+		});
 		let body: unknown;
 		try {
 			body = JSON.parse(text);
@@ -561,7 +606,20 @@ class ProtocolClient {
 					readResourceResultType.assert(result);
 					break;
 			}
+			this.lastSuccessfulRequestAt = Date.now();
 			return result;
+		} catch (error) {
+			// Recover the connection for subsequent calls. Never replay an operation:
+			// a lost response does not establish whether its side effects completed.
+			if (
+				!this.closed &&
+				!options.signal?.aborted &&
+				method !== 'ping' &&
+				method !== 'server/discover' &&
+				(isTransientBackendError(error) || this.isSessionLostError(error))
+			)
+				this.ontransporterror(error);
+			throw error;
 		} finally {
 			clearTimeout(timeout);
 			this.controllers.delete(controller);
@@ -706,4 +764,9 @@ class ProtocolClient {
 	}
 }
 
-export { BackendRpcError, ProtocolClient, ProtocolNegotiationError };
+export {
+	BackendRpcError,
+	BackendTransportError,
+	ProtocolClient,
+	ProtocolNegotiationError,
+};

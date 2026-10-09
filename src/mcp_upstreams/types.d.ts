@@ -23,6 +23,8 @@ type Client = Pick<
 	| 'readResource'
 	| 'close'
 	| 'onerror'
+	| 'ontransporterror'
+	| 'lastSuccessfulRequestAt'
 	| 'protocolVersion'
 >;
 

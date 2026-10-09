@@ -1,7 +1,12 @@
 import { createHandlers } from '@/gateway/mcp_handlers';
 import { createMcpRequestRouter } from '@/gateway/mcp_request_router';
 import { createMcpSessionManager } from '@/gateway/mcp_session';
-import { ProtocolClient } from '@/mcp_upstreams/protocol_client';
+import {
+	BackendRpcError,
+	BackendTransportError,
+	ProtocolClient,
+	ProtocolNegotiationError,
+} from '@/mcp_upstreams/protocol_client';
 import { fixtureReply } from '@/mcp_upstreams/protocol_fixture';
 import type { McpUpstreamManager } from '@/mcp_upstreams/types';
 import {
@@ -11,7 +16,187 @@ import {
 	SUPPORTED_PROTOCOL_VERSIONS,
 } from '@/shared/mcp_protocol';
 
-import { expect, test } from 'bun:test';
+import { expect, spyOn, test } from 'bun:test';
+
+test('a broken SSE response preserves the transport error and requests recovery', async () => {
+	const client = new ProtocolClient({
+		serverName: 'stream',
+		serverConfig: {
+			type: 'http',
+			url: 'http://127.0.0.1/mcp',
+			enabled: true,
+			timeout: 1000,
+			trafficLimit: 1000,
+		},
+	});
+	client.protocolVersion = CURRENT_PROTOCOL_VERSION;
+	let recoveries = 0;
+	client.ontransporterror = () => {
+		recoveries += 1;
+	};
+	const response = new Response(
+		new ReadableStream<Uint8Array>({
+			start(controller) {
+				controller.error(new Error('Socket reset while reading SSE'));
+			},
+		}),
+		{
+			headers: {
+				'Content-Type': 'text/event-stream',
+			},
+		},
+	);
+	const fetch = spyOn(globalThis, 'fetch').mockResolvedValue(response);
+	try {
+		await expect(
+			client.callTool({
+				name: 'echo',
+			}),
+		).rejects.toBeInstanceOf(BackendTransportError);
+		expect(recoveries).toBe(1);
+		expect(fetch).toHaveBeenCalledTimes(1);
+	} finally {
+		fetch.mockRestore();
+		await client.close();
+	}
+});
+
+test('caller cancellation does not invalidate a healthy connection', async () => {
+	const client = new ProtocolClient({
+		serverName: 'cancelled',
+		serverConfig: {
+			type: 'http',
+			url: 'http://127.0.0.1/mcp',
+			enabled: true,
+			timeout: 1000,
+			trafficLimit: 1000,
+		},
+	});
+	client.protocolVersion = CURRENT_PROTOCOL_VERSION;
+	let recoveries = 0;
+	client.ontransporterror = () => {
+		recoveries += 1;
+	};
+	const controller = new AbortController();
+	controller.abort();
+	try {
+		await expect(
+			client.callTool(
+				{
+					name: 'echo',
+				},
+				undefined,
+				{
+					signal: controller.signal,
+				},
+			),
+		).rejects.toBeInstanceOf(BackendTransportError);
+		expect(recoveries).toBe(0);
+	} finally {
+		await client.close();
+	}
+});
+
+test('a session lost between initialize and initialized remains retryable', async () => {
+	const endpoint = Bun.serve({
+		port: 0,
+		hostname: '127.0.0.1',
+		async fetch(request) {
+			const message = recordOf(await request.json()) ?? {};
+			if (message.method === 'notifications/initialized')
+				return new Response('Session lost', {
+					status: 404,
+				});
+			return Response.json(fixtureReply(message, '2025-11-25'), {
+				headers: {
+					'Mcp-Session-Id': 'lost',
+				},
+			});
+		},
+	});
+	const client = new ProtocolClient(
+		{
+			serverName: 'lost',
+			serverConfig: {
+				type: 'http',
+				url: endpoint.url.href,
+				enabled: true,
+				timeout: 1000,
+				trafficLimit: 1000,
+			},
+		},
+		'2025-11-25',
+	);
+	try {
+		await expect(client.connect()).rejects.toBeInstanceOf(BackendRpcError);
+	} finally {
+		await client.close();
+		endpoint.stop(true);
+	}
+});
+
+for (const method of [
+	'server/discover',
+	'initialize',
+	'notifications/initialized',
+]) {
+	for (const failure of [
+		'timeout',
+		'reset',
+		'503',
+	]) {
+		test(`${method}: ${failure} remains retryable during the handshake`, async () => {
+			const endpoint = Bun.serve({
+				port: 0,
+				hostname: '127.0.0.1',
+				async fetch(request) {
+					const message = recordOf(await request.json()) ?? {};
+					if (message.method === method) {
+						if (failure === 'timeout')
+							return new Promise<Response>(() => undefined);
+						if (failure === 'reset') endpoint.stop(true);
+						return new Response('Unavailable', {
+							status: 503,
+						});
+					}
+					if (!('id' in message))
+						return new Response(null, {
+							status: 202,
+						});
+					return Response.json(fixtureReply(message, '2025-11-25'));
+				},
+			});
+			const client = new ProtocolClient(
+				{
+					serverName: 'handshake',
+					serverConfig: {
+						type: 'http',
+						url: endpoint.url.href,
+						enabled: true,
+						timeout: 50,
+						trafficLimit: 1000,
+					},
+				},
+				method === 'server/discover' ? CURRENT_PROTOCOL_VERSION : '2025-11-25',
+			);
+			try {
+				let caught: unknown;
+				try {
+					await client.connect();
+				} catch (error) {
+					caught = error;
+				}
+				expect(caught).not.toBeInstanceOf(ProtocolNegotiationError);
+				expect(caught).toBeInstanceOf(
+					failure === '503' ? BackendRpcError : BackendTransportError,
+				);
+			} finally {
+				await client.close();
+				endpoint.stop(true);
+			}
+		});
+	}
+}
 
 for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 	for (const transport of [
