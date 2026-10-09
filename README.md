@@ -176,6 +176,22 @@ backend configuration cannot override these request fields. See the
 [HTTP binding](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http)
 and [request metadata](https://modelcontextprotocol.io/specification/2026-07-28/basic).
 
+### Request metadata forwarding
+
+`tools/call`, `prompts/get`, and `resources/read` preserve application/vendor
+`_meta`, including trace context, across all supported revisions and backend
+transports. Modern backend requests use the gateway's own version, identity, and
+capabilities; legacy requests omit that envelope. Metadata validates once at the
+public boundary. Catalogs remain gateway aggregates of backend caches.
+
+Progress/log notification opt-ins and task/subscription handles are omitted
+upstream because the gateway cannot relay those flows. A valid progress token is
+accepted without promising updates, as permitted by the
+[progress contract](https://modelcontextprotocol.io/specification/2026-07-28/basic/utilities/progress).
+Continuations return `-32602`. Task options are rejected for June 2025 and 2026;
+November 2025 ignores them and executes normally, following the
+[no-task-capability rule](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/tasks#task-support-and-handling).
+
 ### Network recovery
 
 Enabled backends automatically recover from network interruptions, timeouts,

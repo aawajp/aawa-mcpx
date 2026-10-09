@@ -3,6 +3,7 @@ import { type } from 'arktype';
 import type { IncomingJsonRpcRequest, RouteResult } from '@/gateway/json_rpc';
 import type { createHandlers } from '@/gateway/mcp_handlers';
 import { BackendRpcError } from '@/mcp_upstreams/protocol_client';
+import { legacyRequestMetadataType } from '@/shared/mcp_metadata';
 import {
 	requiresOutputWrapper,
 	wrapOutputSchema,
@@ -113,23 +114,6 @@ const createMcpRequestRouter = (
 		const requireSession: RequireSession = usesRequestMetadata
 			? () => null
 			: params.requireSession;
-		if (usesRequestMetadata && request.method === 'server/discover')
-			return {
-				payload: {
-					jsonrpc: '2.0',
-					id: request.id,
-					result: {
-						supportedVersions: [
-							...SUPPORTED_PROTOCOL_VERSIONS,
-						],
-						capabilities: {
-							tools: {},
-							prompts: {},
-							resources: {},
-						},
-					},
-				},
-			};
 		if (
 			(usesRequestMetadata &&
 				[
@@ -155,6 +139,48 @@ const createMcpRequestRouter = (
 			return await handleInitialize(request, sessionId);
 		const invalid = requireSession(sessionId, request.id, request.method);
 		if (invalid) return invalid;
+		const bodyParams = recordOf(request.params);
+		if (
+			!usesRequestMetadata &&
+			bodyParams &&
+			'_meta' in bodyParams &&
+			!legacyRequestMetadataType.allows(bodyParams._meta)
+		)
+			return createInvalidParamsError(request.id, 'Malformed request metadata');
+		// Continuations need an end-to-end interaction path, which is not yet
+		// implemented. Do not silently turn a continuation into a fresh operation.
+		if (
+			bodyParams &&
+			('requestState' in bodyParams || 'inputResponses' in bodyParams)
+		)
+			return createInvalidParamsError(
+				request.id,
+				'Interactive continuations are not supported',
+			);
+		if (bodyParams && 'task' in bodyParams && protocolVersion !== '2025-11-25')
+			return createInvalidParamsError(
+				request.id,
+				'Task augmentation is not supported by this protocol revision',
+			);
+		// November 2025 requires peers without task capabilities to ignore task
+		// augmentation and execute normally. Only supported fields are dispatched.
+		if (usesRequestMetadata && request.method === 'server/discover')
+			return {
+				payload: {
+					jsonrpc: '2.0',
+					id: request.id,
+					result: {
+						supportedVersions: [
+							...SUPPORTED_PROTOCOL_VERSIONS,
+						],
+						capabilities: {
+							tools: {},
+							prompts: {},
+							resources: {},
+						},
+					},
+				},
+			};
 
 		const success = (result: Record<string, unknown>): RouteResult => ({
 			payload: {
@@ -199,6 +225,7 @@ const createMcpRequestRouter = (
 				const args = {
 					name: callParams.name,
 					args: callParams.arguments ?? {},
+					metadata: recordOf(callParams._meta),
 					mirroredHeaders,
 					clientProtocolVersion:
 						protocolVersion !== undefined && isProtocolVersion(protocolVersion)
@@ -221,6 +248,7 @@ const createMcpRequestRouter = (
 				return success(
 					await handlers.readResource({
 						uri: resourceParams.uri,
+						metadata: recordOf(resourceParams._meta),
 						mirroredHeaders,
 					}),
 				);

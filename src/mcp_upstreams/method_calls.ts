@@ -125,6 +125,7 @@ const createMcpUpstreamOperations = (
 						{
 							name: toolName,
 							arguments: args,
+							_meta: callParams.metadata,
 						},
 						undefined,
 						{
@@ -184,6 +185,7 @@ const createMcpUpstreamOperations = (
 					{
 						name: promptName,
 						arguments: args,
+						_meta: promptParams.metadata,
 					},
 					{
 						timeout: server.serverConfig.timeout,
@@ -228,6 +230,7 @@ const createMcpUpstreamOperations = (
 				client.readResource(
 					{
 						uri,
+						_meta: resourceParams.metadata,
 					},
 					{
 						timeout: server.serverConfig.timeout,

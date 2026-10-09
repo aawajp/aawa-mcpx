@@ -611,20 +611,38 @@ class ProtocolClient {
 		const id = ++this.sequence;
 		const usesRequestMetadata =
 			this.protocolVersion === CURRENT_PROTOCOL_VERSION;
-		const bodyParams = usesRequestMetadata
-			? {
-					...params,
-					_meta: {
-						...recordOf(params._meta),
-						[PROTOCOL_VERSION_META]: this.protocolVersion,
-						[CLIENT_INFO_META]: {
-							name: 'aawa-mcpx',
-							version: '1.0.0',
-						},
-						[CLIENT_CAPABILITIES_META]: {},
-					},
-				}
-			: params;
+		// Preserve application/vendor metadata, but never carry another hop's
+		// protocol identity or operation handles into this backend connection.
+		// This gateway does not relay progress/log notifications or implement tasks
+		// and subscriptions, so it cannot opt backend requests into those flows.
+		// Metadata was validated at the public boundary; adaptation is not validation.
+		const metadata = {
+			...recordOf(params._meta),
+		};
+		for (const key of [
+			PROTOCOL_VERSION_META,
+			CLIENT_INFO_META,
+			CLIENT_CAPABILITIES_META,
+			SERVER_INFO_META,
+			'progressToken',
+			'io.modelcontextprotocol/logLevel',
+			'io.modelcontextprotocol/subscriptionId',
+			'io.modelcontextprotocol/related-task',
+		])
+			delete metadata[key];
+		if (usesRequestMetadata) {
+			metadata[PROTOCOL_VERSION_META] = this.protocolVersion;
+			metadata[CLIENT_INFO_META] = {
+				name: 'aawa-mcpx',
+				version: '1.0.0',
+			};
+			metadata[CLIENT_CAPABILITIES_META] = {};
+		}
+		const bodyParams = {
+			...params,
+		};
+		delete bodyParams._meta;
+		if (Object.keys(metadata).length > 0) bodyParams._meta = metadata;
 		try {
 			const response = await this.send(
 				{
@@ -818,6 +836,7 @@ class ProtocolClient {
 		params: {
 			name: string;
 			arguments?: Record<string, unknown>;
+			_meta?: Record<string, unknown>;
 		},
 		_schema?: unknown,
 		options?: RequestOptions,
@@ -828,6 +847,7 @@ class ProtocolClient {
 		params: {
 			name: string;
 			arguments?: Record<string, string>;
+			_meta?: Record<string, unknown>;
 		},
 		options?: RequestOptions,
 	): Promise<GetPromptResult> {
@@ -836,6 +856,7 @@ class ProtocolClient {
 	async readResource(
 		params: {
 			uri: string;
+			_meta?: Record<string, unknown>;
 		},
 		options?: RequestOptions,
 	): Promise<ReadResourceResult> {

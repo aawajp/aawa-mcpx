@@ -36,6 +36,15 @@ const clientCapabilitiesType = type({
 	'[string]': 'unknown',
 }).and(jsonObjectType);
 
+// Legacy metadata is optional and has no per-request protocol envelope. Validate
+// it at dispatch only; the modern HTTP boundary already validates its metadata.
+const legacyRequestMetadataType = type({
+	'progressToken?': 'string | number.integer',
+	'[string]': 'unknown',
+})
+	.and(jsonObjectType)
+	.narrow((value) => Object.keys(value).every((key) => metadataKey.test(key)));
+
 const requestMetadataType = type({
 	[PROTOCOL_VERSION_META]: 'string',
 	[CLIENT_CAPABILITIES_META]: clientCapabilitiesType,
@@ -56,10 +65,10 @@ const requestMetadataType = type({
 	}).and(jsonObjectType),
 	'io.modelcontextprotocol/logLevel?':
 		"'debug' | 'info' | 'notice' | 'warning' | 'error' | 'critical' | 'alert' | 'emergency'",
-	'progressToken?': 'string | number',
+	'progressToken?': 'string | number.integer',
 	'[string]': 'unknown',
 })
 	.and(jsonObjectType)
 	.narrow((value) => Object.keys(value).every((key) => metadataKey.test(key)));
 
-export { requestMetadataType };
+export { legacyRequestMetadataType, requestMetadataType };

@@ -57,6 +57,7 @@ type CallToolParams = {
 	serverName: string;
 	toolName: string;
 	args: Record<string, unknown>;
+	metadata?: Record<string, unknown>;
 	clientProtocolVersion?: ProtocolVersion;
 	mirroredHeaders?: Record<string, string>;
 };
@@ -65,12 +66,14 @@ type GetPromptParams = {
 	serverName: string;
 	promptName: string;
 	args: Record<string, string>;
+	metadata?: Record<string, unknown>;
 	mirroredHeaders?: Record<string, string>;
 };
 
 type ReadResourceParams = {
 	serverName: string;
 	uri: string;
+	metadata?: Record<string, unknown>;
 	mirroredHeaders?: Record<string, string>;
 };
 

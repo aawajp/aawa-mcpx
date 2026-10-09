@@ -208,6 +208,12 @@ own recognized headers. Client capabilities validate once per request and remain
 separate from backend capabilities. [HTTP metadata and headers](README.md#modern-http-metadata-and-headers)
 defines the version boundaries, tool quarantine, encoding, and forwarding policy.
 
+Direct calls carry validated `_meta` through dispatch. `ProtocolClient.rpc`
+copies application fields and rebuilds backend context without revalidation or
+mutating the client request. Unimplemented notification/task/subscription context
+does not cross that boundary; [request metadata forwarding](README.md#request-metadata-forwarding)
+defines the legacy task exception and unsupported-option policy.
+
 Tool execution failures remain `isError` results; lookup, transport, malformed
 response, and gateway failures use protocol errors. The response boundary adapts
 codes/statuses to the client revision, recovered from the retained 2025 session

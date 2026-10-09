@@ -36,6 +36,7 @@ type CreateHandlersParams = {
 type CallToolHandlerParams = {
 	name: string;
 	args: Record<string, unknown>;
+	metadata?: Record<string, unknown>;
 	clientProtocolVersion?: ProtocolVersion;
 	mirroredHeaders?: Record<string, string>;
 };
@@ -43,11 +44,13 @@ type CallToolHandlerParams = {
 type GetPromptHandlerParams = {
 	name: string;
 	args: Record<string, unknown>;
+	metadata?: Record<string, unknown>;
 	mirroredHeaders?: Record<string, string>;
 };
 
 type ReadResourceHandlerParams = {
 	uri: string;
+	metadata?: Record<string, unknown>;
 	mirroredHeaders?: Record<string, string>;
 };
 
@@ -156,6 +159,7 @@ const createHandlers = (params: CreateHandlersParams) => {
 				serverName: parsed.serverName,
 				toolName: parsed.originalName,
 				args,
+				metadata: request.metadata,
 				clientProtocolVersion: request.clientProtocolVersion,
 				mirroredHeaders: request.mirroredHeaders,
 			});
@@ -218,6 +222,7 @@ const createHandlers = (params: CreateHandlersParams) => {
 			serverName: parsed.serverName,
 			promptName: parsed.originalName,
 			args: args as Record<string, string>,
+			metadata: request.metadata,
 			mirroredHeaders: request.mirroredHeaders,
 		});
 		return {
@@ -258,6 +263,7 @@ const createHandlers = (params: CreateHandlersParams) => {
 		const result = await mcpUpstreamManager.readResource({
 			serverName: parsed.serverName,
 			uri: parsed.originalUri,
+			metadata: request.metadata,
 			mirroredHeaders: request.mirroredHeaders,
 		});
 		return {

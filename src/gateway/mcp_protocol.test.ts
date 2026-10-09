@@ -117,6 +117,122 @@ const fixture = () => {
 };
 
 for (const version of SUPPORTED_PROTOCOL_VERSIONS)
+	test(`public ${version}: metadata reaches calls and unsupported options respect revision rules`, async () => {
+		const { route, manager } = fixture();
+		const callTool = mock(manager.callTool);
+		manager.callTool = callTool;
+		let session: string | null = null;
+		const send = async (
+			method: string,
+			fields: Record<string, unknown>,
+			_meta?: unknown,
+		) => {
+			const body = {
+				...fields,
+				...(_meta === undefined
+					? {}
+					: {
+							_meta,
+						}),
+			};
+			const headers =
+				version === CURRENT_PROTOCOL_VERSION
+					? protocolHeaders(method, body)
+					: new Headers({
+							'MCP-Protocol-Version': version,
+						});
+			if (session) headers.set('Mcp-Session-Id', session);
+			return route.POST(
+				new Request('http://localhost/mcp', {
+					method: 'POST',
+					headers,
+					body: JSON.stringify({
+						jsonrpc: '2.0',
+						id: 1,
+						method,
+						params: body,
+					}),
+				}),
+			);
+		};
+		if (version !== CURRENT_PROTOCOL_VERSION) {
+			const initialized = await send('initialize', {
+				protocolVersion: version,
+				capabilities: {},
+				clientInfo: {
+					name: 'metadata',
+					version: '1',
+				},
+			});
+			session = initialized.headers.get('Mcp-Session-Id');
+		}
+		const metadata = {
+			'com.example/context': {
+				locale: 'ja',
+			},
+			progressToken: 0,
+			...(version === CURRENT_PROTOCOL_VERSION
+				? {
+						[PROTOCOL_VERSION_META]: version,
+						[CLIENT_CAPABILITIES_META]: {},
+					}
+				: {}),
+		};
+		const fields = {
+			name: 'backend__echo',
+			arguments: {},
+		};
+		expect((await send('tools/call', fields, metadata)).status).toBe(200);
+		expect(callTool.mock.calls[0]?.[0]).toMatchObject({
+			metadata,
+		});
+		const continued = await send(
+			'tools/call',
+			{
+				...fields,
+				requestState: null,
+			},
+			metadata,
+		);
+		expect((await continued.json()).error.code).toBe(-32602);
+		if (version === CURRENT_PROTOCOL_VERSION) {
+			const discovery = await send(
+				'server/discover',
+				{
+					inputResponses: [],
+				},
+				metadata,
+			);
+			expect(discovery.status).toBe(400);
+			expect((await discovery.json()).error.code).toBe(-32602);
+		}
+		const task = await send(
+			'tools/call',
+			{
+				...fields,
+				task: {
+					ttl: 60000,
+				},
+			},
+			metadata,
+		);
+		const reply = await task.json();
+		if (version === '2025-11-25') {
+			expect(reply.result).toBeDefined();
+			expect(callTool).toHaveBeenCalledTimes(2);
+		} else {
+			expect(reply.error.code).toBe(-32602);
+			expect(callTool).toHaveBeenCalledTimes(1);
+		}
+		const invalid = await send('tools/call', fields, {
+			...metadata,
+			progressToken: 1.5,
+		});
+		expect((await invalid.json()).error.code).toBe(-32602);
+		expect(callTool).toHaveBeenCalledTimes(version === '2025-11-25' ? 2 : 1);
+	});
+
+for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 	test(`public ${version}: lifecycle, list and call`, async () => {
 		const { route, manager, refreshCount } = fixture();
 		let session: string | null = null;
@@ -718,6 +834,10 @@ test('modern metadata validates per request without requiring or inheriting opti
 		{
 			...valid,
 			progressToken: [],
+		},
+		{
+			...valid,
+			progressToken: 1.5,
 		},
 		{
 			...valid,

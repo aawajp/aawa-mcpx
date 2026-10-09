@@ -277,11 +277,6 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 					return fail(-32020, 'Missing or mismatched Mcp-Method');
 				const bodyParams = recordOf(message.params);
 				if (
-					bodyParams &&
-					('requestState' in bodyParams || 'inputResponses' in bodyParams)
-				)
-					return fail(-32602, 'Interactive continuations are not supported');
-				if (
 					[
 						'tools/call',
 						'prompts/get',
