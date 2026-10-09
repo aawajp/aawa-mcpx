@@ -5,21 +5,23 @@ Model Context Protocol (MCP) gateway that aggregates multiple backend MCP server
 For architecture and source layout details, see [DESIGN.md](DESIGN.md).
 
 ## Prerequisites
+
 - Bun 1.4 or newer
 - `mcp.json` in the project root with backend definitions
 
 ## Install
+
 ```bash
 bun install
 ```
 
 ## Configuration
 
-The gateway reads backend server definitions from the `mcpServers` object in `mcp.json` at startup. Runtime state is held in memory; dashboard changes overwrite `mcp.json`, and external edits require a restart.
+Backends are defined in `mcp.json` under `mcpServers`. The file is read once at startup; dashboard changes overwrite it from memory without merging external edits. Restart to load external changes.
 
 ### HTTP transport (streamable HTTP)
 
-HTTP backends must expose MCP Streamable HTTP. Streamable HTTP `POST` responses may use JSON or SSE. aawa-mcpx disables the optional standalone `GET` event stream when connecting to backends because catalogs are refreshed through explicit requests and health checks.
+HTTP backends must expose Streamable HTTP with JSON or SSE `POST` responses. The optional standalone `GET` event stream is disabled; explicit requests and health checks refresh catalogs.
 
 ```json
 {
@@ -43,13 +45,6 @@ HTTP backends must expose MCP Streamable HTTP. Streamable HTTP `POST` responses 
 | `type` | `"http"` | Yes | Transport type |
 | `url` | string | Yes | Backend MCP server URL |
 | `headers` | object | No | Literal custom header values |
-| `timeout` | number | No | Request timeout in ms (default: 10000) |
-| `enabled` | boolean | No | Connect to and expose this backend (default: true) |
-| `trafficLimit` | number | No | Rate used to space requests (default: 1 request/s; concurrent calls are not serialized) |
-| `enabledTools` | string[] | No | List of tool names exposed to MCP clients (auto-initialized on first tool fetch) |
-| `availableTools` | string[] | No | Tool names discovered from backend (server-managed; not for manual edits) |
-
-If `enabledTools` contains names not present in backend `tools/list`, the backend is marked unavailable with an action-required configuration error until settings are fixed.
 
 ### Stdio transport
 
@@ -77,11 +72,20 @@ If `enabledTools` contains names not present in backend `tools/list`, the backen
 | `args` | string[] | No | Command line arguments |
 | `env` | object | No | Literal environment variables passed to the process |
 | `cwd` | string | No | Working directory for the spawned process |
-| `timeout` | number | No | Request timeout in ms (default: 10000) |
-| `enabled` | boolean | No | Start and expose this backend (default: true) |
-| `trafficLimit` | number | No | Rate used to space requests (default: 1 request/s; concurrent calls are not serialized) |
-| `enabledTools` | string[] | No | List of tool names exposed to MCP clients (auto-initialized on first tool fetch) |
-| `availableTools` | string[] | No | Tool names discovered from backend (server-managed; not for manual edits) |
+
+### Shared backend options
+
+These optional fields apply to both transports:
+
+| Field | Type | Behavior |
+| --- | --- | --- |
+| `timeout` | number | Request timeout in ms; default `10000` |
+| `enabled` | boolean | Connect/start and expose the backend; default `true` |
+| `trafficLimit` | number | Request spacing rate; default 1 request/s; concurrent calls are not serialized |
+| `enabledTools` | string[] | Tools exposed to clients; initialized on first tool fetch if omitted |
+| `availableTools` | string[] | Discovered tools; server-managed, not for manual edits |
+
+Unknown names in `enabledTools` make the backend unavailable with an action-required configuration error until corrected.
 
 `mcp.json` is local configuration and is ignored by Git. Keep backend credentials there rather than in tracked files.
 
@@ -117,7 +121,7 @@ Docker Compose mounts `mcp.json` for configuration and tool-state updates, mount
 
 ### Apple container CLI
 
-Apple's `container` CLI can run the same image without Docker Desktop, OrbStack, or another Docker-compatible runtime.
+Apple's `container` CLI runs the same image without a Docker-compatible runtime.
 
 ```bash
 container build -t local/aawa-mcpx:latest .
@@ -127,41 +131,98 @@ container create --env-file=.env --user=1000:1000 --publish=4567:4567 --volume=.
 container start aawa-mcpx
 ```
 
-Create `.env` from `.env.example` before using `--env-file=.env`. The `mcp.json` file and `db` directory are mounted read-write. Tool exposure changes persist in `mcp.json`; traffic history is reset when the gateway starts.
+Create `.env` from `.env.example` first. Both configuration and database mounts are read-write.
 
-The MCP endpoint is served at `http://localhost:<PORT>/mcp` (default port `4567` if `PORT` is unset).
-The gateway supports MCP protocol versions `2026-07-28`, `2025-11-25`, and `2025-06-18` on both protocol boundaries. Requests using `2026-07-28` carry their version and capabilities in per-request metadata and require the matching HTTP protocol, method, and name headers. Clients using `2025-11-25` or `2025-06-18` initialize a session; an unsupported initialization proposal receives `2025-11-25`. `2025-03-26` is no longer an operational version.
+The endpoint is `http://localhost:<PORT>/mcp`; `PORT` defaults to `4567`.
 
-Backends select the highest mutually supported version on their first successful connection. The selection is retained across reconnects and enable/disable changes until the gateway restarts. Connections using `2025-11-25` or `2025-06-18` initialize a fresh session on reconnect using that selection. Backends using `2026-07-28` use discovery for health checks. Backend HTTP responses may be JSON or SSE; stdio uses newline-delimited JSON-RPC.
+## Protocol behavior
 
-Protocol negotiation failures stop automatic reconnects and appear in the backend UI with the failed method, attempted revision, and available HTTP/JSON-RPC error codes. Disable and re-enable the backend to retry; restart the gateway if its retained protocol selection needs to change.
+Both client and backend connections support `2026-07-28`, `2025-11-25`, and `2025-06-18`. The newest revision uses per-request version/capability metadata and matching HTTP protocol, method, and applicable name headers. The 2025 revisions initialize sessions; unsupported initialization proposals receive `2025-11-25`. `2025-03-26` is not supported operationally.
+
+Backend and client revisions are independent. Each backend selects the highest mutually supported revision on its first successful connection and retains it across reconnects and toggles until gateway restart. The 2025 backends initialize afresh on reconnect; `2026-07-28` backends use discovery for health checks. Stdio carries newline-delimited JSON-RPC.
+
+Negotiation failures stop automatic retries. The UI shows the failed method, attempted revision, and available HTTP/JSON-RPC codes. Disable/re-enable to retry; restart to change a retained revision.
 
 ### Network recovery
 
-Enabled backends recover automatically after network interruptions, request
-timeouts, temporary HTTP failures (`408`, `429`, or `5xx`), and lost initialized
-HTTP sessions. These failures remain retryable even during the handshake.
+Enabled backends automatically recover from network interruptions, timeouts,
+HTTP `408`/`429`/`5xx`, and lost initialized HTTP sessions, including during handshakes.
+Jittered retry delays are **5–10**, **10–20**, **20–40**, then **30–60 seconds**, measured
+after each attempt finishes. Reconnection and catalog refresh reset the backoff;
+concurrent reconnects share one attempt. Disable or shutdown cancels recovery.
 
-Reconnect delays use exponential backoff with jitter: **5–10 seconds**, then
-**10–20**, **20–40**, and **30–60 seconds** for subsequent failures. Each delay
-starts after the preceding attempt finishes. Successful reconnection and catalog
-refresh reset the backoff. Recovery retains the selected protocol, initializes a
-fresh session when needed, and refreshes catalogs. Concurrent reconnects share
-one attempt; disabling a backend or shutting down stops recovery.
-
-Successful MCP requests suppress health probes for **60 seconds**. Idle backends
-are checked on the next 10-second scheduler tick, with a maximum 9-second probe
-timeout (or the configured timeout if shorter). Two consecutive failed probes
-mark the backend down. Application request transport failures trigger recovery
-immediately. Recovery probes only configured backends; it sends no separate
-internet-connectivity pings. A failed tool call is returned without automatic
-replay because its side effects may already have completed.
+Successful requests suppress probes for **60 seconds**. Idle probes run on the next
+10-second tick, time out after at most 9 seconds (or the configured timeout if
+shorter), and mark a backend down after two consecutive failures. Application
+transport failures trigger recovery immediately. Probes target configured backends,
+not separate internet-connectivity checks. Failed tool calls are never replayed
+automatically because their side effects may have completed.
 
 ### Session management
 
-For clients using `2025-11-25` or `2025-06-18`, the gateway creates a unique session ID on initialization. Sessions are stored in memory and are cleared when the gateway restarts. Requests using those revisions with an unknown session ID return HTTP 404 and must initialize a new session. Requests using `2026-07-28` do not create or require sessions; the dashboard tracks all clients by reported name and version, regardless of protocol revision. It shows first seen, last seen, and the most recently observed protocol version, without session IDs or connection status. Client activity is held in bounded memory and cleared on gateway restart. This local-use identity convention does not distinguish separate instances reporting the same name and version.
+The gateway issues session IDs for 2025 clients; unknown IDs return HTTP 404 and
+require reinitialization. Sessions exist only in memory. The `2026-07-28` path
+neither creates nor requires sessions.
 
-The gateway retains up to `MCP_MAX_SESSIONS_PER_CLIENT` sessions per client name/version pair (default `10`, positive integer). When a successful initialization exceeds this limit, the oldest session for that pair is deleted. Other clients are unaffected. Sessions do not expire on a timer; explicit DELETE removes a session immediately. Invalid configuration values fall back to the default.
+`MCP_MAX_SESSIONS_PER_CLIENT` is a positive integer, default `10`; invalid values
+use that default. Successful initialization beyond the limit removes the oldest
+session for that name/version pair across both 2025 revisions, without affecting
+other clients. Sessions have no timed expiry; DELETE removes one immediately.
+Gateway restart clears sessions and client activity.
+
+### Protocol feature scope
+
+Tools, prompts, and resources work across supported revisions. Interactive
+continuations, sampling, elicitation, subscriptions, and tasks are not advertised.
+Backend catalog pages are fully materialized; stale `2026-07-28` catalogs refresh
+on access with concurrent refresh deduplication. Backend credentials define their
+authorization context. Public `2026-07-28` catalogs carry private, zero-TTL cache hints.
+The gateway owns dispatch and transports; the SDK supplies types, not client/server implementations.
+
+Tool results remove only text blocks whose entire JSON value equals
+`structuredContent`, ignoring formatting and object key order. Independent text,
+JSON subsets or extra fields, images, audio, and resources remain. The required
+`content` array may become `[]`. MCP responses and dashboard testing share this
+policy; backend traffic retains the original result.
+
+Omitting duplicate text deliberately departs from the spec's
+[serialized-JSON `SHOULD` recommendation](https://modelcontextprotocol.io/specification/2025-06-18/server/tools#structured-content)
+to avoid sending data twice. Structured output does not replace independent text
+(see the [array-output example](https://modelcontextprotocol.io/specification/2026-07-28/server/tools#output-schema)).
+Empty-array compatibility still needs confirmation in each consuming application.
+
+### Output schemas
+
+Provider `outputSchema` definitions appear in catalogs and the dashboard. Ajv and
+`ajv-formats` (peer dependencies) validate successful results using JSON Schema
+2020-12 by default, or declared draft-07/2019-09. ArkType validates application shapes.
+
+Missing `structuredContent` is recovered from complete JSON text blocks up to
+2 MiB each: use a single distinct value even if it mismatches the schema; with
+multiple values, require a unique schema match or an array schema that validates
+the ordered JSON items (including duplicates). Ambiguous/non-JSON content stays unchanged.
+Advertised schemas cause warnings for missing or recovered structured output;
+recovered results use the same duplicate-removal policy.
+
+Mismatches, invalid schemas, unsupported dialects, and unresolved references log
+warnings with backend/tool identifiers while returning results normally. This
+deliberately tolerates violations of the spec's
+[conforming-result `MUST` rule](https://modelcontextprotocol.io/specification/2026-07-28/server/tools#output-schema);
+an advertised schema therefore does not guarantee conformity. Validation never
+coerces data, inserts defaults, or removes properties, and skips `isError: true`.
+Limits are 256 KiB per schema, 10,000 visited values, and 64 nesting levels;
+exceeding them warns. External references are never fetched automatically, following
+the [MCP JSON Schema requirements](https://modelcontextprotocol.io/specification/2026-07-28/basic#json-schema-usage).
+
+| Client revision | Structured output | Adaptation |
+| --- | --- | --- |
+| [2025-06-18](https://modelcontextprotocol.io/specification/2025-06-18/server/tools#structured-content), [2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25/server/tools#structured-content) | JSON object | Wrap non-objects as `{ "value": ... }`; schemas permitting non-object output wrap both schema and result, including objects in unions |
+| [2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/server/tools#structured-content) | Any JSON value | Preserve objects, arrays, strings, numbers, booleans, and `null` |
+
+`false`, `0`, `""`, and `null` are present values. Object-only schemas and matching
+objects stay unchanged across revisions; the dashboard retains provider shapes.
+The SDK's object-only `CallToolResult` requires a wider gateway type, with client
+restrictions applied at the response boundary.
 
 ## Endpoints
 
@@ -183,98 +244,20 @@ The gateway retains up to `MCP_MAX_SESSIONS_PER_CLIENT` sessions per client name
 
 Traffic is stored in `db/traffic.db` via Bun SQLite and is reset on gateway startup. The debug UI reads from this database.
 
-All non-MCP API endpoints are namespaced under `/api/*` to avoid collisions with UI routes.
+Non-MCP APIs use `/api/*` to avoid UI route collisions.
 
 ## UI behavior
 
-- Main page defaults to **Backends** and includes a **Tester** view for tool invocation without raw JSON.
-- Backends and tools are shown in alphabetical order for stable scanability.
-- Backend controls connect or disconnect each backend and persist its `enabled` value.
-- A disabled backend shows its configured enabled tools as inactive; their exposure settings are preserved when the backend is re-enabled.
-- Per-backend tool toggles (`Expose to clients`) are managed directly from the backend tool list.
-- Tool descriptions, input schemas, and provider output schemas are folded by default.
-- Protocol lists every supported revision, and each backend shows its selected protocol separately from its software version.
-- Debug UI is served at `/debug`, with separate full-width **Client traffic** and **Backend traffic** tabs. Backend traffic has an alphabetical selector. Filters and pages survive tab changes; **Show all** is the default.
-
-### Protocol feature scope
-
-Core tools, prompts, and resources work across all three supported revisions. Interactive continuations, sampling, elicitation, subscriptions, and tasks are not advertised. Catalog results sent using `2026-07-28` include private, zero-TTL cache hints. Backend catalog pages are fully materialized, with stale `2026-07-28` catalogs refreshed on access and simultaneous refreshes deduplicated. Backend credentials define the catalog authorization context. When forwarding scalar, array, or null structured tool content to clients using `2025-11-25` or `2025-06-18`, it is represented as `{ "value": ... }` to preserve the data in the object shape required by those revisions.
-
-The gateway owns protocol negotiation, dispatch, and HTTP/stdio transport behavior. The installed SDK supplies TypeScript types; its client/server implementations are not used.
-
-Tool results retain `structuredContent` and remove only text blocks whose entire
-text parses as JSON equal to that structured value, ignoring JSON formatting and
-object key order. Other text, images, audio, resource links, and embedded resources
-remain in `content`. The required `content` field becomes `[]` when every block
-is a duplicate. This applies to MCP responses and dashboard tool testing; backend
-traffic records retain the original response.
-
-This deliberately departs from the spec's `SHOULD` recommendation to also send
-[serialized JSON text for backwards compatibility](https://modelcontextprotocol.io/specification/2025-06-18/server/tools#structured-content).
-The gateway supports revisions with structured output and avoids transmitting
-the same JSON twice. Presence of `structuredContent` does not imply that all text
-is redundant: independent text, JSON subsets, and JSON containing additional fields
-are preserved. The [spec's array-output example](https://modelcontextprotocol.io/specification/2026-07-28/server/tools#output-schema)
-includes a readable text summary alongside structured data. Client compatibility
-with an empty content array still needs confirmation in each consuming application.
-
-### Output schemas
-
-The gateway exposes provider `outputSchema` definitions in the tool catalog and
-dashboard. Successful tool results are validated using JSON Schema 2020-12 by
-default, or the declared draft-07 or 2019-09 dialect. Ajv and `ajv-formats` are
-declared as peer dependencies; ArkType continues to validate application shapes.
-
-If `structuredContent` is missing, the gateway attempts to recover it from complete
-JSON text blocks. A single distinct JSON value is recovered even if it does not
-match the schema. For multiple values, the schema must identify a unique match;
-an array schema can also recover an ordered array of JSON text blocks. Ambiguous
-or non-JSON content is retained without guessing. Recovery inspects text blocks
-up to 2 MiB each and reports missing or recovered structured output when a schema
-is advertised. Duplicate removal then follows the same complete-value comparison.
-
-Schema mismatches, invalid schemas, unsupported dialects, and unresolved references
-produce structured warnings with backend and tool identifiers. Responses still
-return normally; validation does not coerce values, insert defaults, or remove
-properties. Tool execution errors (`isError: true`) are not checked against the
-success schema. External references never trigger automatic network requests.
-Schema validation is bounded to 256 KiB, 10,000 visited values, and 64 levels of
-nesting; schemas exceeding those limits generate a warning.
-
-For `2025-06-18` and `2025-11-25` clients, schemas that permit non-object output
-are wrapped with a `value` property along with their structured results, including
-object values allowed by a union schema. This keeps the advertised schema aligned
-with the object-only result shape of those revisions. Modern clients and the
-dashboard retain the provider's original schema and result shape.
-
-| Client revision | Allowed `structuredContent` on the wire | Gateway adaptation |
-| --- | --- | --- |
-| `2025-06-18` | JSON object | Wrap non-object values as `{ "value": ... }`; wrap both schema and result when the schema permits non-object output |
-| `2025-11-25` | JSON object | Same adaptation as `2025-06-18` |
-| `2026-07-28` | Any JSON value | Preserve objects, arrays, strings, numbers, booleans, and `null` |
-
-Backend and client revisions are negotiated independently. A result from a modern
-backend is adapted to the requesting client's revision; an object from an older
-backend remains an object for a modern client. The adapter treats `false`, `0`,
-`""`, and `null` as present values. Object-only schemas and their matching object
-results are preserved on every revision. The installed SDK's `CallToolResult`
-still types structured output as an object, so the gateway uses its own wider
-result type and applies these restrictions at the client response boundary.
-See the structured-content definitions for
-[2025-06-18](https://modelcontextprotocol.io/specification/2025-06-18/server/tools#structured-content),
-[2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25/server/tools#structured-content),
-and [2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/server/tools#structured-content).
-
-The [MCP output-schema contract](https://modelcontextprotocol.io/specification/2026-07-28/server/tools#output-schema)
-says servers `MUST` return conforming structured results. The gateway deliberately
-tolerates provider violations to preserve usable backend data: it reports a warning
-and returns the result instead of failing the call. Consequently, advertising an
-output schema is not a guarantee that every forwarded provider result conforms.
-Reference handling follows the [MCP JSON Schema requirements](https://modelcontextprotocol.io/specification/2026-07-28/basic#json-schema-usage).
+- **Backends** is the default view; **Tester** invokes tools without raw JSON. Backends and tools sort alphabetically.
+- Backend toggles persist `enabled`; `Expose to clients` controls tool exposure. Disabled backends retain exposure settings and show enabled tools as inactive.
+- Descriptions and input/output schemas start folded. Protocol lists supported revisions; backend protocol and software versions are shown separately.
+- Clients group by reported name/version, showing first/last seen and latest protocol. This bounded, in-memory history survives session closure, merges identically named instances, and exposes no session IDs or connection status.
+- `/debug` has full-width **Client traffic** and **Backend traffic** tabs, an alphabetical backend selector, and persistent filters/pages across tabs. **Show all** is the default.
 
 ## Using the gateway
 
 Point your MCP client to the gateway:
+
 ```json
 {
   "mcpServers": {
@@ -289,6 +272,7 @@ Point your MCP client to the gateway:
 ### Namespacing
 
 Tools, prompts, and resources are namespaced to avoid conflicts across backends:
+
 - Tools/Prompts: `serverName__itemName` (double underscore separator)
 - Resources: `serverName://original/uri`
 
