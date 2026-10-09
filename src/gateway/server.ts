@@ -10,16 +10,8 @@ import { createClientActivityTracker } from '@/gateway/client_activity';
 import type { OutgoingJsonRpcResponse } from '@/gateway/json_rpc';
 import { createHandlers } from '@/gateway/mcp_handlers';
 import { createMcpHttpRoute } from '@/gateway/mcp_http_route';
-import {
-	namespaceTool,
-	parsePrefix,
-	parseResourceUri,
-} from '@/gateway/mcp_namespaces';
-import {
-	createMcpRequestRouter,
-	namedArgumentsParamsType,
-	resourceReadParamsType,
-} from '@/gateway/mcp_request_router';
+import { namespaceTool } from '@/gateway/mcp_namespaces';
+import { createMcpRequestRouter } from '@/gateway/mcp_request_router';
 import { createMcpSessionManager } from '@/gateway/mcp_session';
 import { createUiRoutes } from '@/gateway/ui_routes';
 import type { McpUpstreamManager } from '@/mcp_upstreams/types';
@@ -30,6 +22,7 @@ import { errorMessage } from '@/shared/common';
 import {
 	CLIENT_INFO_META,
 	CURRENT_PROTOCOL_VERSION,
+	recordOf,
 	SUPPORTED_PROTOCOL_VERSIONS,
 } from '@/shared/mcp_protocol';
 
@@ -276,33 +269,15 @@ const startServer = async (
 	): string => {
 		let message = `client=${mcpSessions.formatClient(sessionId, params)}`;
 		message += `, method=${method}`;
-		if (method === 'tools/call' && namedArgumentsParamsType.allows(params)) {
-			const toolName = params.name;
-			try {
-				const { serverName, originalName } = parsePrefix(toolName);
-				message += `, backend=${serverName}, tool=${originalName}`;
-			} catch {
-				message += `, tool=${toolName}`;
-			}
-		}
-		if (method === 'prompts/get' && namedArgumentsParamsType.allows(params)) {
-			const promptName = params.name;
-			try {
-				const { serverName, originalName } = parsePrefix(promptName);
-				message += `, backend=${serverName}, prompt=${originalName}`;
-			} catch {
-				message += `, prompt=${promptName}`;
-			}
-		}
-		if (method === 'resources/read' && resourceReadParamsType.allows(params)) {
-			const uri = params.uri;
-			try {
-				const { serverName, originalUri } = parseResourceUri(uri);
-				message += `, backend=${serverName}, resource=${originalUri}`;
-			} catch {
-				message += `, resource=${uri}`;
-			}
-		}
+		// Log public identifiers directly. Routing validates/decodes them once;
+		// logging runs at several points and must not repeat request validation.
+		const fields = recordOf(params);
+		if (method === 'tools/call' && typeof fields?.name === 'string')
+			message += `, tool=${fields.name}`;
+		if (method === 'prompts/get' && typeof fields?.name === 'string')
+			message += `, prompt=${fields.name}`;
+		if (method === 'resources/read' && typeof fields?.uri === 'string')
+			message += `, resource=${fields.uri}`;
 		return message;
 	};
 

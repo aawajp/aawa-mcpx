@@ -208,7 +208,7 @@ const createMcpRequestRouter = (
 						request.id,
 						'Invalid resources/read params.',
 					);
-				const resourceParams = resourceReadParamsType.assert(request.params);
+				const resourceParams = request.params;
 				return success(
 					await handlers.readResource({
 						uri: resourceParams.uri,

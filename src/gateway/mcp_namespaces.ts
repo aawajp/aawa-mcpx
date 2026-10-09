@@ -1,14 +1,6 @@
 import type { Prompt, Resource, Tool } from '@modelcontextprotocol/sdk/types';
 
-type AddPrefixParams = {
-	serverName: string;
-	name: string;
-};
-
-type ParsePrefixResult = {
-	serverName: string;
-	originalName: string;
-};
+import { addPrefix, addResourcePrefix } from '@/shared/mcp_namespaces';
 
 type NamespaceToolParams = {
 	serverName: string;
@@ -23,33 +15,6 @@ type NamespacePromptParams = {
 type NamespaceResourceParams = {
 	serverName: string;
 	resource: Resource;
-};
-
-type ParseResourceUriResult = {
-	serverName: string;
-	originalUri: string;
-};
-
-const TOOL_SEPARATOR = '__';
-const RESOURCE_SEPARATOR = '://';
-
-const addPrefix = (params: AddPrefixParams): string => {
-	const { serverName, name } = params;
-	return `${serverName}${TOOL_SEPARATOR}${name}`;
-};
-
-const parsePrefix = (prefixedName: string): ParsePrefixResult => {
-	const [serverName, ...rest] = prefixedName.split(TOOL_SEPARATOR);
-	const originalName = rest.join(TOOL_SEPARATOR);
-
-	if (!serverName || !originalName) {
-		throw new Error(`Invalid prefixed name "${prefixedName}"`);
-	}
-
-	return {
-		serverName,
-		originalName,
-	};
 };
 
 const namespaceTool = (params: NamespaceToolParams): Tool => {
@@ -90,32 +55,12 @@ const namespaceResource = (params: NamespaceResourceParams): Resource => {
 
 	return {
 		...resource,
-		uri: `${serverName}${RESOURCE_SEPARATOR}${resource.uri}`,
+		uri: addResourcePrefix({
+			serverName,
+			uri: resource.uri,
+		}),
 		description,
 	};
 };
 
-const parseResourceUri = (uri: string): ParseResourceUriResult => {
-	const [serverName, ...rest] = uri.split(RESOURCE_SEPARATOR);
-	const originalUri = rest.join(RESOURCE_SEPARATOR);
-
-	if (!serverName || !originalUri) {
-		throw new Error(`Invalid resource URI "${uri}"`);
-	}
-
-	return {
-		serverName,
-		originalUri,
-	};
-};
-
-export {
-	addPrefix,
-	namespacePrompt,
-	namespaceResource,
-	namespaceTool,
-	type ParsePrefixResult,
-	type ParseResourceUriResult,
-	parsePrefix,
-	parseResourceUri,
-};
+export { namespacePrompt, namespaceResource, namespaceTool };

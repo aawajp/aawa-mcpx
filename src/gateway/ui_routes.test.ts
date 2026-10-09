@@ -1,8 +1,44 @@
 import { createUiRoutes } from '@/gateway/ui_routes';
 import type { McpUpstreamManager } from '@/mcp_upstreams/types';
 import type { TrafficStore } from '@/server/traffic_store';
+import { addPrefix } from '@/shared/mcp_namespaces';
 
 import { expect, test } from 'bun:test';
+
+test('dashboard toggles use the same escaped namespaces as the MCP catalog', async () => {
+	let toggled: unknown;
+	const routes = createUiRoutes({
+		buildOverview: () => ({}),
+		mcpUpstreamManager: {
+			async toggleTool(params: unknown): Promise<string[]> {
+				toggled = params;
+				return [
+					'_echo',
+				];
+			},
+		} as unknown as McpUpstreamManager,
+		shutdownSignal: new AbortController().signal,
+		trafficStore: {} as unknown as TrafficStore,
+	});
+	const response = await routes['/api/tools/toggle'].POST(
+		new Request('http://localhost/api/tools/toggle', {
+			method: 'POST',
+			body: JSON.stringify({
+				name: addPrefix({
+					serverName: 'backend__one_',
+					name: '_echo',
+				}),
+				enabled: true,
+			}),
+		}),
+	);
+	expect(response.status).toBe(200);
+	expect(toggled).toEqual({
+		serverName: 'backend__one_',
+		toolName: '_echo',
+		enabled: true,
+	});
+});
 
 test('backend refresh waits for fresh catalogs before returning the overview', async () => {
 	const started = Promise.withResolvers<void>();

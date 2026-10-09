@@ -161,6 +161,25 @@ fresh validators. External references never trigger network resolution.
 `shared/mcp_output_schema.ts` and the router wrap legacy schemas/results consistently;
 embedded schema resources preserve root-relative references and anchors.
 
+### 3.5 Namespace and resource routing
+
+The shared namespace codec keeps ordinary names readable and escapes ambiguous
+backend keys; the dashboard uses the same codec for tool toggles. Resource wrappers
+encode the entire original URI, preserving case, percent escapes, queries, and
+fragments without URL normalization. [Namespacing](README.md#namespacing) defines
+the public format and upgrade compatibility.
+
+Only MCP resource fields are wrapped: catalogs, read contents, tool links/embedded
+resources, and prompt embedded resources. Backend responses in traffic records and
+dashboard tests remain original. Reads decode once and route without requiring
+catalog membership: tool links need not occur in `resources/list`. Malformed routes
+and unknown/disabled backends return `-32602`; disconnected backends return
+`-32603`. Backend errors retain the existing client-version adaptation.
+
+The same codec applies to all supported revisions. Resource URI schemes must
+follow RFC 3986; the gateway uses a fixed scheme rather than backend names as
+schemes. See the [resource and tool contracts](#7-references).
+
 ## 4. Persistence
 
 | State | Storage and lifetime |
@@ -214,6 +233,7 @@ policy. Both 2025 revisions require object-shaped backend `structuredContent`;
 
 ## 7. References
 
+- Resource URI/read contracts: [2025-06-18](https://modelcontextprotocol.io/specification/2025-06-18/server/resources), [2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25/server/resources), [2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/server/resources). Tool resource links need not occur in catalogs: [2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25/server/tools#resource-links), [2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/server/tools#resource-links).
 - MCP 2026-07-28: [versioning](https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning), [HTTP binding](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http), [caching](https://modelcontextprotocol.io/specification/2026-07-28/server/utilities/caching).
 - Optional session IDs: [2025-06-18](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#session-management), [2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#session-management).
 - Tool-result contracts, JSON Schema references, and operational limits: [README protocol behavior](README.md#protocol-behavior).

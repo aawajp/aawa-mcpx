@@ -382,7 +382,14 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 					})
 				).json()
 			).result;
-			expect(result.content).toEqual(independentContent);
+			expect(result.content).toEqual([
+				...independentContent.slice(0, 3),
+				{
+					type: 'resource_link',
+					name: 'report',
+					uri: 'aawa-mcpx://resource/backend/file%3A%2F%2F%2Freport',
+				},
+			]);
 			expect(result._meta).toMatchObject({
 				trace: 'schema-test',
 			});

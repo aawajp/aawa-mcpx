@@ -1,4 +1,5 @@
 import { t } from '@/ui/i18n';
+import { addPrefix } from '@/shared/mcp_namespaces';
 import type { McpUpstreamStatus } from '@/shared/ui_api';
 import { JsonPreview } from '@/ui/components/JsonPreview';
 import { MetaDetails } from '@/ui/components/MetaDetails';
@@ -197,7 +198,7 @@ const BackendsSection = ({
 								tools={backend.tools.tools}
 								emptyLabel={t('list.empty.tools')}
 								renderAction={(tool) => {
-									const namespacedToolName = `${backend.serverName}__${tool.name}`;
+									const namespacedToolName = addPrefix({ serverName: backend.serverName, name: tool.name });
 									const enabled = isToolEnabled(namespacedToolName);
 									const pending = isToolPending(namespacedToolName);
 									return (

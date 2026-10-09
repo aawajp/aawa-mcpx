@@ -10,14 +10,18 @@ import {
 	namespacePrompt,
 	namespaceResource,
 	namespaceTool,
-	type ParsePrefixResult,
-	parsePrefix,
-	parseResourceUri,
 } from '@/gateway/mcp_namespaces';
 import { BackendRpcError } from '@/mcp_upstreams/protocol_client';
 import type { McpUpstreamManager } from '@/mcp_upstreams/types';
 import { logger } from '@/server/logger';
 import { errorMessage } from '@/shared/common';
+import {
+	addResourcePrefix,
+	type ParsePrefixResult,
+	type ParseResourceUriResult,
+	parsePrefix,
+	parseResourceUri,
+} from '@/shared/mcp_namespaces';
 import type { ProtocolVersion } from '@/shared/mcp_protocol';
 import type { ToolCallResult } from '@/shared/mcp_results';
 
@@ -116,12 +120,39 @@ const createHandlers = (params: CreateHandlersParams) => {
 		}
 
 		try {
-			return await mcpUpstreamManager.callTool({
+			const result = await mcpUpstreamManager.callTool({
 				serverName: parsed.serverName,
 				toolName: parsed.originalName,
 				args,
 				clientProtocolVersion: request.clientProtocolVersion,
 			});
+			// Only protocol resource references need routing. Text and structured
+			// output are backend data and must not be searched or rewritten for URIs.
+			return {
+				...result,
+				content: result.content.map((block) => {
+					if (block.type === 'resource_link')
+						return {
+							...block,
+							uri: addResourcePrefix({
+								serverName: parsed.serverName,
+								uri: block.uri,
+							}),
+						};
+					if (block.type === 'resource')
+						return {
+							...block,
+							resource: {
+								...block.resource,
+								uri: addResourcePrefix({
+									serverName: parsed.serverName,
+									uri: block.resource.uri,
+								}),
+							},
+						};
+					return block;
+				}),
+			};
 		} catch (err) {
 			if (err instanceof BackendRpcError) throw err;
 			logger.error(
@@ -143,25 +174,67 @@ const createHandlers = (params: CreateHandlersParams) => {
 		request: GetPromptHandlerParams,
 	): Promise<GetPromptResult> => {
 		const { name, args } = request;
-		const parsed = parsePrefix(name);
+		let parsed: ParsePrefixResult;
+		try {
+			parsed = parsePrefix(name);
+		} catch (error) {
+			throw new BackendRpcError(errorMessage(error), -32602);
+		}
 
-		return await mcpUpstreamManager.getPrompt({
+		const result = await mcpUpstreamManager.getPrompt({
 			serverName: parsed.serverName,
 			promptName: parsed.originalName,
 			args: args as Record<string, string>,
 		});
+		return {
+			...result,
+			messages: result.messages.map((message) => {
+				const block = message.content;
+				if (block.type !== 'resource') return message;
+				return {
+					...message,
+					content: {
+						...block,
+						resource: {
+							...block.resource,
+							uri: addResourcePrefix({
+								serverName: parsed.serverName,
+								uri: block.resource.uri,
+							}),
+						},
+					},
+				};
+			}),
+		};
 	};
 
 	const readResource = async (
 		request: ReadResourceHandlerParams,
 	): Promise<ReadResourceResult> => {
 		const { uri } = request;
-		const parsed = parseResourceUri(uri);
+		let parsed: ParseResourceUriResult;
+		try {
+			parsed = parseResourceUri(uri);
+		} catch (error) {
+			throw new BackendRpcError(errorMessage(error), -32602);
+		}
 
-		return await mcpUpstreamManager.readResource({
+		// Links and template instances need not appear in resources/list. Route
+		// by namespace, leaving resource existence checks to the owning backend.
+		const result = await mcpUpstreamManager.readResource({
 			serverName: parsed.serverName,
 			uri: parsed.originalUri,
 		});
+		return {
+			...result,
+			contents: result.contents.map((content) => ({
+				...content,
+				uri: addResourcePrefix({
+					serverName: parsed.serverName,
+					uri: content.uri,
+				}),
+			})),
+		};
 	};
 
 	return {

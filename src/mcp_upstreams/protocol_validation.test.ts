@@ -8,6 +8,7 @@ import {
 } from '@/mcp_upstreams/protocol_client';
 import { fixtureReply } from '@/mcp_upstreams/protocol_fixture';
 import type { McpUpstreamManager } from '@/mcp_upstreams/types';
+import { addResourcePrefix } from '@/shared/mcp_namespaces';
 import {
 	CURRENT_PROTOCOL_VERSION,
 	recordOf,
@@ -278,7 +279,30 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 						response.payload &&
 							'result' in response.payload &&
 							response.payload.result.content,
-					).toEqual(validToolContent);
+					).toEqual(
+						validToolContent.map((block) => {
+							if (block.type === 'resource_link')
+								return {
+									...block,
+									uri: addResourcePrefix({
+										serverName: 'fixture',
+										uri: block.uri,
+									}),
+								};
+							if (block.type === 'resource')
+								return {
+									...block,
+									resource: {
+										...block.resource,
+										uri: addResourcePrefix({
+											serverName: 'fixture',
+											uri: block.resource.uri,
+										}),
+									},
+								};
+							return block;
+						}),
+					);
 				}
 			} finally {
 				await client.close();

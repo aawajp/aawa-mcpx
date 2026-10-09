@@ -331,8 +331,18 @@ Point your MCP client to the gateway:
 
 Tools, prompts, and resources are namespaced to avoid conflicts across backends:
 
-- Tools/Prompts: `serverName__itemName` (double underscore separator)
-- Resources: `serverName://original/uri`
+- Tools/prompts: `serverName__itemName`. Ambiguous backend names (including `__`,
+  a trailing `_`, or dot-only path segments), names outside `A-Za-z0-9_.-`, and
+  the reserved `mcpx-` prefix use `mcpx-` followed by four hex digits per UTF-16 code unit.
+- Resources: `aawa-mcpx://resource/<namespace>/<encoded-original-uri>`, using
+  the same backend namespace and percent-encoding the complete original URI.
+
+Rediscover catalogs after upgrading. Ordinary tool/prompt names are unchanged;
+resource URIs change. Previously issued `backend://original-uri` references still
+route when the backend name is a valid URI scheme other than `aawa-mcpx`.
+Resource references in tool/prompt content and read results use the same wrapper;
+text and structured output stay intact. Unlisted resources can still be read.
+See [routing details](DESIGN.md#35-namespace-and-resource-routing).
 
 ## Container image workflows
 

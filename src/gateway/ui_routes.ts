@@ -2,11 +2,11 @@ import { type } from 'arktype';
 
 import { setInterval as setIntervalAsync } from 'node:timers/promises';
 
-import { parsePrefix } from '@/gateway/mcp_namespaces';
 import type { McpUpstreamManager } from '@/mcp_upstreams/types';
 import { logger } from '@/server/logger';
 import type { TrafficStore } from '@/server/traffic_store';
 import { errorMessage } from '@/shared/common';
+import { parsePrefix } from '@/shared/mcp_namespaces';
 import { jsonObjectType } from '@/shared/mcp_schemas';
 
 const toggleToolBodyType = type({

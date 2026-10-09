@@ -158,9 +158,16 @@ const createMcpUpstreamOperations = (
 		const { serverName, promptName, args } = promptParams;
 		const server = getServer(serverName);
 		const client = clients.get(serverName);
-		if (!server || !client) {
-			throw new Error(`MCP upstream "${serverName}" is not available`);
-		}
+		if (!server?.serverConfig.enabled)
+			throw new BackendRpcError(
+				`MCP upstream "${serverName}" is unknown or disabled`,
+				-32602,
+			);
+		if (!client)
+			throw new BackendRpcError(
+				`MCP upstream "${serverName}" is not available`,
+				-32603,
+			);
 
 		await waitForRateLimit(server);
 		return runLoggedRequest<GetPromptResult>({
@@ -193,9 +200,16 @@ const createMcpUpstreamOperations = (
 		const { serverName, uri } = resourceParams;
 		const server = getServer(serverName);
 		const client = clients.get(serverName);
-		if (!server || !client) {
-			throw new Error(`MCP upstream "${serverName}" is not available`);
-		}
+		if (!server?.serverConfig.enabled)
+			throw new BackendRpcError(
+				`MCP upstream "${serverName}" is unknown or disabled`,
+				-32602,
+			);
+		if (!client)
+			throw new BackendRpcError(
+				`MCP upstream "${serverName}" is not available`,
+				-32603,
+			);
 
 		await waitForRateLimit(server);
 		return runLoggedRequest<ReadResourceResult>({
