@@ -206,6 +206,27 @@ to avoid sending data twice. Structured output does not replace independent text
 (see the [array-output example](https://modelcontextprotocol.io/specification/2026-07-28/server/tools#output-schema)).
 Empty-array compatibility still needs confirmation in each consuming application.
 
+### Tool-call errors
+
+Unknown/disabled tools or backends and invalid prefixed names return JSON-RPC
+`-32602`. Disconnected backends, transport failures, malformed backend results,
+and gateway dispatch failures return `-32603`. Backend execution errors retain
+their `isError: true` result and feedback, following the
+[tool error distinction](https://modelcontextprotocol.io/specification/2026-07-28/server/tools#error-handling).
+Input-schema mismatches follow the revision rules below.
+
+Validated backend RPC errors retain message/data; codes adapt to the client
+revision. For 2026, resource-not-found `-32002` becomes `-32602`, and retired or
+unassigned reserved codes become `-32603`, per the
+[error-code policy](https://modelcontextprotocol.io/specification/2026-07-28/basic#error-codes).
+Modern metadata errors become `-32603` for 2025 clients; URL-elicitation `-32042`
+is preserved only for [2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25/client/elicitation#url-elicitation-required-error).
+
+Ordinary 2025 RPC errors retain HTTP 200. The 2026 binding uses HTTP 400 for
+invalid requests/parameters and metadata errors, 404 for unknown methods, and
+500 for internal errors. HTTP handler failures use 500 in every revision;
+backend HTTP statuses are not copied across independent protocol boundaries.
+
 ### Input schemas and arguments
 
 Every supported revision requires `inputSchema.type: "object"`. Catalog fetches

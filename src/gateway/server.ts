@@ -354,7 +354,7 @@ const startServer = async (
 				jsonrpc: '2.0',
 				id: params.id,
 				error: {
-					code: -32000,
+					code: -32603,
 					message: `Server initialization failed: ${errorMessage(err)}`,
 				},
 			};

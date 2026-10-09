@@ -62,6 +62,37 @@ const createInvalidParamsError = (
 	};
 };
 
+const clientErrorCode = (code: number, protocolVersion?: string): number => {
+	if (protocolVersion !== CURRENT_PROTOCOL_VERSION) {
+		// These protocol errors have meanings only in the revisions defining them.
+		if (
+			(code >= -32022 && code <= -32020) ||
+			(code === -32042 && protocolVersion !== '2025-11-25')
+		)
+			return -32603;
+		return code;
+	}
+	// Modern MCP replaces resource-not-found and forbids retired/unassigned
+	// reserved codes. Preserve diagnostic message/data while adapting the code.
+	if (code === -32002) return -32602;
+	if (code >= -32099 && code <= -32000 && !(code >= -32022 && code <= -32020))
+		return -32603;
+	return code;
+};
+
+const modernErrorStatus = (code: number): number | undefined => {
+	if (code === -32601) return 404;
+	if (code === -32603) return 500;
+	if (
+		code === -32700 ||
+		code === -32600 ||
+		code === -32602 ||
+		(code >= -32022 && code <= -32020)
+	)
+		return 400;
+	return undefined;
+};
+
 const createMcpRequestRouter = (
 	params: CreateMcpRequestRouterParams,
 ): ((
@@ -243,6 +274,26 @@ const createMcpRequestRouter = (
 			};
 		}
 		if (!result.payload) return result;
+		if ('error' in result.payload) {
+			const code = clientErrorCode(result.payload.error.code, protocolVersion);
+			return {
+				...result,
+				// HTTP statuses describe this client's binding, not the backend's.
+				// Keep 2025 RPC responses at their existing HTTP status; modern MCP
+				// requires 404 for unknown methods and 400 for its metadata errors.
+				status:
+					protocolVersion === CURRENT_PROTOCOL_VERSION
+						? (modernErrorStatus(code) ?? result.status)
+						: result.status,
+				payload: {
+					...result.payload,
+					error: {
+						...result.payload.error,
+						code,
+					},
+				},
+			};
+		}
 		if (protocolVersion !== CURRENT_PROTOCOL_VERSION) {
 			// The client and backend select versions independently. Strip the
 			// 2026-07-28 result fields when replying with either supported 2025 revision.
@@ -304,11 +355,6 @@ const createMcpRequestRouter = (
 			}
 			return result;
 		}
-		if ('error' in result.payload)
-			return {
-				...result,
-				status: result.payload.error.code === -32601 ? 404 : result.status,
-			};
 		return {
 			...result,
 			sessionId: undefined,

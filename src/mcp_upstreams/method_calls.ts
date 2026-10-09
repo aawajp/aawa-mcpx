@@ -60,15 +60,23 @@ const createMcpUpstreamOperations = (
 		const { serverName, toolName, args } = callParams;
 		const server = getServer(serverName);
 		const client = clients.get(serverName);
-		if (!server || !client) {
-			return toolErrorResult(`MCP upstream "${serverName}" is not available`);
-		}
+		if (!server?.serverConfig.enabled)
+			throw new BackendRpcError(
+				`MCP upstream "${serverName}" is unknown or disabled`,
+				-32602,
+			);
+		if (!client)
+			throw new BackendRpcError(
+				`MCP upstream "${serverName}" is not available`,
+				-32603,
+			);
 		const enabledTools = getEnabledTools({
 			serverName,
 		});
 		if (!enabledTools.includes(toolName)) {
-			return toolErrorResult(
-				`Tool "${toolName}" is disabled on MCP upstream "${serverName}"`,
+			throw new BackendRpcError(
+				`Tool "${toolName}" is unknown or disabled on MCP upstream "${serverName}"`,
+				-32602,
 			);
 		}
 
@@ -134,8 +142,12 @@ const createMcpUpstreamOperations = (
 			});
 		} catch (error) {
 			if (error instanceof BackendRpcError) throw error;
-			return toolErrorResult(
-				`Server "${serverName}" error: ${errorMessage(error)}`,
+			// RPC errors retain their code/data; transport and malformed-response
+			// failures belong to the gateway's protocol boundary. Only a backend's
+			// explicit isError result represents a tool execution failure here.
+			throw new BackendRpcError(
+				`MCP upstream "${serverName}" request failed: ${errorMessage(error)}`,
+				-32603,
 			);
 		}
 	};

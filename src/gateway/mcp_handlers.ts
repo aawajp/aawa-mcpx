@@ -19,7 +19,7 @@ import type { McpUpstreamManager } from '@/mcp_upstreams/types';
 import { logger } from '@/server/logger';
 import { errorMessage } from '@/shared/common';
 import type { ProtocolVersion } from '@/shared/mcp_protocol';
-import { type ToolCallResult, toolErrorResult } from '@/shared/mcp_results';
+import type { ToolCallResult } from '@/shared/mcp_results';
 
 type CreateHandlersParams = {
 	mcpUpstreamManager: McpUpstreamManager;
@@ -108,15 +108,11 @@ const createHandlers = (params: CreateHandlersParams) => {
 	): Promise<ToolCallResult> => {
 		const { name, args } = request;
 
-		let parsed: ParsePrefixResult | null = null;
+		let parsed: ParsePrefixResult;
 		try {
 			parsed = parsePrefix(name);
 		} catch (err) {
-			return toolErrorResult(errorMessage(err));
-		}
-
-		if (!parsed) {
-			return toolErrorResult('Failed to parse tool name');
+			throw new BackendRpcError(errorMessage(err), -32602);
 		}
 
 		try {
@@ -127,9 +123,19 @@ const createHandlers = (params: CreateHandlersParams) => {
 				clientProtocolVersion: request.clientProtocolVersion,
 			});
 		} catch (err) {
-			logger.error(`Tool call failed for "${name}": ${errorMessage(err)}`);
 			if (err instanceof BackendRpcError) throw err;
-			return toolErrorResult(errorMessage(err));
+			logger.error(
+				JSON.stringify({
+					message: 'Gateway tool dispatch failed',
+					context: {
+						tool: name,
+					},
+					error: errorMessage(err),
+				}),
+			);
+			// Execution errors arrive as tool results. Unexpected dispatcher failures
+			// are server errors, not actionable tool feedback.
+			throw new BackendRpcError('Internal server error', -32603);
 		}
 	};
 

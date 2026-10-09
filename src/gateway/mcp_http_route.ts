@@ -359,6 +359,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 							},
 						},
 						undefined,
+						500,
 					);
 				}
 			}
@@ -512,7 +513,13 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 						protocolError.status,
 					);
 				}
-				const routeResult = await routeRequest(jsonRpcRequest, sessionId);
+				// The session is authoritative even when the optional 2025 header is
+				// absent. Error classification must use this client's negotiated era.
+				const routeResult = await routeRequest(
+					jsonRpcRequest,
+					sessionId,
+					mcpSessions.getProtocolVersion(sessionId),
+				);
 				const logSessionId = routeResult.sessionId ?? sessionId;
 				if (
 					!routeResult.status &&
@@ -557,14 +564,18 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 						error: errorMessage(err),
 					},
 				});
-				return createJsonResponse({
-					jsonrpc: '2.0',
-					id: jsonRpcRequest.id,
-					error: {
-						code: -32000,
-						message: 'Internal server error',
+				return createJsonResponse(
+					{
+						jsonrpc: '2.0',
+						id: jsonRpcRequest.id,
+						error: {
+							code: -32603,
+							message: 'Internal server error',
+						},
 					},
-				});
+					undefined,
+					500,
+				);
 			}
 		},
 		async DELETE(request: Request) {

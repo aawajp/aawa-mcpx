@@ -183,6 +183,12 @@ preserving raw definitions and exposure settings so a repaired catalog restores 
 Input mismatches never reach backends; the client revision determines the error
 shape described in [input validation](README.md#input-schemas-and-arguments).
 
+Tool execution failures remain `isError` results; lookup, transport, malformed
+response, and gateway failures use protocol errors. The response boundary adapts
+codes/statuses to the client revision, recovered from the retained 2025 session
+or 2026 request metadata. [Tool-call errors](README.md#tool-call-errors) defines
+the mappings; backend HTTP statuses remain local to backend recovery/negotiation.
+
 Custom parsing handles request/notification envelopes, headers (`Accept`, `Origin`,
 session/protocol IDs), URL pagination/filter coercion, schema-driven form inputs, SQLite row mapping, and
 error normalization. `shared/` is the only intentional cross-runtime layer.
