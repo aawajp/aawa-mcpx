@@ -40,6 +40,7 @@ import {
 type RequestOptions = {
 	timeout?: number;
 	signal?: AbortSignal;
+	mirroredHeaders?: Record<string, string>;
 };
 class BackendRpcError extends Error {
 	constructor(
@@ -351,6 +352,7 @@ class ProtocolClient {
 	private async send(
 		message: Record<string, unknown>,
 		signal: AbortSignal,
+		mirroredHeaders?: Record<string, string>,
 	): Promise<unknown> {
 		if (signal.aborted) throw new BackendTransportError(signal.reason);
 		const config = this.server.serverConfig;
@@ -404,16 +406,34 @@ class ProtocolClient {
 			});
 		}
 		const headers = new Headers(config.headers as HeadersInit | undefined);
+		// These fields belong to this RPC, never to static backend configuration.
+		// Clear stale mirrors even for legacy hops, which do not validate them.
+		for (const name of Array.from(headers.keys()))
+			if (
+				name === 'mcp-method' ||
+				name === 'mcp-name' ||
+				name.startsWith('mcp-param-')
+			)
+				headers.delete(name);
 		headers.set('Content-Type', 'application/json');
 		headers.set('Accept', 'application/json, text/event-stream');
 		headers.delete('Mcp-Session-Id');
 		headers.delete('Last-Event-ID');
 		if (this.protocolVersion === CURRENT_PROTOCOL_VERSION) {
+			// Preserve unrecognized mirrors on a modern HTTP hop. Recognized ones
+			// below are rebuilt from this backend's schema and the translated body.
+			for (const [name, value] of Object.entries(mirroredHeaders ?? {}))
+				if (name.toLowerCase().startsWith('mcp-param-'))
+					headers.set(name, value);
 			const params = recordOf(message.params) ?? {};
+			const schema = this.tools.get(String(params.name));
+			if (message.method === 'tools/call')
+				for (const parameter of toolHeaderParameters(schema))
+					headers.delete(`Mcp-Param-${parameter.name}`);
 			for (const [name, value] of protocolHeaders(
 				String(message.method),
 				params,
-				this.tools.get(String(params.name)),
+				schema,
 			))
 				headers.set(name, value);
 		} else {
@@ -614,6 +634,7 @@ class ProtocolClient {
 					params: bodyParams,
 				},
 				signal,
+				options.mirroredHeaders,
 			);
 			if (!jsonRpcResponseType.allows(response) || response.id !== id)
 				throw new Error('Invalid backend RPC response');
@@ -756,7 +777,18 @@ class ProtocolClient {
 				this.tools.set(tool.name, tool.inputSchema);
 				return true;
 			} catch (error) {
-				this.onerror(error);
+				logger.warn(
+					JSON.stringify({
+						message:
+							'Tool header annotations are invalid; excluding tool from HTTP backend catalog',
+						context: {
+							backend: this.server.serverName,
+							tool: tool.name,
+							protocolVersion: this.protocolVersion,
+						},
+						error: errorMessage(error),
+					}),
+				);
 				return false;
 			}
 		});

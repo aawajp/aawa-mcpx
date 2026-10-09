@@ -11,6 +11,7 @@ import type { McpUpstreamManager } from '@/mcp_upstreams/types';
 import type { TrafficStore } from '@/server/traffic_store';
 import {
 	CLIENT_CAPABILITIES_META,
+	CLIENT_INFO_META,
 	CURRENT_PROTOCOL_VERSION,
 	PROTOCOL_VERSION_META,
 	protocolHeaders,
@@ -19,12 +20,13 @@ import {
 } from '@/shared/mcp_protocol';
 import type { ToolCallResult } from '@/shared/mcp_results';
 
-import { expect, test } from 'bun:test';
+import { expect, mock, test } from 'bun:test';
 
 const fixture = () => {
 	let refreshes = 0;
 	const refreshCatalogs = async (): Promise<void> => {
 		refreshes++;
+		await manager.refreshStaleCatalogs?.();
 	};
 	const sessions = createMcpSessionManager({
 		protocolHeaderName: 'MCP-Protocol-Version',
@@ -56,15 +58,20 @@ const fixture = () => {
 			],
 		}),
 	} as unknown as McpUpstreamManager;
+	const handlers = createHandlers({
+		mcpUpstreamManager: manager,
+	});
 	const routeRequest = createMcpRequestRouter({
 		beforeRequest: refreshCatalogs,
-		handlers: createHandlers({
-			mcpUpstreamManager: manager,
-		}),
+		handlers,
 		requireSession: sessions.requireSession,
 		handleInitialize: sessions.handleInitialize,
 	});
 	const route = createMcpHttpRoute({
+		getToolSchema: (name) =>
+			handlers
+				.listTools(CURRENT_PROTOCOL_VERSION)
+				.tools.find((tool) => tool.name === name)?.inputSchema,
 		refreshCatalogs,
 		acceptsContentType: () => true,
 		buildInboundMessageLog: () => '',
@@ -603,3 +610,412 @@ test('2026-07-28 header failures, unsupported version, and irrelevant sessions',
 		...SUPPORTED_PROTOCOL_VERSIONS,
 	]);
 });
+
+test('modern metadata validates per request without requiring or inheriting optional capabilities', async () => {
+	const { route, manager, refreshCount } = fixture();
+	const invoke = mock(manager.callTool);
+	manager.callTool = invoke;
+	const valid = {
+		[PROTOCOL_VERSION_META]: CURRENT_PROTOCOL_VERSION,
+		[CLIENT_CAPABILITIES_META]: {},
+	};
+	const send = (
+		metadata: unknown,
+		headers: HeadersInit = {
+			'MCP-Protocol-Version': CURRENT_PROTOCOL_VERSION,
+			'Mcp-Method': 'server/discover',
+		},
+		method = 'server/discover',
+	) =>
+		route.POST(
+			new Request('http://localhost/mcp', {
+				method: 'POST',
+				headers,
+				body: JSON.stringify({
+					jsonrpc: '2.0',
+					id: 1,
+					method,
+					params: {
+						_meta: metadata,
+					},
+				}),
+			}),
+		);
+	for (const metadata of [
+		undefined,
+		null,
+		[],
+		{},
+		{
+			[CLIENT_CAPABILITIES_META]: {},
+		},
+		{
+			...valid,
+			[PROTOCOL_VERSION_META]: 1,
+		},
+		{
+			...valid,
+			[CLIENT_CAPABILITIES_META]: null,
+		},
+		{
+			...valid,
+			[CLIENT_CAPABILITIES_META]: [],
+		},
+		...[
+			{
+				roots: false,
+			},
+			{
+				sampling: [],
+			},
+			{
+				sampling: {
+					tools: true,
+				},
+			},
+			{
+				elicitation: {
+					form: false,
+				},
+			},
+			{
+				experimental: {
+					custom: [],
+				},
+			},
+			{
+				extensions: {
+					'com.example/ui': null,
+				},
+			},
+			{
+				extensions: {
+					unprefixed: {},
+				},
+			},
+		].map((capabilities) => ({
+			...valid,
+			[CLIENT_CAPABILITIES_META]: capabilities,
+		})),
+		{
+			...valid,
+			[CLIENT_INFO_META]: {
+				name: 'incomplete',
+			},
+		},
+		{
+			...valid,
+			[CLIENT_INFO_META]: {
+				name: 'test',
+				version: '1',
+				description: 42,
+			},
+		},
+		{
+			...valid,
+			'io.modelcontextprotocol/logLevel': 'verbose',
+		},
+		{
+			...valid,
+			progressToken: [],
+		},
+		{
+			...valid,
+			'invalid key': true,
+		},
+	]) {
+		const response = await send(metadata);
+		expect(response.status).toBe(400);
+		expect((await response.json()).error.code).toBe(-32602);
+	}
+	// Omitted metadata is malformed even when discovery has no version header.
+	expect((await (await send(undefined, {})).json()).error.code).toBe(-32602);
+	const missingHeader = await send(valid, {
+		'Mcp-Method': 'server/discover',
+	});
+	expect((await missingHeader.json()).error.code).toBe(-32020);
+	const capable = {
+		...valid,
+		[CLIENT_INFO_META]: {
+			name: 'capable',
+			version: '1',
+			title: 'Client',
+		},
+		[CLIENT_CAPABILITIES_META]: {
+			sampling: {
+				tools: {},
+			},
+			elicitation: {
+				form: {},
+				url: {},
+			},
+			extensions: {
+				'com.example/ui': {
+					mimeTypes: [
+						'text/html',
+					],
+				},
+			},
+		},
+	};
+	expect((await send(capable)).status).toBe(200);
+	expect((await send(valid)).status).toBe(200);
+	// No capabilities are needed by the implemented complete-result methods.
+	expect(
+		(
+			await send(
+				valid,
+				protocolHeaders('tools/list', {
+					_meta: valid,
+				}),
+				'tools/list',
+			)
+		).status,
+	).toBe(200);
+	expect(refreshCount()).toBe(1);
+	expect(invoke).not.toHaveBeenCalled();
+});
+
+test('modern mirrors use refreshed rules exactly once and reject recognized surplus headers', async () => {
+	const { route, manager, refreshCount } = fixture();
+	let schema: Tool['inputSchema'] = {
+		type: 'object',
+		properties: {
+			count: {
+				type: 'integer',
+				'x-mcp-header': 'Old',
+			},
+		},
+	};
+	manager.listEnabledTools = () =>
+		new Map([
+			[
+				'backend',
+				{
+					tools: [
+						{
+							name: 'echo',
+							inputSchema: schema,
+						},
+					],
+				},
+			],
+		]);
+	manager.refreshStaleCatalogs = async () => {
+		schema = {
+			type: 'object',
+			properties: {
+				count: {
+					type: 'integer',
+					'x-mcp-header': 'Count',
+				},
+				flag: {
+					type: 'boolean',
+					'x-mcp-header': 'Flag',
+				},
+			},
+		};
+	};
+	const invoke = mock(manager.callTool);
+	manager.callTool = invoke;
+	const send = (
+		args: Record<string, unknown>,
+		mirrors: Record<string, string>,
+	) => {
+		const body = {
+			name: 'backend__echo',
+			arguments: args,
+			_meta: {
+				[PROTOCOL_VERSION_META]: CURRENT_PROTOCOL_VERSION,
+				[CLIENT_CAPABILITIES_META]: {},
+			},
+		};
+		const headers = protocolHeaders('tools/call', body);
+		for (const [name, value] of Object.entries(mirrors))
+			headers.set(`Mcp-Param-${name}`, value);
+		return route.POST(
+			new Request('http://localhost/mcp', {
+				method: 'POST',
+				headers,
+				body: JSON.stringify({
+					jsonrpc: '2.0',
+					id: 1,
+					method: 'tools/call',
+					params: body,
+				}),
+			}),
+		);
+	};
+	const response = await send(
+		{
+			count: 42,
+			flag: false,
+		},
+		{
+			Count: '42.0',
+			Flag: 'false',
+			Opaque: 'forward me',
+		},
+	);
+	expect(response.status).toBe(200);
+	expect(refreshCount()).toBe(1);
+	expect(invoke).toHaveBeenCalledTimes(1);
+	expect(invoke.mock.calls[0]?.[0]).toMatchObject({
+		mirroredHeaders: {
+			'mcp-param-count': '42.0',
+			'mcp-param-flag': 'false',
+			'mcp-param-opaque': 'forward me',
+		},
+	});
+	for (const [args, mirrors] of [
+		[
+			{
+				count: 42,
+			},
+			{
+				Old: '42',
+			},
+		],
+		[
+			{
+				count: 42,
+			},
+			{
+				Count: '43',
+			},
+		],
+		[
+			{},
+			{
+				Count: '0',
+			},
+		],
+		[
+			{
+				count: null,
+			},
+			{
+				Count: '0',
+			},
+		],
+		[
+			{
+				flag: false,
+			},
+			{
+				Flag: 'TRUE',
+			},
+		],
+	] as const) {
+		const failed = await send(args, mirrors);
+		expect(failed.status).toBe(400);
+		expect((await failed.json()).error.code).toBe(-32020);
+	}
+	expect(invoke).toHaveBeenCalledTimes(1);
+	manager.refreshStaleCatalogs = async () => {
+		throw new Error('Refresh failed');
+	};
+	const failedRefresh = await send({}, {});
+	expect(failedRefresh.status).toBe(500);
+	expect((await failedRefresh.json()).error.code).toBe(-32603);
+});
+
+for (const version of SUPPORTED_PROTOCOL_VERSIONS)
+	test(`${version}: malformed header annotations affect only modern public HTTP tools`, async () => {
+		const { route, manager } = fixture();
+		const invoke = mock(manager.callTool);
+		manager.callTool = invoke;
+		manager.listEnabledTools = () =>
+			new Map([
+				[
+					'backend',
+					{
+						tools: [
+							{
+								name: 'echo',
+								inputSchema: {
+									type: 'object',
+								},
+							},
+							{
+								name: 'bad',
+								inputSchema: {
+									type: 'object',
+									properties: {
+										value: {
+											type: 'number',
+											'x-mcp-header': 'Value',
+										},
+									},
+								},
+							},
+						],
+					},
+				],
+			]);
+		let session: string | null = null;
+		const send = (method: string, params: Record<string, unknown> = {}) => {
+			const modern = version === CURRENT_PROTOCOL_VERSION;
+			const body = modern
+				? {
+						...params,
+						_meta: {
+							[PROTOCOL_VERSION_META]: version,
+							[CLIENT_CAPABILITIES_META]: {},
+						},
+					}
+				: params;
+			const headers = modern
+				? protocolHeaders(method, body)
+				: new Headers({
+						'MCP-Protocol-Version': version,
+					});
+			if (session) headers.set('Mcp-Session-Id', session);
+			return route.POST(
+				new Request('http://localhost/mcp', {
+					method: 'POST',
+					headers,
+					body: JSON.stringify({
+						jsonrpc: '2.0',
+						id: 1,
+						method,
+						params: body,
+					}),
+				}),
+			);
+		};
+		if (version !== CURRENT_PROTOCOL_VERSION)
+			session = (
+				await send('initialize', {
+					protocolVersion: version,
+					clientInfo: {
+						name: 'legacy',
+						version: '1',
+					},
+				})
+			).headers.get('Mcp-Session-Id');
+		const catalog = (await (await send('tools/list')).json()).result.tools;
+		expect(catalog.map((tool: Record<string, unknown>) => tool.name)).toEqual(
+			version === CURRENT_PROTOCOL_VERSION
+				? [
+						'backend__echo',
+					]
+				: [
+						'backend__echo',
+						'backend__bad',
+					],
+		);
+		const called = await send('tools/call', {
+			name: 'backend__bad',
+			arguments: {
+				value: 1.5,
+			},
+		});
+		if (version === CURRENT_PROTOCOL_VERSION) {
+			expect((await called.json()).error.code).toBe(-32602);
+			expect(invoke).not.toHaveBeenCalled();
+		} else {
+			expect(called.status).toBe(200);
+			expect(invoke).toHaveBeenCalledTimes(1);
+		}
+	});

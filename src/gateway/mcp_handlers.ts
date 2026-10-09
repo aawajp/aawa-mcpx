@@ -22,7 +22,11 @@ import {
 	parsePrefix,
 	parseResourceUri,
 } from '@/shared/mcp_namespaces';
-import type { ProtocolVersion } from '@/shared/mcp_protocol';
+import {
+	CURRENT_PROTOCOL_VERSION,
+	type ProtocolVersion,
+	toolHeaderParameters,
+} from '@/shared/mcp_protocol';
 import type { ToolCallResult } from '@/shared/mcp_results';
 
 type CreateHandlersParams = {
@@ -33,26 +37,38 @@ type CallToolHandlerParams = {
 	name: string;
 	args: Record<string, unknown>;
 	clientProtocolVersion?: ProtocolVersion;
+	mirroredHeaders?: Record<string, string>;
 };
 
 type GetPromptHandlerParams = {
 	name: string;
 	args: Record<string, unknown>;
+	mirroredHeaders?: Record<string, string>;
 };
 
 type ReadResourceHandlerParams = {
 	uri: string;
+	mirroredHeaders?: Record<string, string>;
 };
 
 const createHandlers = (params: CreateHandlersParams) => {
 	const { mcpUpstreamManager } = params;
 
-	const listTools = (): ListToolsResult => {
+	const listTools = (
+		clientProtocolVersion?: ProtocolVersion,
+	): ListToolsResult => {
 		const tools: ListToolsResult['tools'] = [];
 		const allTools = mcpUpstreamManager.listEnabledTools();
 
 		for (const [serverName, serverToolsResult] of allTools) {
 			for (const tool of serverToolsResult.tools) {
+				if (clientProtocolVersion === CURRENT_PROTOCOL_VERSION) {
+					try {
+						toolHeaderParameters(tool.inputSchema);
+					} catch {
+						continue;
+					}
+				}
 				tools.push(
 					namespaceTool({
 						serverName,
@@ -120,11 +136,28 @@ const createHandlers = (params: CreateHandlersParams) => {
 		}
 
 		try {
+			if (request.clientProtocolVersion === CURRENT_PROTOCOL_VERSION) {
+				const tool = mcpUpstreamManager
+					.listEnabledTools()
+					.get(parsed.serverName)
+					?.tools.find((tool) => tool.name === parsed.originalName);
+				if (tool) {
+					try {
+						toolHeaderParameters(tool.inputSchema);
+					} catch {
+						throw new BackendRpcError(
+							`Tool "${name}" has invalid HTTP header annotations`,
+							-32602,
+						);
+					}
+				}
+			}
 			const result = await mcpUpstreamManager.callTool({
 				serverName: parsed.serverName,
 				toolName: parsed.originalName,
 				args,
 				clientProtocolVersion: request.clientProtocolVersion,
+				mirroredHeaders: request.mirroredHeaders,
 			});
 			// Only protocol resource references need routing. Text and structured
 			// output are backend data and must not be searched or rewritten for URIs.
@@ -185,6 +218,7 @@ const createHandlers = (params: CreateHandlersParams) => {
 			serverName: parsed.serverName,
 			promptName: parsed.originalName,
 			args: args as Record<string, string>,
+			mirroredHeaders: request.mirroredHeaders,
 		});
 		return {
 			...result,
@@ -224,6 +258,7 @@ const createHandlers = (params: CreateHandlersParams) => {
 		const result = await mcpUpstreamManager.readResource({
 			serverName: parsed.serverName,
 			uri: parsed.originalUri,
+			mirroredHeaders: request.mirroredHeaders,
 		});
 		return {
 			...result,

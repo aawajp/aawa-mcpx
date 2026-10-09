@@ -23,6 +23,7 @@ import type {
 import { logger } from '@/server/logger';
 import type { TrafficStore } from '@/server/traffic_store';
 import { errorMessage } from '@/shared/common';
+import { toolHeaderParameters } from '@/shared/mcp_protocol';
 import {
 	listPromptsResultType,
 	listResourcesResultType,
@@ -244,6 +245,25 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 			// Validate/compile once for each fetched catalog. Reads and calls only
 			// look up the stored result; bad schemas never disable healthy siblings.
 			for (const tool of result.tools) {
+				// The public modern HTTP hop also needs rules for legacy/stdio
+				// providers. Cache successes and failures once per fetched schema;
+				// these annotations do not invalidate either 2025 contract.
+				try {
+					toolHeaderParameters(tool.inputSchema);
+				} catch (error) {
+					logger.warn(
+						JSON.stringify({
+							message:
+								'Tool header annotations are invalid; tool unavailable to modern HTTP clients',
+							context: {
+								backend: serverName,
+								tool: tool.name,
+								protocolVersion: client.protocolVersion,
+							},
+							error: errorMessage(error),
+						}),
+					);
+				}
 				const compiled = compileInputSchema(tool.inputSchema);
 				inputValidators.set(tool, compiled);
 				if ('issue' in compiled)

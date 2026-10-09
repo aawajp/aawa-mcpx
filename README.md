@@ -153,6 +153,29 @@ before a compatible 2025 backend can initialize.
 
 Negotiation failures stop automatic retries. The UI shows the failed method, attempted revision, and available HTTP/JSON-RPC codes. Disable/re-enable to retry; restart to change a retained revision.
 
+### Modern HTTP metadata and headers
+
+For `2026-07-28`, each request supplies its own version and client capabilities;
+optional client identity, log level, and progress token are validated with them.
+Malformed metadata returns HTTP 400 / `-32602`; missing or mismatched mirrors
+return HTTP 400 / `-32020`. Capability declarations do not carry between requests
+or grant backend capabilities: the gateway advertises only features it implements.
+The 2025 session paths retain their revision-specific behavior.
+
+Tool `x-mcp-header` rules compile once per catalog schema, including failures.
+Stale catalogs refresh before public header checks. Invalid annotations exclude
+only the affected tool from modern HTTP catalogs and produce a warning; legacy
+and stdio connections do not apply that annotation contract. Mirrors use strict
+UTF-8 Base64 decoding where required and compare integers numerically (`42.0`
+matches `42`). Recognized headers for absent/null arguments are rejected.
+
+Each backend HTTP hop rebuilds protocol, method, name, and recognized parameter
+headers from its own revision, original backend name/URI, and arguments. Unknown
+parameter mirrors pass through modern hops; legacy hops omit mirrors. Static
+backend configuration cannot override these request fields. See the
+[HTTP binding](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http)
+and [request metadata](https://modelcontextprotocol.io/specification/2026-07-28/basic).
+
 ### Network recovery
 
 Enabled backends automatically recover from network interruptions, timeouts,

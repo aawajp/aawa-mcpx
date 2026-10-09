@@ -99,6 +99,7 @@ const createMcpRequestRouter = (
 	request: IncomingJsonRpcRequest,
 	sessionId: string | undefined,
 	protocolVersion?: string,
+	mirroredHeaders?: Record<string, string>,
 ) => Promise<RouteResult>) => {
 	const { handlers, handleInitialize } = params;
 
@@ -106,6 +107,7 @@ const createMcpRequestRouter = (
 		request: IncomingJsonRpcRequest,
 		sessionId: string | undefined,
 		protocolVersion?: string,
+		mirroredHeaders?: Record<string, string>,
 	): Promise<RouteResult> => {
 		const usesRequestMetadata = protocolVersion === CURRENT_PROTOCOL_VERSION;
 		const requireSession: RequireSession = usesRequestMetadata
@@ -175,7 +177,13 @@ const createMcpRequestRouter = (
 		});
 		switch (request.method) {
 			case 'tools/list':
-				return success(handlers.listTools());
+				return success(
+					handlers.listTools(
+						protocolVersion !== undefined && isProtocolVersion(protocolVersion)
+							? protocolVersion
+							: undefined,
+					),
+				);
 			case 'prompts/list':
 				return success(handlers.listPrompts());
 			case 'resources/list':
@@ -191,6 +199,7 @@ const createMcpRequestRouter = (
 				const args = {
 					name: callParams.name,
 					args: callParams.arguments ?? {},
+					mirroredHeaders,
 					clientProtocolVersion:
 						protocolVersion !== undefined && isProtocolVersion(protocolVersion)
 							? protocolVersion
@@ -212,6 +221,7 @@ const createMcpRequestRouter = (
 				return success(
 					await handlers.readResource({
 						uri: resourceParams.uri,
+						mirroredHeaders,
 					}),
 				);
 			}
@@ -240,7 +250,7 @@ const createMcpRequestRouter = (
 				return unsupported(`Method not found: ${request.method}`);
 		}
 	};
-	return async (request, sessionId, protocolVersion) => {
+	return async (request, sessionId, protocolVersion, mirroredHeaders) => {
 		// The 2026-07-28 HTTP path already refreshes before mirrored-header
 		// validation. Refreshing again here would fetch zero-TTL catalogs twice.
 		if (
@@ -257,7 +267,12 @@ const createMcpRequestRouter = (
 			await params.beforeRequest?.();
 		let result: RouteResult;
 		try {
-			result = await route(request, sessionId, protocolVersion);
+			result = await route(
+				request,
+				sessionId,
+				protocolVersion,
+				mirroredHeaders,
+			);
 		} catch (error) {
 			if (!(error instanceof BackendRpcError)) throw error;
 			result = {

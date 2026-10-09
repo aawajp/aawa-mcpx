@@ -17,10 +17,8 @@ import { createUiRoutes } from '@/gateway/ui_routes';
 import type { McpUpstreamManager } from '@/mcp_upstreams/types';
 import { logger } from '@/server/logger';
 import type { TrafficStore } from '@/server/traffic_store';
-import { parseClientInfo } from '@/shared/client_info';
 import { errorMessage } from '@/shared/common';
 import {
-	CLIENT_INFO_META,
 	CURRENT_PROTOCOL_VERSION,
 	recordOf,
 	SUPPORTED_PROTOCOL_VERSIONS,
@@ -348,13 +346,14 @@ const startServer = async (
 		port,
 		routes: {
 			'/mcp': createMcpHttpRoute({
-				onRequestMetadata: (metadata) => {
-					const info = parseClientInfo(metadata[CLIENT_INFO_META]);
-					clientActivity.observe(info, CURRENT_PROTOCOL_VERSION);
+				refreshCatalogs: mcpUpstreamManager.refreshStaleCatalogs,
+				onRequestMetadata: (_metadata, client) => {
+					clientActivity.observe(client, CURRENT_PROTOCOL_VERSION);
 				},
 				getToolSchema: (name) =>
-					handlers.listTools().tools.find((tool) => tool.name === name)
-						?.inputSchema,
+					handlers
+						.listTools(CURRENT_PROTOCOL_VERSION)
+						.tools.find((tool) => tool.name === name)?.inputSchema,
 				acceptsContentType,
 				buildInboundMessageLog,
 				buildLogFields,

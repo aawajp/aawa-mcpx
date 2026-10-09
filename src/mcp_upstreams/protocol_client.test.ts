@@ -9,14 +9,241 @@ import {
 } from '@/mcp_upstreams/protocol_client';
 import { fixtureReply } from '@/mcp_upstreams/protocol_fixture';
 import type { McpUpstreamManager } from '@/mcp_upstreams/types';
+import { logger } from '@/server/logger';
 import {
+	CLIENT_CAPABILITIES_META,
 	CURRENT_PROTOCOL_VERSION,
+	encodeHeaderValue,
 	protocolHeaders,
 	recordOf,
 	SUPPORTED_PROTOCOL_VERSIONS,
 } from '@/shared/mcp_protocol';
 
-import { expect, spyOn, test } from 'bun:test';
+import { expect, mock, spyOn, test } from 'bun:test';
+
+for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
+	test(`HTTP backend ${version}: mirrors belong to the backend hop and refresh with the catalog`, async () => {
+		const received: {
+			message: Record<string, unknown>;
+			headers: Headers;
+		}[] = [];
+		let headerName = 'Text';
+		const endpoint = Bun.serve({
+			port: 0,
+			hostname: '127.0.0.1',
+			async fetch(request) {
+				const message = recordOf(await request.json()) ?? {};
+				received.push({
+					message,
+					headers: request.headers,
+				});
+				const reply = fixtureReply(message, version);
+				if (message.method === 'tools/list') {
+					const result = recordOf(reply.result);
+					if (result)
+						result.tools = [
+							{
+								name: 'echo',
+								inputSchema: {
+									type: 'object',
+									properties: {
+										text: {
+											type: 'string',
+											'x-mcp-header': headerName,
+										},
+										count: {
+											type: 'integer',
+											'x-mcp-header': 'Count',
+										},
+										flag: {
+											type: 'boolean',
+											'x-mcp-header': 'Flag',
+										},
+									},
+								},
+							},
+							{
+								name: 'bad',
+								inputSchema: {
+									type: 'object',
+									properties: {
+										value: {
+											type: 'number',
+											'x-mcp-header': 'Value',
+										},
+									},
+								},
+							},
+						];
+				}
+				return Response.json(reply);
+			},
+		});
+		const client = new ProtocolClient({
+			serverName: 'headers',
+			serverConfig: {
+				type: 'http',
+				url: endpoint.url.href,
+				enabled: true,
+				timeout: 1000,
+				trafficLimit: 1000,
+				headers: {
+					'X-Fixture-Credential': 'retained',
+					'Mcp-Method': 'stale',
+					'Mcp-Name': 'public__echo',
+					'Mcp-Param-Count': 'stale',
+					'Mcp-Param-Flag': 'stale',
+					'Mcp-Param-Static': 'stale',
+				},
+			},
+		});
+		client.protocolVersion = version;
+		const warning = spyOn(logger, 'warn').mockImplementation(() => undefined);
+		const onerror = mock(() => undefined);
+		client.onerror = onerror;
+		const mirroredHeaders = {
+			'Mcp-Param-Text': 'client mirror',
+			'Mcp-Param-Count': '42.0',
+			'Mcp-Param-Flag': 'true',
+			'Mcp-Param-Opaque': 'forward me',
+		};
+		try {
+			const tools = (await client.listTools()).tools;
+			expect(tools.map((tool) => tool.name)).toEqual(
+				version === CURRENT_PROTOCOL_VERSION
+					? [
+							'echo',
+						]
+					: [
+							'echo',
+							'bad',
+						],
+			);
+			await client.callTool(
+				{
+					name: 'echo',
+					arguments: {
+						text: ' padded 世界 ',
+						count: 0,
+						flag: false,
+					},
+				},
+				undefined,
+				{
+					mirroredHeaders,
+				},
+			);
+			await client.callTool(
+				{
+					name: 'echo',
+					arguments: {
+						text: null,
+					},
+				},
+				undefined,
+				{
+					mirroredHeaders,
+				},
+			);
+			headerName = 'Updated';
+			await client.listTools();
+			await client.callTool(
+				{
+					name: 'echo',
+					arguments: {
+						text: 'new',
+					},
+				},
+				undefined,
+				{
+					mirroredHeaders: {
+						'Mcp-Param-Updated': 'stale',
+						'Mcp-Param-Opaque': 'forward me',
+					},
+				},
+			);
+			await client.getPrompt(
+				{
+					name: 'greet',
+				},
+				{
+					mirroredHeaders,
+				},
+			);
+			await client.readResource(
+				{
+					uri: 'file:///example',
+				},
+				{
+					mirroredHeaders,
+				},
+			);
+			for (const { message, headers } of received) {
+				expect(headers.get('X-Fixture-Credential')).toBe('retained');
+				expect(headers.has('Mcp-Param-Static')).toBe(false);
+				expect(headers.get('MCP-Protocol-Version')).toBe(version);
+				if (version !== CURRENT_PROTOCOL_VERSION) {
+					expect(
+						Array.from(headers.keys()).some(
+							(name) =>
+								name === 'mcp-method' ||
+								name === 'mcp-name' ||
+								name.startsWith('mcp-param-'),
+						),
+					).toBe(false);
+					continue;
+				}
+				expect(headers.get('Mcp-Method')).toBe(String(message.method));
+				expect(
+					recordOf(recordOf(message.params)?._meta)?.[CLIENT_CAPABILITIES_META],
+				).toEqual({});
+				if (message.method === 'tools/list') {
+					expect(headers.has('Mcp-Name')).toBe(false);
+					continue;
+				}
+				expect(headers.get('Mcp-Param-Opaque')).toBe('forward me');
+				expect(headers.get('Mcp-Name')).toBe(
+					message.method === 'resources/read'
+						? 'file:///example'
+						: message.method === 'prompts/get'
+							? 'greet'
+							: 'echo',
+				);
+			}
+			if (version === CURRENT_PROTOCOL_VERSION) {
+				const calls = received.filter(
+					({ message }) => message.method === 'tools/call',
+				);
+				expect(calls[0]?.headers.get('Mcp-Param-Text')).toBe(
+					encodeHeaderValue(' padded 世界 '),
+				);
+				expect(calls[0]?.headers.get('Mcp-Param-Count')).toBe('0');
+				expect(calls[0]?.headers.get('Mcp-Param-Flag')).toBe('false');
+				for (const name of [
+					'Text',
+					'Count',
+					'Flag',
+				])
+					expect(calls[1]?.headers.has(`Mcp-Param-${name}`)).toBe(false);
+				expect(calls[2]?.headers.get('Mcp-Param-Updated')).toBe('new');
+				expect(calls[2]?.headers.has('Mcp-Param-Text')).toBe(false);
+				expect(warning).toHaveBeenCalledTimes(2);
+				expect(JSON.parse(warning.mock.calls[0]?.[0] ?? '{}')).toMatchObject({
+					context: {
+						backend: 'headers',
+						tool: 'bad',
+						protocolVersion: version,
+					},
+				});
+			} else expect(warning).not.toHaveBeenCalled();
+			expect(onerror).not.toHaveBeenCalled();
+		} finally {
+			warning.mockRestore();
+			await client.close();
+			endpoint.stop(true);
+		}
+	});
+}
 
 test('a broken SSE response preserves the transport error and requests recovery', async () => {
 	const client = new ProtocolClient({

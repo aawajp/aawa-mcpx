@@ -129,6 +129,7 @@ const createMcpUpstreamOperations = (
 						undefined,
 						{
 							timeout: server.serverConfig.timeout,
+							mirroredHeaders: callParams.mirroredHeaders,
 						},
 					),
 				validate: callToolResultType,
@@ -186,6 +187,7 @@ const createMcpUpstreamOperations = (
 					},
 					{
 						timeout: server.serverConfig.timeout,
+						mirroredHeaders: promptParams.mirroredHeaders,
 					},
 				),
 			validate: getPromptResultType,
@@ -229,6 +231,7 @@ const createMcpUpstreamOperations = (
 					},
 					{
 						timeout: server.serverConfig.timeout,
+						mirroredHeaders: resourceParams.mirroredHeaders,
 					},
 				),
 			validate: readResourceResultType,

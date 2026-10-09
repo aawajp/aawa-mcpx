@@ -11,17 +11,17 @@ import {
 import type { createMcpSessionManager } from '@/gateway/mcp_session';
 import { logger } from '@/server/logger';
 import type { TrafficStore } from '@/server/traffic_store';
-import { parseClientInfo } from '@/shared/client_info';
+import type { ClientInfo } from '@/shared/client_info';
 import { errorMessage } from '@/shared/common';
+import { requestMetadataType } from '@/shared/mcp_metadata';
 import {
-	CLIENT_CAPABILITIES_META,
 	CLIENT_INFO_META,
 	CURRENT_PROTOCOL_VERSION,
 	decodeHeaderValue,
 	PROTOCOL_VERSION_META,
-	protocolHeaders,
 	recordOf,
 	SUPPORTED_PROTOCOL_VERSIONS,
+	validateToolHeaders,
 } from '@/shared/mcp_protocol';
 
 type ClientTrafficEntry = Parameters<TrafficStore['logClientTraffic']>[0] & {
@@ -34,6 +34,7 @@ type RouteRequest = (
 	request: IncomingJsonRpcRequest,
 	sessionId: string | undefined,
 	protocolVersion?: string,
+	mirroredHeaders?: Record<string, string>,
 ) => Promise<RouteResult>;
 
 type LogResponseError = (params: {
@@ -71,7 +72,10 @@ type CreateMcpHttpRouteParams = {
 	routeRequest: RouteRequest;
 	trafficStore: TrafficStore;
 	getToolSchema?: (name: string) => unknown;
-	onRequestMetadata?: (metadata: Record<string, unknown>) => void;
+	onRequestMetadata?: (
+		metadata: Record<string, unknown>,
+		client?: ClientInfo,
+	) => void;
 	refreshCatalogs?: () => Promise<void>;
 	waitForInitialization: (params: {
 		method: string;
@@ -227,6 +231,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 			// Classify before session validation: 2026-07-28 requests ignore session
 			// IDs. Unknown newer revisions also reach the explicit version error path.
 			if (
+				('method' in message && message.method === 'server/discover') ||
 				(metadata && PROTOCOL_VERSION_META in metadata) ||
 				versionHeader === CURRENT_PROTOCOL_VERSION ||
 				(versionHeader && versionHeader > '2025-11-25')
@@ -247,14 +252,18 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 							},
 						},
 						undefined,
-						400,
+						code === -32603 ? 500 : 400,
 					);
 				if (
 					isIncomingJsonRpcNotification(message) ||
 					isIncomingJsonRpcResponse(message)
 				)
 					return fail(-32600, 'MCP 2026-07-28 HTTP accepts requests only');
-				const version = metadata?.[PROTOCOL_VERSION_META];
+				// Validate the request's own metadata before comparing mirrors. Missing
+				// fields are InvalidParams, not a version/header negotiation failure.
+				if (!requestMetadataType.allows(metadata))
+					return fail(-32602, 'Missing or malformed request metadata');
+				const version = metadata[PROTOCOL_VERSION_META];
 				if (!versionHeader || versionHeader !== version)
 					return fail(-32020, 'Missing or mismatched protocol version header');
 				if (version !== CURRENT_PROTOCOL_VERSION)
@@ -264,8 +273,6 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 							...SUPPORTED_PROTOCOL_VERSIONS,
 						],
 					});
-				if (!recordOf(metadata?.[CLIENT_CAPABILITIES_META]))
-					return fail(-32602, 'Missing client capabilities');
 				if (request.headers.get('Mcp-Method') !== message.method)
 					return fail(-32020, 'Missing or mismatched Mcp-Method');
 				const bodyParams = recordOf(message.params);
@@ -274,25 +281,6 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 					('requestState' in bodyParams || 'inputResponses' in bodyParams)
 				)
 					return fail(-32602, 'Interactive continuations are not supported');
-				if (
-					metadata?.[CLIENT_INFO_META] !== undefined &&
-					!parseClientInfo(metadata[CLIENT_INFO_META])
-				)
-					return fail(
-						-32602,
-						'Client info must include string name and version fields.',
-					);
-				params.onRequestMetadata?.(metadata ?? {});
-				if (message.method !== 'server/discover') {
-					// Discovery describes the gateway itself and need not wait for backends.
-					const unavailable = await waitForInitialization({
-						method: message.method,
-						sessionId: undefined,
-						id: message.id,
-					});
-					if (unavailable) return unavailable;
-					await params.refreshCatalogs?.();
-				}
 				if (
 					[
 						'tools/call',
@@ -312,30 +300,67 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 						return fail(-32020, 'Malformed Mcp-Name');
 					}
 				}
-				// MCP 2026-07-28 mirrors annotated tool arguments into headers. Use
-				// the same encoder on both boundaries, then compare decoded values.
+				if (
+					[
+						'tools/list',
+						'tools/call',
+						'prompts/list',
+						'prompts/get',
+						'resources/list',
+						'resources/read',
+					].includes(message.method)
+				) {
+					// Refresh only catalog-dependent methods, once, before using header
+					// rules. Discovery and unsupported methods need no backend work.
+					try {
+						const unavailable = await waitForInitialization({
+							method: message.method,
+							sessionId: undefined,
+							id: message.id,
+						});
+						if (unavailable) return unavailable;
+						await params.refreshCatalogs?.();
+					} catch (error) {
+						logger.error(
+							JSON.stringify({
+								message: 'MCP catalog refresh failed',
+								context: {
+									method: message.method,
+								},
+								error: errorMessage(error),
+							}),
+						);
+						return fail(-32603, 'Internal server error');
+					}
+				}
+				// Header rules were compiled at catalog fetch. Compare values directly
+				// without encoding the body and decoding it again on every request.
 				try {
-					for (const [name, expected] of protocolHeaders(
-						message.method,
-						bodyParams ?? {},
-						params.getToolSchema?.(String(bodyParams?.name)),
-					)) {
-						if (!name.startsWith('mcp-param-')) continue;
-						const actual = request.headers.get(name);
-						if (
-							actual === null ||
-							decodeHeaderValue(actual) !== decodeHeaderValue(expected)
-						)
-							return fail(-32020, `Missing or mismatched ${name}`);
+					if (message.method === 'tools/call') {
+						const issue = validateToolHeaders(
+							request.headers,
+							bodyParams?.arguments,
+							params.getToolSchema?.(String(bodyParams?.name)),
+						);
+						if (issue) return fail(-32020, issue);
 					}
 				} catch {
 					return fail(-32020, 'Invalid mirrored tool parameter');
 				}
+				// Metadata is already validated; activity tracking needs no second
+				// parse/validation of client identity and grants it no capabilities.
+				params.onRequestMetadata?.(metadata, metadata[CLIENT_INFO_META]);
 				try {
 					const result = await routeRequest(
 						message,
 						undefined,
 						CURRENT_PROTOCOL_VERSION,
+						// Unknown parameter mirrors remain opaque to this hop.
+						Object.fromEntries(
+							[
+								...request.headers,
+							].filter(([name]) => name.startsWith('mcp-param-')),
+						),
 					);
 					logClientTraffic({
 						protocolVersion: CURRENT_PROTOCOL_VERSION,

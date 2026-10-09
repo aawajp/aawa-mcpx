@@ -37,17 +37,27 @@ const encodeHeaderValue = (value: string): string => {
 		!(value.startsWith('=?base64?') && value.endsWith('?='))
 	)
 		return value;
-	return `=?base64?${btoa(String.fromCharCode(...new TextEncoder().encode(value)))}?=`;
+	return `=?base64?${btoa(Array.from(new TextEncoder().encode(value), (byte) => String.fromCharCode(byte)).join(''))}?=`;
 };
 
 const decodeHeaderValue = (value: string): string => {
-	if (!/^[\t\x20-\x7e]*$/.test(value)) throw new Error('Invalid header value');
+	if (!/^[\t\x20-\x7e]*$/.test(value) || value.trim() !== value)
+		throw new Error('Invalid header value');
 	if (!value.startsWith('=?base64?') || !value.endsWith('?=')) return value;
+	const encoded = value.slice(9, -2);
+	// atob accepts malformed padding and whitespace; the protocol requires Base64.
+	if (
+		!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
+			encoded,
+		)
+	)
+		throw new Error('Invalid Base64 header value');
+	const decoded = atob(encoded);
+	if (btoa(decoded) !== encoded) throw new Error('Invalid Base64 header value');
 	return new TextDecoder('utf-8', {
 		fatal: true,
-	}).decode(
-		Uint8Array.from(atob(value.slice(9, -2)), (char) => char.charCodeAt(0)),
-	);
+		ignoreBOM: true,
+	}).decode(Uint8Array.from(decoded, (char) => char.charCodeAt(0)));
 };
 
 type HeaderParameter = {
@@ -56,6 +66,55 @@ type HeaderParameter = {
 	type: string;
 };
 const toolHeaderParameters = (schema: unknown): HeaderParameter[] => {
+	const object = recordOf(schema);
+	if (!object) return [];
+	const cached = headerRules.get(object);
+	if (cached instanceof Error) throw cached;
+	if (cached) return cached;
+	try {
+		const parameters = compileToolHeaderParameters(object);
+		headerRules.set(object, parameters);
+		return parameters;
+	} catch (error) {
+		const issue =
+			error instanceof Error
+				? error
+				: new Error('Invalid x-mcp-header annotation');
+		headerRules.set(object, issue);
+		throw issue;
+	}
+};
+
+// Catalog fetch compiles these rules, including failures. Schema identity survives
+// namespacing; both HTTP hops reuse them until a refresh replaces the schema object.
+const headerRules = new WeakMap<object, HeaderParameter[] | Error>();
+const schemaMaps = new Set([
+	'properties',
+	'patternProperties',
+	'$defs',
+	'definitions',
+	'dependentSchemas',
+	'dependencies',
+]);
+const schemaBranches = new Set([
+	'items',
+	'prefixItems',
+	'additionalItems',
+	'contains',
+	'unevaluatedItems',
+	'additionalProperties',
+	'unevaluatedProperties',
+	'propertyNames',
+	'allOf',
+	'anyOf',
+	'oneOf',
+	'not',
+	'if',
+	'then',
+	'else',
+	'contentSchema',
+]);
+const compileToolHeaderParameters = (schema: unknown): HeaderParameter[] => {
 	const parameters: HeaderParameter[] = [];
 	const names = new Set<string>();
 	// Only a chain of schema `properties` keys is a valid header source in
@@ -75,6 +134,7 @@ const toolHeaderParameters = (schema: unknown): HeaderParameter[] => {
 				typeof name !== 'string' ||
 				!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) ||
 				names.has(name.toLowerCase()) ||
+				typeof record.type !== 'string' ||
 				![
 					'string',
 					'integer',
@@ -104,11 +164,52 @@ const toolHeaderParameters = (schema: unknown): HeaderParameter[] => {
 					);
 				continue;
 			}
-			visit(child, path, false);
+			// Traverse schema-valued keywords only. Examples/defaults/const values
+			// are instance data; a literal x-mcp-header key there is no annotation.
+			if (schemaMaps.has(key)) {
+				for (const definition of Object.values(recordOf(child) ?? {}))
+					visit(definition, path, false);
+				continue;
+			}
+			if (schemaBranches.has(key)) visit(child, path, false);
 		}
 	};
 	visit(schema, [], true);
 	return parameters;
+};
+
+const validateToolHeaders = (
+	headers: Headers,
+	args: unknown,
+	schema: unknown,
+): string | undefined => {
+	for (const parameter of toolHeaderParameters(schema)) {
+		const headerName = `Mcp-Param-${parameter.name}`;
+		const header = headers.get(headerName);
+		let value: unknown = args;
+		for (const key of parameter.path) value = recordOf(value)?.[key];
+		if (value === undefined || value === null) {
+			if (header !== null) return `Unexpected ${headerName}`;
+			continue;
+		}
+		if (header === null) return `Missing ${headerName}`;
+		const decoded = decodeHeaderValue(header);
+		if (parameter.type === 'integer') {
+			// MCP recommends numeric comparison (42.0 equals 42), while requiring
+			// safe integers. Reject non-decimal spellings and non-finite values.
+			if (
+				!Number.isSafeInteger(value) ||
+				!/^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(decoded) ||
+				!Number.isSafeInteger(Number(decoded)) ||
+				Number(decoded) !== value
+			)
+				return `Mismatched ${headerName}`;
+			continue;
+		}
+		if (typeof value !== parameter.type || decoded !== String(value))
+			return `Mismatched ${headerName}`;
+	}
+	return undefined;
 };
 
 const protocolHeaders = (
@@ -165,4 +266,5 @@ export {
 	SERVER_INFO_META,
 	SUPPORTED_PROTOCOL_VERSIONS,
 	toolHeaderParameters,
+	validateToolHeaders,
 };

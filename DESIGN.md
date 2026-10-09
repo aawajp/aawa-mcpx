@@ -190,7 +190,7 @@ schemes. See the [resource and tool contracts](#7-references).
 
 ## 5. Validation policy
 
-ArkType is the default for JSON-RPC envelopes, handled method parameters, HTTP API
+ArkType is the default for JSON-RPC envelopes, modern request metadata/capabilities, handled method parameters, HTTP API
 bodies, configuration, upstream response shapes, and UI overview/debug contracts.
 Ajv and `ajv-formats` are peer dependencies used only for arbitrary provider JSON
 Schema, which ArkType cannot import.
@@ -201,6 +201,12 @@ once before rate limiting or dispatch. Unusable input schemas block only their t
 preserving raw definitions and exposure settings so a repaired catalog restores it.
 Input mismatches never reach backends; the client revision determines the error
 shape described in [input validation](README.md#input-schemas-and-arguments).
+
+Header annotation rules and failures also cache by schema identity. Modern HTTP
+refreshes stale catalogs before checking mirrors; each backend hop rebuilds its
+own recognized headers. Client capabilities validate once per request and remain
+separate from backend capabilities. [HTTP metadata and headers](README.md#modern-http-metadata-and-headers)
+defines the version boundaries, tool quarantine, encoding, and forwarding policy.
 
 Tool execution failures remain `isError` results; lookup, transport, malformed
 response, and gateway failures use protocol errors. The response boundary adapts
