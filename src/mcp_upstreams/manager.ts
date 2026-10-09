@@ -125,6 +125,32 @@ const createMcpUpstreamManager = (
 				}),
 		);
 	};
+	const refreshCatalogs = async (refreshParams?: {
+		serverName?: string;
+	}): Promise<void> => {
+		const serverName = refreshParams?.serverName;
+		const names =
+			serverName !== undefined
+				? [
+						serverName,
+					]
+				: connections
+						.getStatuses()
+						.filter((status) => status.enabled && status.connected)
+						.map((status) => status.serverName);
+		await Promise.all(
+			names.map(async (name) => {
+				// A refresh already in flight may predate the button press. Wait for it,
+				// then fetch again, bypassing TTL for both initialized and modern peers.
+				await catalogRefreshes.get(name);
+				const server = servers.get(name);
+				if (!server) throw new Error(`Unknown MCP upstream "${name}"`);
+				if (!server.serverConfig.enabled || !clients.has(name))
+					throw new Error(`MCP upstream "${name}" is not available`);
+				await refreshCatalog(server);
+			}),
+		);
+	};
 
 	const operations = createMcpUpstreamOperations({
 		clients,
@@ -157,6 +183,7 @@ const createMcpUpstreamManager = (
 
 	return {
 		refreshStaleCatalogs,
+		refreshCatalogs,
 		initialize: connections.initialize,
 		getClient: connections.getClient,
 		getAllClients: connections.getAllClients,

@@ -29,6 +29,7 @@ export default function App() {
 
 	const [overview, setOverview] = useState<OverviewResponse | null>(null);
 	const [status, setStatus] = useState<LoadState>('idle');
+	const [isRefreshing, setIsRefreshing] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [mainTab, setMainTab] = useState<MainTab>(() => {
 		if (typeof window === 'undefined') return 'backends';
@@ -44,22 +45,36 @@ export default function App() {
 		return resolveRoute();
 	});
 
-	const refresh = useCallback(async () => {
-		setStatus('loading');
-		setError(null);
-		try {
-			const res = await fetch('/api/overview', { method: 'GET' });
-			if (!res.ok) {
-				throw new Error(`Request failed with status ${res.status}`);
+	const refresh = useCallback(
+		async (options?: { force?: boolean; serverName?: string }) => {
+			setStatus('loading');
+			setError(null);
+			// SSE snapshots may arrive during the fetch; keep buttons busy until
+			// the explicit backend refresh finishes.
+			if (options?.force) setIsRefreshing(true);
+			try {
+				const res = options?.force
+					? await fetch('/api/backends/refresh', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({ serverName: options.serverName }),
+					})
+					: await fetch('/api/overview', { method: 'GET' });
+				if (!res.ok) {
+					throw new Error(`Request failed with status ${res.status}`);
+				}
+				const data = overviewResponseType.assert(await res.json());
+				setOverview(data);
+				setStatus('ready');
+			} catch (err) {
+				setError(errorMessage(err));
+				setStatus('error');
+			} finally {
+				if (options?.force) setIsRefreshing(false);
 			}
-			const data = overviewResponseType.assert(await res.json());
-			setOverview(data);
-			setStatus('ready');
-		} catch (err) {
-			setError(errorMessage(err));
-			setStatus('error');
-		}
-	}, []);
+		},
+		[],
+	);
 
 	const toggleBackend = useCallback(
 		async (params: { serverName: string; enabled: boolean }) => {
@@ -241,12 +256,13 @@ export default function App() {
 
 			<SummarySection
 				overview={overview}
-				onRefresh={() => void refresh()}
+				onRefresh={() => void refresh({ force: true })}
 				onToggleBackend={(params) => void toggleBackend(params)}
 				isBackendPending={(serverName) =>
 					pendingBackends[serverName] === true
 				}
 				status={status}
+				isRefreshing={isRefreshing}
 				error={error}
 			/>
 			<div className="flex items-center gap-2">
@@ -292,7 +308,8 @@ export default function App() {
 			{mainTab === 'backends' ? (
 				<BackendsSection
 					backends={overview?.backends ?? []}
-					onRefresh={() => void refresh()}
+					onRefresh={(serverName) => void refresh({ force: true, serverName })}
+					isRefreshing={isRefreshing}
 					onToggleTool={(params) => void toggleTool(params)}
 					isToolEnabled={(name) => enabledToolMap.get(name) === true}
 					isToolPending={(name) => pendingTools[name] === true}

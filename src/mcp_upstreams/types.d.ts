@@ -151,6 +151,7 @@ type McpUpstreamRequestQueue = {
 
 type McpUpstreamManager = {
 	refreshStaleCatalogs?: () => Promise<void>;
+	refreshCatalogs: (params?: { serverName?: string }) => Promise<void>;
 	initialize: () => Promise<void>;
 	getClient: (params: GetClientParams) => Client | undefined;
 	getAllClients: () => McpUpstreamClientsMap;

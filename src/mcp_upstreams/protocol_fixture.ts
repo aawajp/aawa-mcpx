@@ -183,8 +183,17 @@ if (import.meta.main) {
 		while (end >= 0) {
 			const message = recordOf(JSON.parse(buffer.slice(0, end)));
 			buffer = buffer.slice(end + 1);
-			if (message && 'id' in message)
-				console.log(JSON.stringify(fixtureReply(message, version)));
+			if (message && 'id' in message) {
+				const reply = fixtureReply(message, version);
+				const catalogPath = process.argv[3];
+				const result = recordOf(reply.result);
+				if (catalogPath && result) {
+					if (message.method === 'tools/list')
+						result.tools = await Bun.file(catalogPath).json();
+					if ('ttlMs' in result) result.ttlMs = 3_600_000;
+				}
+				console.log(JSON.stringify(reply));
+			}
 			end = buffer.indexOf('\n');
 		}
 	}

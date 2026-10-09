@@ -15,6 +15,7 @@ type Props = {
 	onToggleBackend: (params: { serverName: string; enabled: boolean }) => void;
 	isBackendPending: (serverName: string) => boolean;
 	status: 'idle' | 'loading' | 'error' | 'ready';
+	isRefreshing: boolean;
 	error?: string | null;
 };
 
@@ -24,6 +25,7 @@ const SummarySection = ({
 	onToggleBackend,
 	isBackendPending,
 	status,
+	isRefreshing,
 	error,
 }: Props) => {
 	const sortedBackends = overview?.backends
@@ -56,11 +58,12 @@ const SummarySection = ({
 							<button
 								type="button"
 								onClick={onRefresh}
+								disabled={isRefreshing || status === 'loading'}
 								className="inline-flex items-center rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted transition"
 							>
 								{t('backends.refresh')}
 							</button>
-							{status === 'loading' ? (
+							{isRefreshing || status === 'loading' ? (
 								<span className="text-xs text-muted-foreground">
 									{t('backends.loading')}
 								</span>

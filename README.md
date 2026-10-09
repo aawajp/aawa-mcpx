@@ -86,6 +86,9 @@ These optional fields apply to both transports:
 | `availableTools` | string[] | Discovered tools; server-managed, not for manual edits |
 
 Unknown names in `enabledTools` make the backend unavailable with an action-required configuration error until corrected.
+Tools removed from a previously discovered catalog are pruned from both
+`availableTools` and `enabledTools` in `mcp.json`, including after a reconnect or
+restart. Newly discovered tools after the initial fetch remain unexposed until enabled.
 
 `mcp.json` is local configuration and is ignored by Git. Keep backend credentials there rather than in tracked files.
 
@@ -240,6 +243,7 @@ restrictions applied at the response boundary.
 | `/api/overview` | GET | Aggregated snapshot JSON used by the UI |
 | `/api/events` | GET | SSE stream for real-time UI updates |
 | `/api/backends/toggle` | POST | Enable or disable a backend (`{ serverName, enabled }`) and persist to `mcp.json` |
+| `/api/backends/refresh` | POST | Fetch fresh catalogs, then return the overview (`{ serverName }` for one backend; `{}` for all connected backends) |
 | `/api/tools/toggle` | POST | Toggle client-visible tool state (`{ name, enabled }`) and persist to `mcp.json` |
 | `/api/tools/call` | POST | Call a backend tool for UI testing (`{ serverName, toolName, arguments }`) |
 | `/api/health` | GET | Health check with per-backend connectivity status |
@@ -254,6 +258,7 @@ Non-MCP APIs use `/api/*` to avoid UI route collisions.
 ## UI behavior
 
 - **Backends** is the default view; **Tester** invokes tools without raw JSON. Backends and tools sort alphabetically.
+- Backend **Refresh** fetches that backend's tools, prompts, and resources regardless of cache TTL or protocol revision. The summary **Refresh** fetches all connected backends; normal overview reads remain cached.
 - Backend toggles persist `enabled`; `Expose to clients` controls tool exposure. Disabled backends retain exposure settings and show enabled tools as inactive.
 - Descriptions and input/output schemas start folded. Protocol lists supported revisions; backend protocol and software versions are shown separately.
 - Clients group by reported name/version, showing first/last seen and latest protocol. This bounded, in-memory history survives session closure, merges identically named instances, and exposes no session IDs or connection status.

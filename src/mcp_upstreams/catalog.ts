@@ -170,6 +170,19 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 			});
 			catalogParams.server.serverConfig.enabledTools = enabledTools;
 		}
+		// A previously discovered tool disappearing is a catalog change, not a
+		// configuration typo. Prune only those names; never silently accept an
+		// enabledTools entry that has never appeared in this backend's catalog.
+		// Use the persisted catalog too, so removals survive a restart/reconnect
+		// that cleared the in-memory cache.
+		const previousNames = new Set(
+			catalogParams.server.serverConfig.availableTools ?? [],
+		);
+		const currentNames = new Set(toolNames);
+		enabledTools = enabledTools.filter(
+			(name) => !previousNames.has(name) || currentNames.has(name),
+		);
+		catalogParams.server.serverConfig.enabledTools = enabledTools;
 		catalogParams.server.serverConfig.availableTools = toolNames;
 		try {
 			await persistToolState({

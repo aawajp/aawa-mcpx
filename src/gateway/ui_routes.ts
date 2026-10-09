@@ -20,6 +20,11 @@ const toggleBackendBodyType = type({
 	'[string]': 'unknown',
 });
 
+const refreshBackendsBodyType = type({
+	'serverName?': 'string',
+	'[string]': 'unknown',
+});
+
 const callToolBodyType = type({
 	serverName: 'string',
 	toolName: 'string',
@@ -64,6 +69,41 @@ const createUiRoutes = (params: CreateUiRoutesParams) => {
 					return Response.json(overview);
 				} catch (err) {
 					logger.error(`UI overview error: ${errorMessage(err)}`);
+					return new Response('Internal Server Error', {
+						status: 500,
+					});
+				}
+			},
+		},
+		'/api/backends/refresh': {
+			async POST(request: Request) {
+				let body: typeof refreshBackendsBodyType.infer;
+				try {
+					body = refreshBackendsBodyType.assert(await request.json());
+				} catch (error) {
+					logger.warn(
+						JSON.stringify({
+							message: 'Invalid backend refresh request',
+							error: errorMessage(error),
+						}),
+					);
+					return new Response('Bad Request', {
+						status: 400,
+					});
+				}
+				try {
+					await mcpUpstreamManager.refreshCatalogs(body);
+					return Response.json(buildOverview());
+				} catch (error) {
+					logger.error(
+						JSON.stringify({
+							message: 'Backend refresh failed',
+							context: {
+								serverName: body.serverName,
+							},
+							error: errorMessage(error),
+						}),
+					);
 					return new Response('Internal Server Error', {
 						status: 500,
 					});

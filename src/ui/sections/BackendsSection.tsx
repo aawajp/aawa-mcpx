@@ -25,7 +25,8 @@ const backendLabel = (backend: McpUpstreamStatus): string => {
 
 type Props = {
 	backends: McpUpstreamStatus[];
-	onRefresh: () => void;
+	onRefresh: (serverName: string) => void;
+	isRefreshing: boolean;
 	onToggleTool: (params: { name: string; enabled: boolean }) => void;
 	isToolEnabled: (name: string) => boolean;
 	isToolPending: (name: string) => boolean;
@@ -34,6 +35,7 @@ type Props = {
 const BackendsSection = ({
 	backends,
 	onRefresh,
+	isRefreshing,
 	onToggleTool,
 	isToolEnabled,
 	isToolPending,
@@ -62,7 +64,8 @@ const BackendsSection = ({
 							<div className="flex items-center gap-2">
 								<button
 									type="button"
-									onClick={onRefresh}
+									onClick={() => onRefresh(backend.serverName)}
+									disabled={isRefreshing || !backend.enabled || !backend.connected}
 									className="inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium hover:bg-muted transition"
 								>
 									{t('backends.refresh')}
