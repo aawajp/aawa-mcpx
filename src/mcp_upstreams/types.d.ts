@@ -38,6 +38,7 @@ import type {
 
 import type { McpConfig, McpServerConfig } from '@/config/schema';
 import type { TrafficStore } from '@/server/traffic_store';
+import type { ProtocolVersion } from '@/shared/mcp_protocol';
 import type { ToolCallResult } from '@/shared/mcp_results';
 
 type CreateMcpUpstreamManagerParams = {
@@ -56,6 +57,7 @@ type CallToolParams = {
 	serverName: string;
 	toolName: string;
 	args: Record<string, unknown>;
+	clientProtocolVersion?: ProtocolVersion;
 };
 
 type GetPromptParams = {

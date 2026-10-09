@@ -155,6 +155,7 @@ const createMcpUpstreamManager = (
 	const operations = createMcpUpstreamOperations({
 		clients,
 		getEnabledTools: catalog.getEnabledTools,
+		getInputValidator: catalog.getInputValidator,
 		getOutputSchema: ({ serverName, toolName }) =>
 			toolsCache.get(serverName)?.tools.find((tool) => tool.name === toolName)
 				?.outputSchema,

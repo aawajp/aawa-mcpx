@@ -18,6 +18,7 @@ import { BackendRpcError } from '@/mcp_upstreams/protocol_client';
 import type { McpUpstreamManager } from '@/mcp_upstreams/types';
 import { logger } from '@/server/logger';
 import { errorMessage } from '@/shared/common';
+import type { ProtocolVersion } from '@/shared/mcp_protocol';
 import { type ToolCallResult, toolErrorResult } from '@/shared/mcp_results';
 
 type CreateHandlersParams = {
@@ -27,6 +28,7 @@ type CreateHandlersParams = {
 type CallToolHandlerParams = {
 	name: string;
 	args: Record<string, unknown>;
+	clientProtocolVersion?: ProtocolVersion;
 };
 
 type GetPromptHandlerParams = {
@@ -122,6 +124,7 @@ const createHandlers = (params: CreateHandlersParams) => {
 				serverName: parsed.serverName,
 				toolName: parsed.originalName,
 				args,
+				clientProtocolVersion: request.clientProtocolVersion,
 			});
 		} catch (err) {
 			logger.error(`Tool call failed for "${name}": ${errorMessage(err)}`);

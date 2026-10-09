@@ -38,6 +38,10 @@ the relevant doc as part of the change.
 - Keep HTML and CSS paths relative where alias imports are not supported.
 - Prefer grouped exports at the bottom of modules when consistent with the file.
 - Do not introduce `any`; use concrete types or `unknown`.
+- Use ArkType by default. Reserve the existing Ajv peers for arbitrary provider
+  JSON Schema, which ArkType cannot import.
+- Compile input schemas on catalog fetch, reuse validators on calls, and avoid
+  repeated validation of the same request or catalog data within that lifecycle.
 - Keep public/exported function parameters and return types explicit.
 - Use sentence case for markdown headings.
 

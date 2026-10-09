@@ -3,6 +3,7 @@ import type {
 	ReadResourceResult,
 } from '@modelcontextprotocol/sdk/types';
 
+import type { CompiledSchema } from '@/mcp_upstreams/json_schema';
 import { runLoggedRequest } from '@/mcp_upstreams/logged_request';
 import { BackendRpcError } from '@/mcp_upstreams/protocol_client';
 import { createToolResultNormalizer } from '@/mcp_upstreams/tool_result';
@@ -30,6 +31,10 @@ type CreateMcpUpstreamOperationsParams = {
 		serverName: string;
 		toolName: string;
 	}) => unknown;
+	getInputValidator: (params: {
+		serverName: string;
+		toolName: string;
+	}) => CompiledSchema | undefined;
 	getServer: (serverName: string) => McpUpstreamServer | undefined;
 	onValidationError: OnValidationError;
 	trafficStore?: TrafficStore;
@@ -67,11 +72,37 @@ const createMcpUpstreamOperations = (
 			);
 		}
 
-		await waitForRateLimit(server);
+		// Catalog refresh compiled the schema once. Both dashboard and MCP calls
+		// validate their arguments here exactly once, before any backend work.
+		const inputValidator = params.getInputValidator({
+			serverName,
+			toolName,
+		});
+		if (!inputValidator || 'issue' in inputValidator) {
+			throw new BackendRpcError(
+				`Tool "${toolName}" input schema is unusable: ${inputValidator && 'issue' in inputValidator ? inputValidator.issue.detail : 'No validated catalog schema'}`,
+				-32603,
+			);
+		}
+		const inputIssue = inputValidator.validate(args);
+		if (inputIssue) {
+			if (inputIssue.reason !== 'schema_mismatch')
+				throw new BackendRpcError(
+					`Input validation unavailable: ${inputIssue.detail}`,
+					-32603,
+				);
+			const message = `Invalid arguments for tool "${toolName}": ${inputIssue.detail}`;
+			// June lists invalid arguments as protocol errors. November and modern
+			// MCP report input validation failures as actionable tool errors.
+			if (callParams.clientProtocolVersion === '2025-06-18')
+				throw new BackendRpcError(message, -32602);
+			return toolErrorResult(message);
+		}
 		const outputSchema = params.getOutputSchema({
 			serverName,
 			toolName,
 		});
+		await waitForRateLimit(server);
 		try {
 			const result = await runLoggedRequest<ToolCallResult>({
 				server,

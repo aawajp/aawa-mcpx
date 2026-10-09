@@ -206,11 +206,30 @@ to avoid sending data twice. Structured output does not replace independent text
 (see the [array-output example](https://modelcontextprotocol.io/specification/2026-07-28/server/tools#output-schema)).
 Empty-array compatibility still needs confirmation in each consuming application.
 
+### Input schemas and arguments
+
+Every supported revision requires `inputSchema.type: "object"`. Catalog fetches
+validate and compile input schemas once; MCP calls and dashboard tests reuse those
+validators for one argument-validation pass before backend work. Unusable schemas
+hide only the affected tool from MCP catalogs and block its calls, with a warning.
+Raw dashboard definitions and exposure settings remain available; refresh can
+restore the tool after its schema is repaired.
+
+Malformed call parameters return JSON-RPC `-32602` in every revision. Objects that
+fail the tool's schema return `-32602` for
+[2025-06-18](https://modelcontextprotocol.io/specification/2025-06-18/server/tools#error-handling),
+or `isError: true` for
+[2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25/server/tools#error-handling)
+and [2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/server/tools#error-handling).
+The client revision controls this response independently of the backend revision.
+
 ### Output schemas
 
 Provider `outputSchema` definitions appear in catalogs and the dashboard. Ajv and
-`ajv-formats` (peer dependencies) validate successful results using JSON Schema
-2020-12 by default, or declared draft-07/2019-09. ArkType validates application shapes.
+`ajv-formats` (peer dependencies) validate successful results and compile input
+schemas using JSON Schema 2020-12 by default, or declared draft-07/2019-09. ArkType
+is the default for application shapes; Ajv handles arbitrary provider JSON Schema,
+which ArkType cannot import.
 
 Missing `structuredContent` is recovered from complete JSON text blocks up to
 2 MiB each: use a single distinct value even if it mismatches the schema; with
@@ -225,8 +244,9 @@ deliberately tolerates violations of the spec's
 [conforming-result `MUST` rule](https://modelcontextprotocol.io/specification/2026-07-28/server/tools#output-schema);
 an advertised schema therefore does not guarantee conformity. Validation never
 coerces data, inserts defaults, or removes properties, and skips `isError: true`.
-Limits are 256 KiB per schema, 10,000 visited values, and 64 nesting levels;
-exceeding them warns. External references are never fetched automatically, following
+Input and output schemas share limits of 256 KiB, 10,000 visited values, and 64
+nesting levels. Exceeding them blocks the affected input tool or warns for output.
+External references are never fetched automatically, following
 the [MCP JSON Schema requirements](https://modelcontextprotocol.io/specification/2026-07-28/basic#json-schema-usage).
 
 | Client revision | Structured output | Adaptation |

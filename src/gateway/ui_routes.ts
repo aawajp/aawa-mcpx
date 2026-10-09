@@ -7,6 +7,7 @@ import type { McpUpstreamManager } from '@/mcp_upstreams/types';
 import { logger } from '@/server/logger';
 import type { TrafficStore } from '@/server/traffic_store';
 import { errorMessage } from '@/shared/common';
+import { jsonObjectType } from '@/shared/mcp_schemas';
 
 const toggleToolBodyType = type({
 	name: 'string',
@@ -28,7 +29,7 @@ const refreshBackendsBodyType = type({
 const callToolBodyType = type({
 	serverName: 'string',
 	toolName: 'string',
-	'arguments?': 'Record<string, unknown>',
+	'arguments?': jsonObjectType,
 	'[string]': 'unknown',
 });
 

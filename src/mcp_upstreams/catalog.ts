@@ -8,6 +8,8 @@ import { type } from 'arktype';
 
 import { saveToolState } from '@/config/loader';
 import type { McpConfig } from '@/config/schema';
+import { createInputSchemaCompiler } from '@/mcp_upstreams/input_schema';
+import type { CompiledSchema } from '@/mcp_upstreams/json_schema';
 import type {
 	Client,
 	McpUpstreamClientsMap,
@@ -121,6 +123,8 @@ const isMethodNotFoundError = (error: unknown): boolean => {
 };
 
 const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
+	const compileInputSchema = createInputSchemaCompiler();
+	const inputValidators = new WeakMap<Tool, CompiledSchema>();
 	const {
 		attemptReconnect,
 		clients,
@@ -237,6 +241,27 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 					error: parsed,
 				});
 			}
+			// Validate/compile once for each fetched catalog. Reads and calls only
+			// look up the stored result; bad schemas never disable healthy siblings.
+			for (const tool of result.tools) {
+				const compiled = compileInputSchema(tool.inputSchema);
+				inputValidators.set(tool, compiled);
+				if ('issue' in compiled)
+					logger.warn(
+						JSON.stringify({
+							message:
+								'Tool input schema is unusable; tool will not be exposed or invoked',
+							context: {
+								backend: serverName,
+								tool: tool.name,
+								protocolVersion: client.protocolVersion,
+							},
+							error: compiled.issue,
+						}),
+					);
+			}
+			// Retain raw definitions for dashboard inspection and exposure settings:
+			// an unusable schema is not a removed tool or a backend failure.
 			toolsCache.set(serverName, result);
 			await initializeToolState({
 				server,
@@ -444,9 +469,14 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 				server,
 				tools: toolsResult.tools,
 			});
-			const filteredTools = toolsResult.tools.filter((tool) =>
-				enabledSet.has(tool.name),
-			);
+			const filteredTools = toolsResult.tools.filter((tool) => {
+				const compiled = inputValidators.get(tool);
+				return (
+					enabledSet.has(tool.name) &&
+					compiled !== undefined &&
+					'validate' in compiled
+				);
+			});
 			result.set(serverName, {
 				...toolsResult,
 				tools: filteredTools,
@@ -473,6 +503,16 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 			toolNames: getToolNames(tools),
 			enabledTools: server.serverConfig.enabledTools,
 		});
+	};
+
+	const getInputValidator = (catalogParams: {
+		serverName: string;
+		toolName: string;
+	}): CompiledSchema | undefined => {
+		const tool = toolsCache
+			.get(catalogParams.serverName)
+			?.tools.find((tool) => tool.name === catalogParams.toolName);
+		return tool ? inputValidators.get(tool) : undefined;
 	};
 
 	const toggleTool = async (
@@ -546,6 +586,7 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 		listAllResources,
 		listAllTools,
 		listEnabledTools,
+		getInputValidator,
 		toggleTool,
 	};
 };

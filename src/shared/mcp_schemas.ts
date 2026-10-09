@@ -172,6 +172,7 @@ const pingResultType = type({
 export {
 	callToolResultType,
 	getPromptResultType,
+	jsonObjectType,
 	jsonRpcResponseType,
 	listPromptsResultType,
 	listResourcesResultType,

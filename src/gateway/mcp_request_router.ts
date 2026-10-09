@@ -10,14 +10,16 @@ import {
 import {
 	CACHEABLE_METHODS,
 	CURRENT_PROTOCOL_VERSION,
+	isProtocolVersion,
 	recordOf,
 	SERVER_INFO_META,
 	SUPPORTED_PROTOCOL_VERSIONS,
 } from '@/shared/mcp_protocol';
+import { jsonObjectType } from '@/shared/mcp_schemas';
 
 const namedArgumentsParamsType = type({
 	name: 'string',
-	'arguments?': 'Record<string, unknown>',
+	'arguments?': jsonObjectType,
 	'[string]': 'unknown',
 });
 
@@ -154,10 +156,14 @@ const createMcpRequestRouter = (
 						request.id,
 						`Invalid ${request.method} params.`,
 					);
-				const callParams = namedArgumentsParamsType.assert(request.params);
+				const callParams = request.params;
 				const args = {
 					name: callParams.name,
 					args: callParams.arguments ?? {},
+					clientProtocolVersion:
+						protocolVersion !== undefined && isProtocolVersion(protocolVersion)
+							? protocolVersion
+							: undefined,
 				};
 				return success(
 					await (request.method === 'tools/call'
