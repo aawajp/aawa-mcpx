@@ -192,6 +192,23 @@ Continuations return `-32602`. Task options are rejected for June 2025 and 2026;
 November 2025 ignores them and executes normally, following the
 [no-task-capability rule](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/tasks#task-support-and-handling).
 
+### Cancellation
+
+Both 2025 revisions cancel through session-scoped `notifications/cancelled`;
+disconnect alone does not cancel. The 2026 HTTP path cancels on disconnect.
+Cancelled requests end without a JSON-RPC result/error (an empty SSE response
+when the connection remains open). Unknown, completed, or malformed cancellation
+notifications are ignored; `initialize` cannot be cancelled.
+
+Cancellation uses the backend's own request ID: notifications for legacy HTTP
+and all stdio revisions, stream closure for 2026 HTTP. It stops queued dispatch,
+ignores late replies, and does not trigger recovery. Shared catalog refreshes
+continue for other callers. Notification delivery is best effort; cancellation
+cannot undo side effects. See the cancellation contracts for
+[June 2025](https://modelcontextprotocol.io/specification/2025-06-18/basic/utilities/cancellation),
+[November 2025](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/cancellation),
+and [2026](https://modelcontextprotocol.io/specification/2026-07-28/basic/utilities/cancellation).
+
 ### Network recovery
 
 Enabled backends automatically recover from network interruptions, timeouts,

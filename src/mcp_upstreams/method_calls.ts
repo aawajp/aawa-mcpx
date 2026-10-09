@@ -38,7 +38,10 @@ type CreateMcpUpstreamOperationsParams = {
 	getServer: (serverName: string) => McpUpstreamServer | undefined;
 	onValidationError: OnValidationError;
 	trafficStore?: TrafficStore;
-	waitForRateLimit: (server: McpUpstreamServer) => Promise<void>;
+	waitForRateLimit: (
+		server: McpUpstreamServer,
+		signal?: AbortSignal,
+	) => Promise<void>;
 };
 
 const createMcpUpstreamOperations = (
@@ -58,6 +61,7 @@ const createMcpUpstreamOperations = (
 		callParams: CallToolParams,
 	): Promise<ToolCallResult> => {
 		const { serverName, toolName, args } = callParams;
+		callParams.signal?.throwIfAborted();
 		const server = getServer(serverName);
 		const client = clients.get(serverName);
 		if (!server?.serverConfig.enabled)
@@ -110,9 +114,11 @@ const createMcpUpstreamOperations = (
 			serverName,
 			toolName,
 		});
-		await waitForRateLimit(server);
+		await waitForRateLimit(server, callParams.signal);
+		callParams.signal?.throwIfAborted();
 		try {
 			const result = await runLoggedRequest<ToolCallResult>({
+				signal: callParams.signal,
 				server,
 				client,
 				method: `tools/call:${toolName}`,
@@ -131,6 +137,7 @@ const createMcpUpstreamOperations = (
 						{
 							timeout: server.serverConfig.timeout,
 							mirroredHeaders: callParams.mirroredHeaders,
+							signal: callParams.signal,
 						},
 					),
 				validate: callToolResultType,
@@ -143,7 +150,8 @@ const createMcpUpstreamOperations = (
 				protocolVersion: client.protocolVersion,
 			});
 		} catch (error) {
-			if (error instanceof BackendRpcError) throw error;
+			if (callParams.signal?.aborted || error instanceof BackendRpcError)
+				throw error;
 			// RPC errors retain their code/data; transport and malformed-response
 			// failures belong to the gateway's protocol boundary. Only a backend's
 			// explicit isError result represents a tool execution failure here.
@@ -158,6 +166,7 @@ const createMcpUpstreamOperations = (
 		promptParams: GetPromptParams,
 	): Promise<GetPromptResult> => {
 		const { serverName, promptName, args } = promptParams;
+		promptParams.signal?.throwIfAborted();
 		const server = getServer(serverName);
 		const client = clients.get(serverName);
 		if (!server?.serverConfig.enabled)
@@ -171,8 +180,10 @@ const createMcpUpstreamOperations = (
 				-32603,
 			);
 
-		await waitForRateLimit(server);
+		await waitForRateLimit(server, promptParams.signal);
+		promptParams.signal?.throwIfAborted();
 		return runLoggedRequest<GetPromptResult>({
+			signal: promptParams.signal,
 			server,
 			client,
 			method: `prompts/get:${promptName}`,
@@ -190,6 +201,7 @@ const createMcpUpstreamOperations = (
 					{
 						timeout: server.serverConfig.timeout,
 						mirroredHeaders: promptParams.mirroredHeaders,
+						signal: promptParams.signal,
 					},
 				),
 			validate: getPromptResultType,
@@ -202,6 +214,7 @@ const createMcpUpstreamOperations = (
 		resourceParams: ReadResourceParams,
 	): Promise<ReadResourceResult> => {
 		const { serverName, uri } = resourceParams;
+		resourceParams.signal?.throwIfAborted();
 		const server = getServer(serverName);
 		const client = clients.get(serverName);
 		if (!server?.serverConfig.enabled)
@@ -215,8 +228,10 @@ const createMcpUpstreamOperations = (
 				-32603,
 			);
 
-		await waitForRateLimit(server);
+		await waitForRateLimit(server, resourceParams.signal);
+		resourceParams.signal?.throwIfAborted();
 		return runLoggedRequest<ReadResourceResult>({
+			signal: resourceParams.signal,
 			server,
 			client,
 			method: `resources/read:${uri}`,
@@ -235,6 +250,7 @@ const createMcpUpstreamOperations = (
 					{
 						timeout: server.serverConfig.timeout,
 						mirroredHeaders: resourceParams.mirroredHeaders,
+						signal: resourceParams.signal,
 					},
 				),
 			validate: readResourceResultType,

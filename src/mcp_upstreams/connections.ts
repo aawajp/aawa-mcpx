@@ -221,7 +221,11 @@ const createMcpUpstreamConnections = (
 		return queue;
 	};
 
-	const waitForRateLimit = async (server: McpUpstreamServer): Promise<void> => {
+	const waitForRateLimit = async (
+		server: McpUpstreamServer,
+		signal?: AbortSignal,
+	): Promise<void> => {
+		signal?.throwIfAborted();
 		const queue = getOrCreateQueue(server);
 		const now = Date.now();
 		const trafficLimit = server.serverConfig.trafficLimit;
@@ -230,9 +234,23 @@ const createMcpUpstreamConnections = (
 
 		if (timeSinceLastRequest < minInterval) {
 			const waitTime = minInterval - timeSinceLastRequest;
-			await Bun.sleep(waitTime);
+			let timer: ReturnType<typeof setTimeout> | undefined;
+			let abort: () => void = () => undefined;
+			try {
+				await new Promise<void>((resolve, reject) => {
+					timer = setTimeout(resolve, waitTime);
+					abort = () => reject(signal?.reason);
+					signal?.addEventListener('abort', abort, {
+						once: true,
+					});
+				});
+			} finally {
+				clearTimeout(timer);
+				signal?.removeEventListener('abort', abort);
+			}
 		}
 
+		signal?.throwIfAborted();
 		queue.lastRequestTime = Date.now();
 	};
 

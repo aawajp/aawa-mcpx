@@ -39,6 +39,7 @@ type CallToolHandlerParams = {
 	metadata?: Record<string, unknown>;
 	clientProtocolVersion?: ProtocolVersion;
 	mirroredHeaders?: Record<string, string>;
+	signal?: AbortSignal;
 };
 
 type GetPromptHandlerParams = {
@@ -46,12 +47,14 @@ type GetPromptHandlerParams = {
 	args: Record<string, unknown>;
 	metadata?: Record<string, unknown>;
 	mirroredHeaders?: Record<string, string>;
+	signal?: AbortSignal;
 };
 
 type ReadResourceHandlerParams = {
 	uri: string;
 	metadata?: Record<string, unknown>;
 	mirroredHeaders?: Record<string, string>;
+	signal?: AbortSignal;
 };
 
 const createHandlers = (params: CreateHandlersParams) => {
@@ -162,6 +165,7 @@ const createHandlers = (params: CreateHandlersParams) => {
 				metadata: request.metadata,
 				clientProtocolVersion: request.clientProtocolVersion,
 				mirroredHeaders: request.mirroredHeaders,
+				signal: request.signal,
 			});
 			// Only protocol resource references need routing. Text and structured
 			// output are backend data and must not be searched or rewritten for URIs.
@@ -191,7 +195,7 @@ const createHandlers = (params: CreateHandlersParams) => {
 				}),
 			};
 		} catch (err) {
-			if (err instanceof BackendRpcError) throw err;
+			if (request.signal?.aborted || err instanceof BackendRpcError) throw err;
 			logger.error(
 				JSON.stringify({
 					message: 'Gateway tool dispatch failed',
@@ -224,6 +228,7 @@ const createHandlers = (params: CreateHandlersParams) => {
 			args: args as Record<string, string>,
 			metadata: request.metadata,
 			mirroredHeaders: request.mirroredHeaders,
+			signal: request.signal,
 		});
 		return {
 			...result,
@@ -265,6 +270,7 @@ const createHandlers = (params: CreateHandlersParams) => {
 			uri: parsed.originalUri,
 			metadata: request.metadata,
 			mirroredHeaders: request.mirroredHeaders,
+			signal: request.signal,
 		});
 		return {
 			...result,

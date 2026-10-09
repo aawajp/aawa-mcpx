@@ -176,6 +176,8 @@ const fixtureReply = (
 
 if (import.meta.main) {
 	const version = process.argv[2] ?? '2025-11-25';
+	const cancellationMode = process.argv[3] === '--cancellation';
+	const events: Record<string, unknown>[] = [];
 	let buffer = '';
 	for await (const chunk of Bun.stdin.stream()) {
 		buffer += new TextDecoder().decode(chunk);
@@ -183,6 +185,7 @@ if (import.meta.main) {
 		while (end >= 0) {
 			const message = recordOf(JSON.parse(buffer.slice(0, end)));
 			buffer = buffer.slice(end + 1);
+			if (message && cancellationMode) events.push(message);
 			if (message && 'id' in message) {
 				const reply = fixtureReply(message, version);
 				const catalogPath = process.argv[3];
@@ -191,12 +194,28 @@ if (import.meta.main) {
 					result._meta = {
 						'com.example/request': message.params,
 					};
-				if (catalogPath && catalogPath !== '--echo-request' && result) {
+				if (catalogPath && !catalogPath.startsWith('--') && result) {
 					if (message.method === 'tools/list')
 						result.tools = await Bun.file(catalogPath).json();
 					if ('ttlMs' in result) result.ttlMs = 3_600_000;
 				}
-				console.log(JSON.stringify(reply));
+				if (cancellationMode && result) {
+					const mode = recordOf(
+						recordOf(message.params)?.arguments,
+					)?.fixtureMode;
+					if (mode === 'events')
+						result.structuredContent = {
+							events,
+						};
+					if (
+						mode === 'delayed' ||
+						recordOf(message.params)?.fixtureDelay ||
+						recordOf(recordOf(message.params)?._meta)?.['com.example/delayed']
+					) {
+						// Deliberately violate cancellation to exercise late-response handling.
+						setTimeout(() => console.log(JSON.stringify(reply)), 100);
+					} else console.log(JSON.stringify(reply));
+				} else console.log(JSON.stringify(reply));
 			}
 			end = buffer.indexOf('\n');
 		}

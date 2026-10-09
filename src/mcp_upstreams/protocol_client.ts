@@ -10,6 +10,7 @@ import type {
 
 import type { McpUpstreamServer } from '@/mcp_upstreams/types';
 import { logger } from '@/server/logger';
+import { withCancellation } from '@/shared/cancellation';
 import { errorMessage } from '@/shared/common';
 import {
 	CACHEABLE_METHODS,
@@ -372,20 +373,34 @@ class ProtocolClient {
 					// Retire the ID before cancellation so a late stdio response cannot
 					// complete an abandoned discovery probe or another operation.
 					this.pending.delete(id);
-					child.stdin.write(
-						`${JSON.stringify({
-							jsonrpc: '2.0',
-							method: 'notifications/cancelled',
-							params: {
-								requestId: id,
-							},
-						})}\n`,
-					);
-					reject(
-						new BackendTransportError(
-							new Error('Backend request timed out or cancelled'),
-						),
-					);
+					signal.removeEventListener('abort', abort);
+					try {
+						// Both 2025 revisions forbid cancelling initialize. Shutdown also
+						// must not write to a process that is already being torn down.
+						if (!this.closed && message.method !== 'initialize')
+							child.stdin.write(
+								`${JSON.stringify({
+									jsonrpc: '2.0',
+									method: 'notifications/cancelled',
+									params: {
+										requestId: id,
+									},
+								})}\n`,
+							);
+					} catch (error) {
+						logger.warn(
+							JSON.stringify({
+								message: 'Backend cancellation notification failed',
+								context: {
+									backend: this.server.serverName,
+									requestId: id,
+								},
+								error: errorMessage(error),
+							}),
+						);
+					} finally {
+						reject(new BackendTransportError(signal.reason));
+					}
 				};
 				this.pending.set(id, {
 					resolve: (value) => {
@@ -402,7 +417,11 @@ class ProtocolClient {
 				signal.addEventListener('abort', abort, {
 					once: true,
 				});
-				child.stdin.write(`${JSON.stringify(message)}\n`);
+				try {
+					child.stdin.write(`${JSON.stringify(message)}\n`);
+				} catch (error) {
+					this.pending.get(id)?.reject(new BackendTransportError(error));
+				}
 			});
 		}
 		const headers = new Headers(config.headers as HeadersInit | undefined);
@@ -643,17 +662,26 @@ class ProtocolClient {
 		};
 		delete bodyParams._meta;
 		if (Object.keys(metadata).length > 0) bodyParams._meta = metadata;
+		let sent = false;
 		try {
-			const response = await this.send(
-				{
-					jsonrpc: '2.0',
-					id,
-					method,
-					params: bodyParams,
-				},
+			signal.throwIfAborted();
+			sent = true;
+			const response = await withCancellation(
+				this.send(
+					{
+						jsonrpc: '2.0',
+						id,
+						method,
+						params: bodyParams,
+					},
+					signal,
+					options.mirroredHeaders,
+				),
 				signal,
-				options.mirroredHeaders,
 			);
+			// A transport or provider may finish after cancellation. Never accept
+			// that result or update connection health for an abandoned operation.
+			signal.throwIfAborted();
 			if (!jsonRpcResponseType.allows(response) || response.id !== id)
 				throw new Error('Invalid backend RPC response');
 			const error = response.error;
@@ -705,6 +733,31 @@ class ProtocolClient {
 			this.lastSuccessfulRequestAt = Date.now();
 			return result;
 		} catch (error) {
+			const failure = signal.aborted
+				? new BackendTransportError(signal.reason)
+				: error;
+			if (
+				sent &&
+				signal.aborted &&
+				!this.closed &&
+				method !== 'initialize' &&
+				this.server.serverConfig.type === 'http' &&
+				!usesRequestMetadata
+			) {
+				// Legacy HTTP does not equate disconnect with cancellation. Notify
+				// using this hop's ID/session and a fresh, bounded signal. Modern HTTP
+				// cancels by closing the response stream, so no notification is sent.
+				void this.send(
+					{
+						jsonrpc: '2.0',
+						method: 'notifications/cancelled',
+						params: {
+							requestId: id,
+						},
+					},
+					AbortSignal.timeout(1000),
+				).catch(() => undefined);
+			}
 			// Recover the connection for subsequent calls. Never replay an operation:
 			// a lost response does not establish whether its side effects completed.
 			if (
@@ -712,10 +765,10 @@ class ProtocolClient {
 				!options.signal?.aborted &&
 				method !== 'ping' &&
 				method !== 'server/discover' &&
-				(isTransientBackendError(error) || this.isSessionLostError(error))
+				(isTransientBackendError(failure) || this.isSessionLostError(failure))
 			)
-				this.ontransporterror(error);
-			throw error;
+				this.ontransporterror(failure);
+			throw failure;
 		} finally {
 			clearTimeout(timeout);
 			this.controllers.delete(controller);

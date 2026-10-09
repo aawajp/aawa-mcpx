@@ -60,6 +60,7 @@ type CallToolParams = {
 	metadata?: Record<string, unknown>;
 	clientProtocolVersion?: ProtocolVersion;
 	mirroredHeaders?: Record<string, string>;
+	signal?: AbortSignal;
 };
 
 type GetPromptParams = {
@@ -68,6 +69,7 @@ type GetPromptParams = {
 	args: Record<string, string>;
 	metadata?: Record<string, unknown>;
 	mirroredHeaders?: Record<string, string>;
+	signal?: AbortSignal;
 };
 
 type ReadResourceParams = {
@@ -75,6 +77,7 @@ type ReadResourceParams = {
 	uri: string;
 	metadata?: Record<string, unknown>;
 	mirroredHeaders?: Record<string, string>;
+	signal?: AbortSignal;
 };
 
 type ToggleToolParams = {

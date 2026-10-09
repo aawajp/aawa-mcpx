@@ -1,3 +1,5 @@
+import { type } from 'arktype';
+
 import {
 	getJsonRpcId,
 	getRecord,
@@ -11,6 +13,7 @@ import {
 import type { createMcpSessionManager } from '@/gateway/mcp_session';
 import { logger } from '@/server/logger';
 import type { TrafficStore } from '@/server/traffic_store';
+import { withCancellation } from '@/shared/cancellation';
 import type { ClientInfo } from '@/shared/client_info';
 import { errorMessage } from '@/shared/common';
 import { requestMetadataType } from '@/shared/mcp_metadata';
@@ -35,7 +38,24 @@ type RouteRequest = (
 	sessionId: string | undefined,
 	protocolVersion?: string,
 	mirroredHeaders?: Record<string, string>,
+	signal?: AbortSignal,
 ) => Promise<RouteResult>;
+
+const cancelledParamsType = type({
+	requestId: 'string | number.integer',
+	'reason?': 'string',
+	'[string]': 'unknown',
+});
+
+// A cancelled RPC must not produce a result/error. End an empty SSE response
+// instead: both HTTP bindings allow SSE for requests, while 202 is reserved for
+// accepted notifications/responses. Disconnected callers receive no messages.
+const createCancelledResponse = (): Response =>
+	new Response('', {
+		headers: {
+			'Content-Type': 'text/event-stream',
+		},
+	});
 
 type LogResponseError = (params: {
 	method: string;
@@ -108,6 +128,74 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 		trafficStore,
 		waitForInitialization,
 	} = params;
+	// Legacy IDs are scoped to a session, and number/string IDs remain distinct.
+	// Initialize cannot be cancelled. Modern HTTP has no shared session/ID scope:
+	// only the signal of that request's own connection can cancel its work.
+	const activeRequests = new Map<
+		string,
+		Map<string | number, AbortController>
+	>();
+	const routeCancellableRequest = async (
+		message: IncomingJsonRpcRequest,
+		sessionId: string | undefined,
+		version?: string,
+		mirrors?: Record<string, string>,
+		disconnect?: AbortSignal,
+	): Promise<RouteResult> => {
+		const controller = new AbortController();
+		const signal =
+			version === CURRENT_PROTOCOL_VERSION ? disconnect : controller.signal;
+		const tracksId =
+			sessionId !== undefined &&
+			message.method !== 'initialize' &&
+			version !== CURRENT_PROTOCOL_VERSION;
+		let requests =
+			sessionId === undefined ? undefined : activeRequests.get(sessionId);
+		if (tracksId) {
+			if (requests?.has(message.id))
+				return {
+					payload: {
+						jsonrpc: '2.0',
+						id: message.id,
+						error: {
+							code: -32600,
+							message: 'Request ID is already in progress',
+						},
+					},
+					status: 400,
+				};
+			if (!requests) {
+				requests = new Map();
+				activeRequests.set(sessionId, requests);
+			}
+			requests.set(message.id, controller);
+		}
+		try {
+			signal?.throwIfAborted();
+			return await withCancellation(
+				routeRequest(
+					message,
+					sessionId,
+					version,
+					mirrors,
+					message.method === 'initialize' ? undefined : signal,
+				),
+				signal,
+			);
+		} catch (error) {
+			if (!signal?.aborted) throw error;
+			// Cancellation has no JSON-RPC error code/result.
+			return {
+				payload: null,
+				sessionId,
+			};
+		} finally {
+			if (tracksId) {
+				requests?.delete(message.id);
+				if (requests?.size === 0) activeRequests.delete(sessionId);
+			}
+		}
+	};
 	const getTrafficProtocolVersion = (
 		entry: ClientTrafficEntry,
 	): string | undefined => {
@@ -308,14 +396,22 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 					// Refresh only catalog-dependent methods, once, before using header
 					// rules. Discovery and unsupported methods need no backend work.
 					try {
-						const unavailable = await waitForInitialization({
-							method: message.method,
-							sessionId: undefined,
-							id: message.id,
-						});
+						request.signal.throwIfAborted();
+						const unavailable = await withCancellation(
+							waitForInitialization({
+								method: message.method,
+								sessionId: undefined,
+								id: message.id,
+							}),
+							request.signal,
+						);
 						if (unavailable) return unavailable;
-						await params.refreshCatalogs?.();
+						await withCancellation(
+							Promise.resolve(params.refreshCatalogs?.()),
+							request.signal,
+						);
 					} catch (error) {
+						if (request.signal.aborted) return createCancelledResponse();
 						logger.error(
 							JSON.stringify({
 								message: 'MCP catalog refresh failed',
@@ -346,7 +442,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 				// parse/validation of client identity and grants it no capabilities.
 				params.onRequestMetadata?.(metadata, metadata[CLIENT_INFO_META]);
 				try {
-					const result = await routeRequest(
+					const result = await routeCancellableRequest(
 						message,
 						undefined,
 						CURRENT_PROTOCOL_VERSION,
@@ -356,7 +452,9 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 								...request.headers,
 							].filter(([name]) => name.startsWith('mcp-param-')),
 						),
+						request.signal,
 					);
+					if (!result.payload) return createCancelledResponse();
 					logClientTraffic({
 						protocolVersion: CURRENT_PROTOCOL_VERSION,
 						method: message.method,
@@ -435,6 +533,18 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 						routeResult.sessionId ?? sessionId,
 						routeResult.status,
 					);
+				}
+				if (
+					notification.method === 'notifications/cancelled' &&
+					cancelledParamsType.allows(notification.params) &&
+					sessionId
+				) {
+					// Unknown, completed and malformed cancellations are ignored. Only
+					// this validated session can address its own active request IDs.
+					activeRequests
+						.get(sessionId)
+						?.get(notification.params.requestId)
+						?.abort();
 				}
 				logger.info(
 					buildInboundMessageLog(
@@ -535,11 +645,12 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 				}
 				// The session is authoritative even when the optional 2025 header is
 				// absent. Error classification must use this client's negotiated era.
-				const routeResult = await routeRequest(
+				const routeResult = await routeCancellableRequest(
 					jsonRpcRequest,
 					sessionId,
 					mcpSessions.getProtocolVersion(sessionId),
 				);
+				if (!routeResult.payload) return createCancelledResponse();
 				const logSessionId = routeResult.sessionId ?? sessionId;
 				if (
 					!routeResult.status &&

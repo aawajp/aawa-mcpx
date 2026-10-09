@@ -3,6 +3,7 @@ import { type } from 'arktype';
 import type { IncomingJsonRpcRequest, RouteResult } from '@/gateway/json_rpc';
 import type { createHandlers } from '@/gateway/mcp_handlers';
 import { BackendRpcError } from '@/mcp_upstreams/protocol_client';
+import { withCancellation } from '@/shared/cancellation';
 import { legacyRequestMetadataType } from '@/shared/mcp_metadata';
 import {
 	requiresOutputWrapper,
@@ -101,6 +102,7 @@ const createMcpRequestRouter = (
 	sessionId: string | undefined,
 	protocolVersion?: string,
 	mirroredHeaders?: Record<string, string>,
+	signal?: AbortSignal,
 ) => Promise<RouteResult>) => {
 	const { handlers, handleInitialize } = params;
 
@@ -109,7 +111,9 @@ const createMcpRequestRouter = (
 		sessionId: string | undefined,
 		protocolVersion?: string,
 		mirroredHeaders?: Record<string, string>,
+		signal?: AbortSignal,
 	): Promise<RouteResult> => {
+		signal?.throwIfAborted();
 		const usesRequestMetadata = protocolVersion === CURRENT_PROTOCOL_VERSION;
 		const requireSession: RequireSession = usesRequestMetadata
 			? () => null
@@ -227,6 +231,7 @@ const createMcpRequestRouter = (
 					args: callParams.arguments ?? {},
 					metadata: recordOf(callParams._meta),
 					mirroredHeaders,
+					signal,
 					clientProtocolVersion:
 						protocolVersion !== undefined && isProtocolVersion(protocolVersion)
 							? protocolVersion
@@ -250,6 +255,7 @@ const createMcpRequestRouter = (
 						uri: resourceParams.uri,
 						metadata: recordOf(resourceParams._meta),
 						mirroredHeaders,
+						signal,
 					}),
 				);
 			}
@@ -278,7 +284,14 @@ const createMcpRequestRouter = (
 				return unsupported(`Method not found: ${request.method}`);
 		}
 	};
-	return async (request, sessionId, protocolVersion, mirroredHeaders) => {
+	return async (
+		request,
+		sessionId,
+		protocolVersion,
+		mirroredHeaders,
+		signal,
+	) => {
+		signal?.throwIfAborted();
 		// The 2026-07-28 HTTP path already refreshes before mirrored-header
 		// validation. Refreshing again here would fetch zero-TTL catalogs twice.
 		if (
@@ -292,7 +305,10 @@ const createMcpRequestRouter = (
 				'resources/read',
 			].includes(request.method)
 		)
-			await params.beforeRequest?.();
+			await withCancellation(
+				params.beforeRequest?.() ?? Promise.resolve(),
+				signal,
+			);
 		let result: RouteResult;
 		try {
 			result = await route(
@@ -300,7 +316,9 @@ const createMcpRequestRouter = (
 				sessionId,
 				protocolVersion,
 				mirroredHeaders,
+				signal,
 			);
+			signal?.throwIfAborted();
 		} catch (error) {
 			if (!(error instanceof BackendRpcError)) throw error;
 			result = {

@@ -94,9 +94,10 @@ return HTTP 404 with JSON-RPC method-not-found. A supplied `MCP-Protocol-Version
 must match metadata (2026) or the session (2025). Present `Origin` headers are
 validated to reduce DNS rebinding risk.
 
-Public GET event streams, SSE POST responses, and stdio are not exposed: the
-gateway sends no server-initiated MCP messages and completes operations with one
-JSON response. Backend HTTP accepts JSON/SSE; backend stdio is supported.
+Public GET event streams and stdio are not exposed. The gateway sends no
+server-initiated MCP messages and normally completes operations with one JSON
+response; cancellation ends an empty SSE response without an RPC result.
+Backend HTTP accepts JSON/SSE; backend stdio is supported.
 See [feature scope](README.md#protocol-feature-scope) for unsupported capabilities.
 
 Backend 2026 caches use receipt time and the minimum page TTL, scoped to configured
@@ -179,6 +180,15 @@ and unknown/disabled backends return `-32602`; disconnected backends return
 The same codec applies to all supported revisions. Resource URI schemes must
 follow RFC 3986; the gateway uses a fixed scheme rather than backend names as
 schemes. See the [resource and tool contracts](#7-references).
+
+### 3.6 Cancellation lifecycle
+
+The HTTP route owns active 2025 request controllers keyed by session and typed ID;
+2026 requests use their own disconnect signals. Signals pass through dispatch and
+rate limiting to `ProtocolClient`, which applies the backend revision's cancellation
+mechanism. Completion/cancellation removes controllers and listeners; abandoned
+responses cannot complete another request. Shared catalog work remains independent.
+[Cancellation](README.md#cancellation) defines transport rules and delivery limits.
 
 ## 4. Persistence
 

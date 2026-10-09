@@ -19,6 +19,7 @@ const runLoggedRequest = async <T>(params: {
 	validate: (result: T) => unknown;
 	onValidationError: OnValidationError;
 	trafficStore?: TrafficStore;
+	signal?: AbortSignal;
 }): Promise<T> => {
 	const log = (response: unknown): void =>
 		params.trafficStore?.logBackendTraffic({
@@ -30,6 +31,7 @@ const runLoggedRequest = async <T>(params: {
 		});
 	try {
 		const result = await params.invoke();
+		params.signal?.throwIfAborted();
 		const parsed = params.validate(result);
 		if (parsed instanceof type.errors)
 			params.onValidationError({
@@ -41,6 +43,8 @@ const runLoggedRequest = async <T>(params: {
 		log(result);
 		return result;
 	} catch (error) {
+		// Caller cancellation is an expected lifecycle event, not a backend fault.
+		if (params.signal?.aborted) throw error;
 		logger.error(
 			JSON.stringify({
 				message: 'MCP upstream request failed',

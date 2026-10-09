@@ -4,9 +4,63 @@ import {
 	ProtocolClient,
 	ProtocolNegotiationError,
 } from '@/mcp_upstreams/protocol_client';
-import type { McpUpstreamStatus } from '@/mcp_upstreams/types';
+import type {
+	McpUpstreamRequestQueue,
+	McpUpstreamStatus,
+} from '@/mcp_upstreams/types';
 
 import { expect, spyOn, test } from 'bun:test';
+
+test('cancellation frees a rate-limit wait without reserving a dispatch time', async () => {
+	const config = mcpConfigType.assert({
+		mcpServers: {
+			mock: {
+				type: 'http',
+				url: 'http://localhost/mcp',
+				enabled: true,
+				trafficLimit: 1,
+			},
+		},
+	});
+	const serverConfig = config.mcpServers.mock;
+	if (!serverConfig) throw new Error('Missing fixture');
+	const server = {
+		serverName: 'mock',
+		serverConfig,
+	};
+	const requestQueues = new Map<string, McpUpstreamRequestQueue>();
+	const connections = createMcpUpstreamConnections({
+		clients: new Map(),
+		configErrorBackends: new Set(),
+		healthCheckFailures: new Map(),
+		promptsCache: new Map(),
+		reconnectTimers: new Map(),
+		requestQueues,
+		resourcesCache: new Map(),
+		servers: new Map([
+			[
+				'mock',
+				server,
+			],
+		]),
+		statuses: new Map(),
+		suppressClientErrorsUntil: new Map(),
+		toolsCache: new Map(),
+		refreshCatalog: async () => undefined,
+	});
+	await connections.waitForRateLimit(server);
+	const lastDispatch = requestQueues.get('mock')?.lastRequestTime;
+	const controller = new AbortController();
+	const waiting = connections.waitForRateLimit(server, controller.signal);
+	const rejection = waiting.catch((error: unknown) => error);
+	controller.abort();
+	expect(await rejection).toBe(controller.signal.reason);
+	expect(requestQueues.get('mock')?.lastRequestTime).toBe(lastDispatch);
+	await expect(
+		connections.waitForRateLimit(server, controller.signal),
+	).rejects.toThrow();
+	expect(requestQueues.get('mock')?.lastRequestTime).toBe(lastDispatch);
+});
 
 test('protocol failure stops reconnects until explicitly re-enabled', async () => {
 	const config = mcpConfigType.assert({
