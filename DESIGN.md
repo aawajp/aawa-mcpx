@@ -471,7 +471,7 @@ copied across protocol boundaries.
 
 | State | Storage and lifetime |
 | --- | --- |
-| Backend/tool exposure | `mcp.json`: read once, then rewritten from memory, with defaults filled in, after every tool catalog fetch and dashboard change, without rereading/merging external edits. Disable preserves tool settings; configured enabled tools appear inactive. |
+| Backend/tool exposure | `mcp.json`: read once. A tool catalog fetch or dashboard change that alters `enabled`, `enabledTools`, or `availableTools` writes the file as read with only those fields changed (no defaults added, in place, so a single-file Docker mount keeps working); unchanged state is not written. External edits are not reread or merged. Disable preserves tool settings; configured enabled tools appear inactive. |
 | Traffic | `server/traffic_store.ts` stores current-run request/response records in the `traffic` table of `db/traffic.db`, without a size limit; the table is cleared at startup. |
 | Catalog snapshots | The same database's `backends`, `tools`, `prompts`, and `resources` tables are upserted on every catalog fetch and kept across restarts; nothing reads them. |
 | Sessions/client activity | In-memory state with the retention limits in [3.3](#33-sessions) and [3.4](#34-client-identity); cleared on restart. |

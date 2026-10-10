@@ -36,9 +36,10 @@ bun install
 ### Backends
 
 Backends are defined in `mcp.json` under `mcpServers`. The file is read once at
-startup. The gateway rewrites it from memory, with defaults filled in, after
-every tool catalog fetch and dashboard change, so external edits made while it
-runs are lost; stop the gateway before editing. `mcp.json` is ignored by Git;
+startup. When a tool catalog fetch or a dashboard change alters `enabled`,
+`enabledTools`, or `availableTools`, the gateway writes the file as it read it
+with only those fields changed, so external edits made while it runs are lost;
+stop the gateway before editing. `mcp.json` is ignored by Git;
 keep backend credentials there rather than in tracked files.
 
 HTTP backend:

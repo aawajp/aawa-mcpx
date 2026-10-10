@@ -118,6 +118,10 @@ entry under the date its change was committed. The project uses
 - Catalog fetches compile tool schemas much faster (200 schemas: about 0.2 s
   instead of 5 s). Before, every schema created its own Ajv instance, which
   blocked other requests while a large catalog loaded.
+- `mcp.json` is written only when tool exposure or the enabled setting changes,
+  and keeps its own content: only `enabled`, `enabledTools`, and
+  `availableTools` change. Before, it was rewritten after every tool fetch with
+  defaults such as `timeout` and `trafficLimit` added.
 
 ### 2026-10-09
 
