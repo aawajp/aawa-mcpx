@@ -436,3 +436,51 @@ test('legacy wrappers keep a root $ref compilable in draft-07 and 2020-12', () =
 		).toBe('schema_mismatch');
 	}
 });
+
+test('many schemas compile quickly on a shared instance per dialect', () => {
+	const validate = createOutputSchemaValidator();
+	const started = performance.now();
+	for (let index = 0; index < 200; index++)
+		expect(
+			validate(
+				{
+					type: 'object',
+					properties: {
+						[`email${index}`]: {
+							type: 'string',
+							format: 'email',
+						},
+					},
+				},
+				{},
+			),
+		).toBeUndefined();
+	// A new Ajv instance per schema took over 4 s here.
+	expect(performance.now() - started).toBeLessThan(1000);
+});
+
+test('a schema with a meta-schema $id does not break later schemas', () => {
+	const validate = createOutputSchemaValidator();
+	for (const $id of [
+		'https://json-schema.org/draft/2020-12/schema',
+		'http://json-schema.org/draft-07/schema#',
+	]) {
+		validate(
+			{
+				$schema: $id,
+				$id,
+				type: 'string',
+			},
+			'works',
+		);
+		expect(
+			validate(
+				{
+					$schema: $id,
+					type: 'number',
+				},
+				'works',
+			)?.reason,
+		).toBe('schema_mismatch');
+	}
+});

@@ -416,9 +416,10 @@ Input and output schemas share limits of 256 Ki characters of serialized JSON,
 External references are never fetched, following the
 [MCP JSON Schema requirements](https://modelcontextprotocol.io/specification/2026-07-28/basic#json-schema-usage).
 
-Validators and validation issues use weak schema-object keys. Separate Ajv
-instances isolate duplicate provider `$id` values; replacement catalogs compile
-fresh validators.
+Validators and validation issues use weak schema-object keys. Each dialect has
+one shared Ajv instance; provider `$id` values are never registered in it, so
+duplicates stay isolated, and Ajv forgets each schema after compiling it.
+Replacement catalogs compile fresh validators.
 
 | Client revision | Structured output | Adaptation |
 | --- | --- | --- |

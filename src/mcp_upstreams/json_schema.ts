@@ -21,6 +21,39 @@ type CompiledSchema =
 			issue: SchemaIssue;
 	  };
 
+type Engine = typeof Ajv | typeof Ajv2019 | typeof Ajv2020;
+
+// One instance per dialect: creating one compiles its meta-schema and formats,
+// which is far slower than compiling a tool schema. addUsedSchema: false keeps
+// provider $ids out of the shared instance.
+const engines = new Map<Engine, Ajv>();
+const engineFor = (Engine: Engine): Ajv => {
+	let ajv = engines.get(Engine);
+	if (!ajv) {
+		ajv = new Engine({
+			strict: false,
+			logger: false,
+			allErrors: false,
+			ownProperties: true,
+			addUsedSchema: false,
+		});
+		addFormats(ajv);
+		engines.set(Engine, ajv);
+	}
+	return ajv;
+};
+
+// Ajv caches every schema object it compiles; forget it so replaced catalogs
+// are not retained. removeSchema also drops what Ajv holds under the object's
+// $id, so skip it when that $id names a schema Ajv holds (a meta-schema).
+const forget = (ajv: Ajv, schema: Record<string, unknown>): void => {
+	const id = schema.$id;
+	// Ajv rejects a non-string $id before caching the schema.
+	if (id !== undefined && typeof id !== 'string') return;
+	const key = id?.replace(/#\/?$/, '') ?? '';
+	if (!ajv.schemas[key] && !ajv.refs[key]) ajv.removeSchema(schema);
+};
+
 // ArkType owns application shapes. Ajv is limited to provider-supplied JSON
 // Schema: ArkType's JSON Schema export cannot import these dialects/keywords.
 const createJsonSchemaCompiler = (
@@ -87,23 +120,22 @@ const createJsonSchemaCompiler = (
 					},
 				};
 			} else {
-				const ajv = new Engine({
-					strict: false,
-					logger: false,
-					allErrors: false,
-					ownProperties: true,
-					addUsedSchema: false,
-				});
-				addFormats(ajv);
-				// compile validates the schema too; no separate repeated meta-schema
-				// pass. No loadSchema/compileAsync, coercion, defaults, or stripping.
-				const validate = ajv.compile({
+				const ajv = engineFor(Engine);
+				const input = {
 					...record,
 					$schema:
 						Engine === Ajv
 							? 'http://json-schema.org/draft-07/schema#'
 							: normalizedDialect,
-				});
+				};
+				// compile validates the schema too; no separate repeated meta-schema
+				// pass. No loadSchema/compileAsync, coercion, defaults, or stripping.
+				let validate: ReturnType<Ajv['compile']>;
+				try {
+					validate = ajv.compile(input);
+				} finally {
+					forget(ajv, input);
+				}
 				compiled = {
 					validate(value) {
 						try {
