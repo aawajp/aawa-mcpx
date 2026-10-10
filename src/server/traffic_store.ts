@@ -1,6 +1,10 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 
+import { logger } from '@/server/logger';
+import { errorMessage } from '@/shared/common';
+import { recordOf } from '@/shared/mcp_protocol';
+
 import { Database } from 'bun:sqlite';
 
 type TrafficKind = 'client' | 'backend';
@@ -189,10 +193,15 @@ const createTrafficStore = (dbPath: string): TrafficStore => {
 		`,
 	);
 
-	const hasErrorObject = (value: unknown): boolean => {
-		if (typeof value !== 'object' || value === null) return false;
+	// A tool result with isError: true is logged as is (backend) or inside a
+	// JSON-RPC response (client); both count as errors.
+	const isErrorResponse = (value: unknown): boolean => {
+		const record = recordOf(value);
+		if (!record) return false;
 		return (
-			'error' in value && value.error !== undefined && value.error !== null
+			(record.error !== undefined && record.error !== null) ||
+			record.isError === true ||
+			recordOf(record.result)?.isError === true
 		);
 	};
 
@@ -206,7 +215,7 @@ const createTrafficStore = (dbPath: string): TrafficStore => {
 	} => {
 		const method = params.method;
 		if (!method) {
-			if (hasErrorObject(params.response)) {
+			if (isErrorResponse(params.response)) {
 				return {
 					relatedMethod: undefined,
 					eventType: 'error',
@@ -226,7 +235,7 @@ const createTrafficStore = (dbPath: string): TrafficStore => {
 				isError: 1,
 			};
 		}
-		if (hasErrorObject(params.response)) {
+		if (isErrorResponse(params.response)) {
 			return {
 				relatedMethod: method,
 				eventType: 'error',
@@ -246,18 +255,23 @@ const createTrafficStore = (dbPath: string): TrafficStore => {
 		params: LogClientTrafficParams | LogBackendTrafficParams,
 	): void => {
 		const event = classifyEvent(params);
-		insertStmt.run(
-			kind,
-			peer,
-			params.method ?? null,
-			event.relatedMethod ?? null,
-			event.eventType,
-			event.isError,
-			JSON.stringify(params.request ?? {}),
-			JSON.stringify(params.response ?? {}),
-			Date.now(),
-			params.protocolVersion ?? null,
-		);
+		// Logging is for debugging; a failed write never changes the reply.
+		try {
+			insertStmt.run(
+				kind,
+				peer,
+				params.method ?? null,
+				event.relatedMethod ?? null,
+				event.eventType,
+				event.isError,
+				JSON.stringify(params.request ?? {}),
+				JSON.stringify(params.response ?? {}),
+				Date.now(),
+				params.protocolVersion ?? null,
+			);
+		} catch (error) {
+			logger.error(`Traffic log write failed: ${errorMessage(error)}`);
+		}
 	};
 	const logClientTraffic = (params: LogClientTrafficParams): void =>
 		logTraffic('client', params.client ?? 'unknown', params);

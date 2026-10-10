@@ -1,7 +1,13 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
+import { logger } from '@/server/logger';
 import { createTrafficStore } from '@/server/traffic_store';
 import { trafficPageType } from '@/shared/ui_api';
 
-import { expect, test } from 'bun:test';
+import { Database } from 'bun:sqlite';
+import { expect, spyOn, test } from 'bun:test';
 
 test('traffic filters isolate peers and keep paginated totals consistent', () => {
 	const store = createTrafficStore(':memory:');
@@ -92,4 +98,73 @@ test('traffic snapshots retain client and backend protocol versions', () => {
 					}),
 				).records[0]?.protocolVersion,
 			).toBe('2025-06-18');
+});
+
+test('tool results with isError: true are logged as errors', () => {
+	const store = createTrafficStore(':memory:');
+	const toolError = {
+		content: [],
+		isError: true,
+	};
+	store.logClientTraffic({
+		method: 'tools/call',
+		request: {},
+		response: {
+			jsonrpc: '2.0',
+			id: 1,
+			result: toolError,
+		},
+	});
+	store.logBackendTraffic({
+		backend: 'fixture',
+		method: 'tools/call',
+		request: {},
+		response: toolError,
+	});
+	const page = {
+		limit: 10,
+		offset: 0,
+		errorsOnly: true,
+	};
+	for (const { records } of [
+		store.getClientTraffic(page),
+		store.getBackendTraffic({
+			...page,
+			backend: 'fixture',
+		}),
+	])
+		expect(records).toMatchObject([
+			{
+				eventType: 'error',
+				isError: true,
+			},
+		]);
+});
+
+test('a failed traffic write is logged and does not throw', async () => {
+	const root = await mkdtemp(path.join(tmpdir(), 'mcpx-traffic-'));
+	const error = spyOn(logger, 'error');
+	try {
+		const dbPath = path.join(root, 'traffic.db');
+		const store = createTrafficStore(dbPath);
+		const db = new Database(dbPath);
+		db.exec('DROP TABLE traffic;');
+		db.close();
+		expect(() =>
+			store.logClientTraffic({
+				method: 'tools/call',
+				request: {},
+				response: {},
+			}),
+		).not.toThrow();
+		expect(error).toHaveBeenCalledWith(
+			expect.stringContaining('Traffic log write failed'),
+		);
+	} finally {
+		error.mockRestore();
+		await rm(root, {
+			recursive: true,
+			force: true,
+		});
+	}
 });

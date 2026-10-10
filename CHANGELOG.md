@@ -138,6 +138,11 @@ entry under the date its change was committed. The project uses
 - A backend request that times out fails with "Backend request timed out after
   N ms" in errors and logs. Before, it read "The operation was aborted", the
   same as a cancelled request.
+- A failed traffic log write (for example a full disk or a locked database) is
+  printed to the console, and the client gets the real result. Before, the
+  client got an internal error even when the call had succeeded.
+- Tool results with `isError: true` are logged as errors, so the Debug page's
+  **Errors only** filter shows them.
 
 ### 2026-10-09
 
