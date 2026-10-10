@@ -654,6 +654,14 @@ its own tests, limits, and cleanup. These are complexity estimates, not a schedu
 (`bun lint`, `bun test`), image builds and publishing, release tagging, and the
 build-context checksum (which must include the Dockerfile and file paths).
 
+### 7.4 Configuration in the dashboard
+
+**Status: TODO; needs its own design.** The user provides the initial
+`mcp.json`; after that the gateway manages it. The dashboard should support
+every change that editing the file allows: adding, removing, and modifying
+backends, including transport settings, credentials, timeouts, and traffic
+limits. Today it can only enable or disable backends and tools.
+
 ## 8. References
 
 - Resource URI/read contracts: [2025-06-18](https://modelcontextprotocol.io/specification/2025-06-18/server/resources), [2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25/server/resources), [2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/server/resources). Tool resource links need not occur in catalogs: [2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25/server/tools#resource-links), [2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/server/tools#resource-links).
