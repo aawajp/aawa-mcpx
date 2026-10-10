@@ -11,8 +11,7 @@ import {
 
 import { mock } from 'bun:test';
 
-// Wires the public /mcp route like the server does, with Origin, Accept and
-// logging checks stubbed out.
+// Wires the public /mcp route like the server does.
 const createRouteFixture = (
 	manager: McpUpstreamManager,
 	options: {
@@ -45,40 +44,11 @@ const createRouteFixture = (
 						.tools.find((tool) => tool.name === name)?.inputSchema
 			: undefined,
 		refreshCatalogs: beforeRequest,
-		acceptsContentType: () => true,
-		buildInboundMessageLog: () => '',
-		buildLogFields: () => '',
-		createJsonResponse: (body, session, status) =>
-			Response.json(body, {
-				status: status ?? 200,
-				headers: session
-					? {
-							'Mcp-Session-Id': session,
-						}
-					: {},
-			}),
-		createMethodNotAllowedResponse: () =>
-			new Response(null, {
-				status: 405,
-			}),
-		createNotificationResponse: () =>
-			new Response(null, {
-				status: 202,
-			}),
-		createOriginForbiddenResponse: () =>
-			new Response(null, {
-				status: 403,
-			}),
-		isValidOrigin: () => true,
-		logResponseError: () => undefined,
 		mcpSessions: sessions,
-		parseSessionId: (request) =>
-			request.headers.get('Mcp-Session-Id') ?? undefined,
 		routeRequest,
 		trafficStore: {
 			logClientTraffic: () => undefined,
 		} as unknown as TrafficStore,
-		waitForInitialization: async () => null,
 	});
 	return {
 		route,
@@ -87,4 +57,16 @@ const createRouteFixture = (
 	};
 };
 
-export { createRouteFixture };
+// A POST to /mcp that accepts both response types, as the route requires.
+const mcpPost = (init: RequestInit): Request => {
+	const headers = new Headers(init.headers);
+	if (!headers.has('Accept'))
+		headers.set('Accept', 'application/json, text/event-stream');
+	return new Request('http://localhost/mcp', {
+		...init,
+		method: 'POST',
+		headers,
+	});
+};
+
+export { createRouteFixture, mcpPost };

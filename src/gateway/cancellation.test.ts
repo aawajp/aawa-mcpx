@@ -1,4 +1,4 @@
-import { createRouteFixture } from '@/gateway/route_fixture';
+import { createRouteFixture, mcpPost } from '@/gateway/route_fixture';
 import { createMcpUpstreamBackend } from '@/mcp_upstreams/connections';
 import { createInputSchemaCompiler } from '@/mcp_upstreams/input_schema';
 import { createMcpUpstreamOperations } from '@/mcp_upstreams/method_calls';
@@ -65,8 +65,7 @@ const gateway = (
 						'MCP-Protocol-Version': version,
 					});
 		if (session) headers.set('Mcp-Session-Id', session);
-		return new Request('http://localhost/mcp', {
-			method: 'POST',
+		return mcpPost({
 			headers,
 			signal,
 			body: JSON.stringify({

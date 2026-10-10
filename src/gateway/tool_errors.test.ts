@@ -1,4 +1,4 @@
-import { createRouteFixture } from '@/gateway/route_fixture';
+import { createRouteFixture, mcpPost } from '@/gateway/route_fixture';
 import { createMcpUpstreamBackend } from '@/mcp_upstreams/connections';
 import { createInputSchemaCompiler } from '@/mcp_upstreams/input_schema';
 import { createMcpUpstreamOperations } from '@/mcp_upstreams/method_calls';
@@ -134,8 +134,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 								);
 						if (session) headers.set('Mcp-Session-Id', session);
 						return route.POST(
-							new Request('http://localhost/mcp', {
-								method: 'POST',
+							mcpPost({
 								headers,
 								body: JSON.stringify({
 									jsonrpc: '2.0',
@@ -443,8 +442,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 					});
 			if (session) headers.set('Mcp-Session-Id', session);
 			return route.POST(
-				new Request('http://localhost/mcp', {
-					method: 'POST',
+				mcpPost({
 					headers,
 					body: JSON.stringify({
 						jsonrpc: '2.0',

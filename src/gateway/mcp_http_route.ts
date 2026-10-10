@@ -59,71 +59,195 @@ const createCancelledResponse = (): Response =>
 		},
 	});
 
-type LogResponseError = (params: {
-	method: string;
-	sessionId: string | undefined;
-	requestParams?: unknown;
-	payload: OutgoingJsonRpcResponse | null;
-	status?: number;
-}) => void;
-
 type CreateMcpHttpRouteParams = {
-	acceptsContentType: (request: Request, contentType: string) => boolean;
-	buildInboundMessageLog: (
-		method: string,
-		sessionId: string | undefined,
-		params?: unknown,
-	) => string;
-	buildLogFields: (
-		method: string,
-		sessionId: string | undefined,
-		params?: unknown,
-	) => string;
-	createJsonResponse: (
-		body: OutgoingJsonRpcResponse,
-		sessionId?: string,
-		status?: number,
-	) => Response;
-	createMethodNotAllowedResponse: () => Response;
-	createNotificationResponse: (sessionId?: string) => Response;
-	createOriginForbiddenResponse: () => Response;
-	isValidOrigin: (request: Request) => boolean;
-	logResponseError: LogResponseError;
 	mcpSessions: McpSessionManager;
-	parseSessionId: (request: Request) => string | undefined;
 	routeRequest: RouteRequest;
 	trafficStore: TrafficStore;
+	// MCP requests wait for backend initialization and fail if it fails.
+	initialization?: Promise<void>;
 	getToolSchema?: (name: string) => unknown;
 	onRequestMetadata?: (
 		metadata: Record<string, unknown>,
 		client?: ClientInfo,
 	) => void;
 	refreshCatalogs?: (request: CatalogRequest) => Promise<void>;
-	waitForInitialization: (params: {
-		method: string;
-		sessionId: string | undefined;
-		requestParams?: unknown;
-		id?: string | number;
-	}) => Promise<Response | null>;
+};
+
+const MCP_SESSION_HEADER = 'mcp-session-id';
+
+const createJsonResponse = (
+	body: OutgoingJsonRpcResponse,
+	sessionId?: string,
+	status?: number,
+): Response => {
+	const headers = new Headers({
+		'Content-Type': 'application/json',
+	});
+	if (sessionId) {
+		headers.set(MCP_SESSION_HEADER, sessionId);
+	}
+	return new Response(JSON.stringify(body), {
+		status: status ?? 200,
+		headers,
+	});
+};
+
+const createNotificationResponse = (sessionId?: string): Response => {
+	// Per MCP spec: notifications MUST return HTTP 202 Accepted with no body
+	const headers = new Headers();
+	if (sessionId) {
+		headers.set(MCP_SESSION_HEADER, sessionId);
+	}
+	return new Response(null, {
+		status: 202,
+		headers,
+	});
+};
+
+const createMethodNotAllowedResponse = (): Response => {
+	return new Response(null, {
+		status: 405,
+		headers: {
+			Allow: 'POST, DELETE',
+		},
+	});
+};
+
+const createOriginForbiddenResponse = (): Response => {
+	const body = rpcError(undefined, 403, 'Invalid Origin header.');
+	return createJsonResponse(body, undefined, 403);
+};
+
+const parseSessionId = (request: Request): string | undefined =>
+	request.headers.get(MCP_SESSION_HEADER) || undefined;
+
+const getHeaderValues = (value: string | null): string[] => {
+	if (!value) return [];
+	return value
+		.split(',')
+		.map((item) => item.trim().toLowerCase())
+		.filter((item) => item !== '');
+};
+
+const acceptsContentType = (request: Request, contentType: string): boolean => {
+	const values = getHeaderValues(request.headers.get('accept'));
+	return values.some((value) => {
+		const [mediaType] = value.split(';');
+		return mediaType === contentType || mediaType === '*/*';
+	});
+};
+
+const isLocalHostname = (hostname: string): boolean => {
+	return (
+		hostname === 'localhost' ||
+		hostname === '127.0.0.1' ||
+		hostname === '[::1]' ||
+		hostname === '::1'
+	);
+};
+
+const isValidOrigin = (request: Request): boolean => {
+	const origin = request.headers.get('origin');
+	if (!origin) return true;
+	const host = request.headers.get('host');
+	if (!host) return false;
+	try {
+		const originUrl = new URL(origin);
+		const requestUrl = new URL(request.url);
+		if (originUrl.host === host) return true;
+		if (
+			isLocalHostname(originUrl.hostname) &&
+			isLocalHostname(requestUrl.hostname)
+		) {
+			return true;
+		}
+	} catch {
+		return false;
+	}
+	return false;
 };
 
 const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 	const {
-		acceptsContentType,
-		buildInboundMessageLog,
-		buildLogFields,
-		createJsonResponse,
-		createMethodNotAllowedResponse,
-		createNotificationResponse,
-		createOriginForbiddenResponse,
-		isValidOrigin,
-		logResponseError,
+		initialization = Promise.resolve(),
 		mcpSessions,
-		parseSessionId,
 		routeRequest,
 		trafficStore,
-		waitForInitialization,
 	} = params;
+
+	const buildLogFields = (
+		method: string,
+		sessionId: string | undefined,
+		params?: unknown,
+	): string => {
+		let message = `client=${mcpSessions.formatClient(sessionId, params)}`;
+		message += `, method=${method}`;
+		// Log public identifiers directly. Routing validates/decodes them once;
+		// logging runs at several points and must not repeat request validation.
+		const fields = recordOf(params);
+		if (method === 'tools/call' && typeof fields?.name === 'string')
+			message += `, tool=${fields.name}`;
+		if (method === 'prompts/get' && typeof fields?.name === 'string')
+			message += `, prompt=${fields.name}`;
+		if (method === 'resources/read' && typeof fields?.uri === 'string')
+			message += `, resource=${fields.uri}`;
+		return message;
+	};
+
+	const buildInboundMessageLog = (
+		method: string,
+		sessionId: string | undefined,
+		params?: unknown,
+	): string => {
+		return `Message: ${buildLogFields(method, sessionId, params)}`;
+	};
+
+	const logResponseError = (params: {
+		method: string;
+		sessionId: string | undefined;
+		requestParams?: unknown;
+		payload: OutgoingJsonRpcResponse | null;
+		status?: number;
+	}): void => {
+		if (!isJsonRpcErrorResponse(params.payload) && !params.status) return;
+		const status = params.status ? `, status=${params.status}` : '';
+		if (!isJsonRpcErrorResponse(params.payload)) {
+			logger.warn(
+				`Response error: ${buildLogFields(params.method, params.sessionId, params.requestParams)}${status}`,
+			);
+			return;
+		}
+		logger.warn(
+			`Response error: ${buildLogFields(params.method, params.sessionId, params.requestParams)}${status}, code=${params.payload.error.code}, message=${params.payload.error.message}`,
+		);
+	};
+
+	const waitForInitialization = async (params: {
+		method: string;
+		sessionId: string | undefined;
+		requestParams?: unknown;
+		id?: string | number;
+	}): Promise<Response | null> => {
+		try {
+			await initialization;
+			return null;
+		} catch (err) {
+			const payload = rpcError(
+				params.id,
+				-32603,
+				`Server initialization failed: ${errorMessage(err)}`,
+			);
+			logResponseError({
+				method: params.method,
+				sessionId: params.sessionId,
+				requestParams: params.requestParams,
+				payload,
+				status: 503,
+			});
+			return createJsonResponse(payload, params.sessionId, 503);
+		}
+	};
+
 	// Legacy IDs are scoped to a session, and number/string IDs remain distinct.
 	// Initialize cannot be cancelled. Modern HTTP has no shared session/ID scope:
 	// only the signal of that request's own connection can cancel its work.

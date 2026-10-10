@@ -1,6 +1,6 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types';
 
-import { createRouteFixture } from '@/gateway/route_fixture';
+import { createRouteFixture, mcpPost } from '@/gateway/route_fixture';
 import { createOutputSchemaValidator } from '@/mcp_upstreams/output_schema';
 import { BackendRpcError } from '@/mcp_upstreams/protocol_client';
 import { createToolResultNormalizer } from '@/mcp_upstreams/tool_result';
@@ -89,8 +89,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 						});
 			if (session) headers.set('Mcp-Session-Id', session);
 			return route.POST(
-				new Request('http://localhost/mcp', {
-					method: 'POST',
+				mcpPost({
 					headers,
 					body: JSON.stringify({
 						jsonrpc: '2.0',
@@ -203,8 +202,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 					});
 			if (session) headers.set('Mcp-Session-Id', session);
 			return route.POST(
-				new Request('http://localhost/mcp', {
-					method: 'POST',
+				mcpPost({
 					headers,
 					body: JSON.stringify({
 						jsonrpc: '2.0',
@@ -363,8 +361,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 						});
 			if (session) headers.set('Mcp-Session-Id', session);
 			return route.POST(
-				new Request('http://localhost/mcp', {
-					method: 'POST',
+				mcpPost({
 					headers,
 					body: JSON.stringify({
 						jsonrpc: '2.0',
@@ -628,8 +625,7 @@ test('2026-07-28 header failures, unsupported version, and irrelevant sessions',
 	const { route } = fixture();
 	const send = (version: string, methodHeader?: string) =>
 		route.POST(
-			new Request('http://localhost/mcp', {
-				method: 'POST',
+			mcpPost({
 				headers: {
 					'MCP-Protocol-Version': version,
 					...(methodHeader
@@ -690,8 +686,7 @@ test('modern metadata validates per request without requiring or inheriting opti
 		method = 'server/discover',
 	) =>
 		route.POST(
-			new Request('http://localhost/mcp', {
-				method: 'POST',
+			mcpPost({
 				headers,
 				body: JSON.stringify({
 					jsonrpc: '2.0',
@@ -900,8 +895,7 @@ test('modern mirrors use refreshed rules exactly once and reject recognized surp
 		for (const [name, value] of Object.entries(mirrors))
 			headers.set(`Mcp-Param-${name}`, value);
 		return route.POST(
-			new Request('http://localhost/mcp', {
-				method: 'POST',
+			mcpPost({
 				headers,
 				body: JSON.stringify({
 					jsonrpc: '2.0',
@@ -1038,8 +1032,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 					});
 			if (session) headers.set('Mcp-Session-Id', session);
 			return route.POST(
-				new Request('http://localhost/mcp', {
-					method: 'POST',
+				mcpPost({
 					headers,
 					body: JSON.stringify({
 						jsonrpc: '2.0',
@@ -1085,3 +1078,48 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 			expect(invoke).toHaveBeenCalledTimes(1);
 		}
 	});
+
+test('POST checks Origin and Accept before reading the body', async () => {
+	const { route } = fixture();
+	const post = (headers: Record<string, string>) =>
+		route.POST(
+			new Request('http://localhost:4567/mcp', {
+				method: 'POST',
+				headers: {
+					Host: 'localhost:4567',
+					'MCP-Protocol-Version': '2025-11-25',
+					...headers,
+				},
+				body: '{}',
+			}),
+		);
+	const accept = {
+		Accept: 'application/json, text/event-stream',
+	};
+	expect(
+		(
+			await post({
+				...accept,
+				Origin: 'http://evil.example',
+			})
+		).status,
+	).toBe(403);
+	for (const value of [
+		'application/json',
+		'text/event-stream',
+	])
+		expect(
+			(
+				await post({
+					Accept: value,
+				})
+			).status,
+		).toBe(400);
+	// Local origins and */* pass both checks; the empty body then fails.
+	const passed = await post({
+		Accept: '*/*',
+		Origin: 'http://127.0.0.1:3000',
+	});
+	expect(passed.status).toBe(400);
+	expect((await passed.json()).error.code).toBe(-32600);
+});
