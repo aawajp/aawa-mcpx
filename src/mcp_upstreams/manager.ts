@@ -36,7 +36,6 @@ const createMcpUpstreamManager = (
 	const reconnectTimers = new Map<string, Timer>();
 	const requestQueues = new Map<string, McpUpstreamRequestQueue>();
 	const healthCheckFailures = new Map<string, number>();
-	const suppressClientErrorsUntil = new Map<string, number>();
 	const configErrorBackends = new Set<string>();
 	const catalogExpiresAt = new Map<string, number>();
 	const catalogRefreshes = new Map<string, Promise<void>>();
@@ -55,7 +54,6 @@ const createMcpUpstreamManager = (
 		resourcesCache,
 		servers,
 		statuses,
-		suppressClientErrorsUntil,
 		toolsCache,
 		trafficStore,
 		refreshCatalog: (server) => refreshCatalog(server),
@@ -186,8 +184,6 @@ const createMcpUpstreamManager = (
 		refreshStaleCatalogs,
 		refreshCatalogs,
 		initialize: connections.initialize,
-		getClient: connections.getClient,
-		getAllClients: connections.getAllClients,
 		disconnect: connections.disconnect,
 		listAllTools: catalog.listAllTools,
 		listEnabledTools: catalog.listEnabledTools,

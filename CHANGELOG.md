@@ -62,6 +62,8 @@ entry under the date its change was committed. The project uses
 - The Debug page's backend tab loads traffic for the backend its selector
   shows. Before, some backend names (for example, ones differing in letter case)
   left it empty until **Refresh** was pressed.
+- Failed `tools/list` fetches appear in the Debug page's backend traffic, like
+  failed prompt and resource fetches.
 
 ### 2026-10-09
 

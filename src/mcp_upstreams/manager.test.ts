@@ -7,6 +7,7 @@ import {
 	mcpConfigType,
 } from '@/config/schema';
 import { createMcpUpstreamManager } from '@/mcp_upstreams/manager';
+import { ProtocolClient } from '@/mcp_upstreams/protocol_client';
 import type { McpUpstreamStatus } from '@/mcp_upstreams/types';
 import { logger } from '@/server/logger';
 
@@ -364,11 +365,7 @@ test('backend lifecycle preserves tool exposure state', async () => {
 			warning.mockRestore();
 			returnedCount = 2;
 		}
-		const connectedClient = runtimeManager.getClient({
-			serverName: 'mock',
-		});
-		if (!connectedClient) throw new Error('Expected connected client');
-		const close = spyOn(connectedClient, 'close');
+		const close = spyOn(ProtocolClient.prototype, 'close');
 		await writeFile(
 			path.join(testRoot, 'mcp.json'),
 			`${JSON.stringify(
@@ -391,6 +388,7 @@ test('backend lifecycle preserves tool exposure state', async () => {
 		});
 		const afterDisableConfig = await readConfig();
 		expect(close).toHaveBeenCalledTimes(1);
+		close.mockClear();
 		expect(Object.keys(afterDisableConfig.mcpServers)).toEqual([
 			'mock',
 		]);
@@ -418,11 +416,7 @@ test('backend lifecycle preserves tool exposure state', async () => {
 		barrier.release();
 		await staleEnable;
 		expect(requireMockServer(await readConfig()).enabled).toBe(false);
-		expect(
-			runtimeManager.getClient({
-				serverName: 'mock',
-			}),
-		).toBeUndefined();
+		expect(runtimeManager.getStatuses()[0]?.connected).toBe(false);
 		expect(runtimeManager.listAllTools().size).toBe(0);
 		expect(
 			disabledState(requireStatus(runtimeManager.getStatuses()[0])),
@@ -460,13 +454,10 @@ test('backend lifecycle preserves tool exposure state', async () => {
 			methods.filter((method) => method === 'server/discover'),
 		).toHaveLength(1);
 		expect(runtimeManager.getStatuses()[0]?.protocolVersion).toBe('2025-11-25');
-		const reconnectedClient = runtimeManager.getClient({
-			serverName: 'mock',
-		});
-		if (!reconnectedClient) throw new Error('Expected reconnected client');
-		const disconnectClose = spyOn(reconnectedClient, 'close');
+		close.mockClear();
 		await runtimeManager.disconnect();
-		expect(disconnectClose).toHaveBeenCalledTimes(1);
+		expect(close).toHaveBeenCalledTimes(1);
+		close.mockRestore();
 		runtimeManager = null;
 	} finally {
 		await startupDisabledManager?.disconnect();

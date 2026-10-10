@@ -4,7 +4,6 @@ import {
 	ProtocolNegotiationError,
 } from '@/mcp_upstreams/protocol_client';
 import type {
-	GetClientParams,
 	McpUpstreamClientsMap,
 	McpUpstreamErrorState,
 	McpUpstreamPromptsMap,
@@ -26,7 +25,6 @@ import {
 const RECONNECT_INITIAL_DELAY_MS = 5000;
 const RECONNECT_MAX_DELAY_MS = 60_000;
 const MIN_INTERVAL_MS = 1000;
-const CLOSE_ERROR_SUPPRESSION_MS = 10_000;
 
 type CreateMcpUpstreamConnectionsParams = {
 	clients: McpUpstreamClientsMap;
@@ -38,7 +36,6 @@ type CreateMcpUpstreamConnectionsParams = {
 	resourcesCache: McpUpstreamResourcesMap;
 	servers: Map<string, McpUpstreamServer>;
 	statuses: Map<string, McpUpstreamStatus>;
-	suppressClientErrorsUntil: Map<string, number>;
 	toolsCache: McpUpstreamToolsMap;
 	trafficStore?: TrafficStore;
 	refreshCatalog: (server: McpUpstreamServer) => Promise<void>;
@@ -67,16 +64,6 @@ const transportFields = (
 	};
 };
 
-const isAbortLikeError = (err: unknown): boolean => {
-	const name = (err as Error).name;
-	const message = errorMessage(err);
-	return (
-		name === 'AbortError' ||
-		message.includes('The operation was aborted') ||
-		message.includes('Failed to send cancellation')
-	);
-};
-
 const createMcpUpstreamConnections = (
 	params: CreateMcpUpstreamConnectionsParams,
 ) => {
@@ -90,7 +77,6 @@ const createMcpUpstreamConnections = (
 		resourcesCache,
 		servers,
 		statuses,
-		suppressClientErrorsUntil,
 		toolsCache,
 		trafficStore,
 		refreshCatalog,
@@ -169,21 +155,6 @@ const createMcpUpstreamConnections = (
 		return servers.get(serverName);
 	};
 
-	const suppressClientErrors = (server: McpUpstreamServer): void => {
-		suppressClientErrorsUntil.set(
-			server.serverName,
-			Date.now() + CLOSE_ERROR_SUPPRESSION_MS,
-		);
-	};
-
-	const shouldSuppressClientError = (server: McpUpstreamServer): boolean => {
-		const until = suppressClientErrorsUntil.get(server.serverName);
-		if (!until) return false;
-		if (Date.now() <= until) return true;
-		suppressClientErrorsUntil.delete(server.serverName);
-		return false;
-	};
-
 	const closeMcpUpstreamConnection = async (
 		server: McpUpstreamServer,
 		logErrors = false,
@@ -192,7 +163,6 @@ const createMcpUpstreamConnections = (
 		healthCheckReadyBackends.delete(serverName);
 		const client = clients.get(serverName);
 		if (!client) return;
-		suppressClientErrors(server);
 		client.onerror = () => undefined;
 		client.ontransporterror = () => undefined;
 		clients.delete(serverName);
@@ -212,8 +182,6 @@ const createMcpUpstreamConnections = (
 		let queue = requestQueues.get(serverName);
 		if (!queue) {
 			queue = {
-				pending: [],
-				isProcessing: false,
 				lastRequestTime: 0,
 			};
 			requestQueues.set(serverName, queue);
@@ -414,7 +382,6 @@ const createMcpUpstreamConnections = (
 		};
 
 		client.onerror = (err: unknown) => {
-			if (shouldSuppressClientError(server) && isAbortLikeError(err)) return;
 			const code = (
 				err as {
 					code?: number;
@@ -437,7 +404,6 @@ const createMcpUpstreamConnections = (
 			if (client.protocolVersion)
 				protocolVersions.set(serverName, client.protocolVersion);
 			healthCheckFailures.delete(serverName);
-			suppressClientErrorsUntil.delete(serverName);
 
 			const status: McpUpstreamStatus = {
 				serverName,
@@ -630,7 +596,6 @@ const createMcpUpstreamConnections = (
 			promptsCache.delete(serverName);
 			resourcesCache.delete(serverName);
 			await closeMcpUpstreamConnection(server, true);
-			suppressClientErrorsUntil.delete(serverName);
 			setMcpUpstreamStatus({
 				server,
 				connected: false,
@@ -701,11 +666,6 @@ const createMcpUpstreamConnections = (
 		if (!stopped) healthChecks.startHealthChecks();
 	};
 
-	const getClient = (getClientParams: GetClientParams) =>
-		clients.get(getClientParams.serverName);
-
-	const getAllClients = (): McpUpstreamClientsMap => new Map(clients);
-
 	const disconnect = async (): Promise<void> => {
 		stopped = true;
 		healthChecks.stopHealthChecks();
@@ -727,11 +687,6 @@ const createMcpUpstreamConnections = (
 		);
 		connectingClients.clear();
 
-		for (const [serverName, queue] of requestQueues) {
-			for (const { reject } of queue.pending) {
-				reject(new Error(`MCP upstream "${serverName}" is disconnecting`));
-			}
-		}
 		requestQueues.clear();
 
 		for (const serverName of clients.keys()) {
@@ -767,8 +722,6 @@ const createMcpUpstreamConnections = (
 	return {
 		attemptReconnect,
 		disconnect,
-		getAllClients,
-		getClient,
 		getServer,
 		getStatuses,
 		initialize,

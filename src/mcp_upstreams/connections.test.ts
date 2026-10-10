@@ -44,7 +44,6 @@ test('cancellation frees a rate-limit wait without reserving a dispatch time', a
 			],
 		]),
 		statuses: new Map(),
-		suppressClientErrorsUntil: new Map(),
 		toolsCache: new Map(),
 		refreshCatalog: async () => undefined,
 	});
@@ -106,7 +105,6 @@ test('protocol failure stops reconnects until explicitly re-enabled', async () =
 			],
 		]),
 		statuses,
-		suppressClientErrorsUntil: new Map(),
 		toolsCache: new Map(),
 		refreshCatalog: async () => undefined,
 	});

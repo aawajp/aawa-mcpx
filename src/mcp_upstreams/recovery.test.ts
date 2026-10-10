@@ -51,7 +51,6 @@ const createHarness = (
 		resourcesCache: new Map(),
 		toolsCache: new Map(),
 		requestQueues: new Map(),
-		suppressClientErrorsUntil: new Map(),
 		refreshCatalog,
 	});
 	return {

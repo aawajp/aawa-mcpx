@@ -10,7 +10,6 @@ import type {
 
 import type { McpUpstreamServer } from '@/mcp_upstreams/types';
 import { logger } from '@/server/logger';
-import { withCancellation } from '@/shared/cancellation';
 import { errorMessage } from '@/shared/common';
 import {
 	CACHEABLE_METHODS,
@@ -666,18 +665,15 @@ class ProtocolClient {
 		try {
 			signal.throwIfAborted();
 			sent = true;
-			const response = await withCancellation(
-				this.send(
-					{
-						jsonrpc: '2.0',
-						id,
-						method,
-						params: bodyParams,
-					},
-					signal,
-					options.mirroredHeaders,
-				),
+			const response = await this.send(
+				{
+					jsonrpc: '2.0',
+					id,
+					method,
+					params: bodyParams,
+				},
 				signal,
+				options.mirroredHeaders,
 			);
 			// A transport or provider may finish after cancellation. Never accept
 			// that result or update connection health for an abandoned operation.

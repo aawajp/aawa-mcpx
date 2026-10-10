@@ -151,12 +151,6 @@ type McpUpstreamResourcesMap = Map<
 type McpUpstreamClientsMap = Map<string, Client>;
 
 type McpUpstreamRequestQueue = {
-	pending: Array<{
-		resolve: (value: unknown) => void;
-		reject: (reason?: unknown) => void;
-		request: () => Promise<unknown>;
-	}>;
-	isProcessing: boolean;
 	lastRequestTime: number;
 };
 
@@ -164,8 +158,6 @@ type McpUpstreamManager = {
 	refreshStaleCatalogs?: () => Promise<void>;
 	refreshCatalogs: (params?: { serverName?: string }) => Promise<void>;
 	initialize: () => Promise<void>;
-	getClient: (params: GetClientParams) => Client | undefined;
-	getAllClients: () => McpUpstreamClientsMap;
 	disconnect: () => Promise<void>;
 	listAllTools: () => McpUpstreamToolsMap;
 	listEnabledTools: () => McpUpstreamToolsMap;
