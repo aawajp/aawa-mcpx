@@ -114,18 +114,6 @@ const trafficPageType = type({
 	'[string]': 'unknown',
 });
 
-const debugSummaryBackendType = type({
-	backend: 'string',
-	data: trafficPageType,
-	'[string]': 'unknown',
-});
-
-const debugSummaryResponseType = type({
-	client: trafficPageType,
-	backends: debugSummaryBackendType.array(),
-	'[string]': 'unknown',
-});
-
 const backendTrafficResponseType = type({
 	backend: 'string',
 	'method?': 'string',
@@ -136,32 +124,16 @@ const backendTrafficResponseType = type({
 });
 
 type Tool = typeof toolType.infer;
-type ClientTool = typeof clientToolType.infer;
 type Prompt = typeof promptType.infer;
 type Resource = typeof resourceType.infer;
-type ListToolsWithMeta = typeof listToolsWithMetaType.infer;
-type ListPromptsWithMeta = typeof listPromptsWithMetaType.infer;
-type ListResourcesWithMeta = typeof listResourcesWithMetaType.infer;
-type ImplementationInfo = typeof implementationInfoType.infer;
-type CapabilitiesInfo = typeof capabilitiesInfoType.infer;
 type McpUpstreamStatus = typeof backendStatusType.infer;
 type ClientActivity = typeof clientActivityType.infer;
 type OverviewResponse = typeof overviewResponseType.infer;
 type TrafficRecord = typeof trafficRecordType.infer;
 type TrafficPage = typeof trafficPageType.infer;
-type DebugSummaryResponse = typeof debugSummaryResponseType.infer;
-type BackendTrafficResponse = typeof backendTrafficResponseType.infer;
 
 export type {
-	BackendTrafficResponse,
-	CapabilitiesInfo,
 	ClientActivity,
-	ClientTool,
-	DebugSummaryResponse,
-	ImplementationInfo,
-	ListPromptsWithMeta,
-	ListResourcesWithMeta,
-	ListToolsWithMeta,
 	McpUpstreamStatus,
 	OverviewResponse,
 	Prompt,
@@ -170,18 +142,4 @@ export type {
 	TrafficPage,
 	TrafficRecord,
 };
-export {
-	backendStatusType,
-	backendTrafficResponseType,
-	capabilitiesInfoType,
-	clientActivityType,
-	clientToolType,
-	debugSummaryResponseType,
-	implementationInfoType,
-	listPromptsWithMetaType,
-	listResourcesWithMetaType,
-	listToolsWithMetaType,
-	overviewResponseType,
-	trafficPageType,
-	trafficRecordType,
-};
+export { backendTrafficResponseType, overviewResponseType, trafficPageType };

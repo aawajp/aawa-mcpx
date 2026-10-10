@@ -54,8 +54,9 @@ entry under the date its change was committed. The project uses
 
 #### Removed
 
-- Unused dependencies `hono`, `qs`, `lucide-react`, `@radix-ui/react-label`, and
-  `@radix-ui/react-select`.
+- Unused dependencies `hono`, `qs`, `lucide-react`, `@radix-ui/react-label`,
+  `@radix-ui/react-select`, `@radix-ui/react-slot`, and
+  `class-variance-authority`.
 - The `backends`, `tools`, `prompts`, and `resources` tables in `db/traffic.db`,
   which were written on every catalog fetch but never read.
 
