@@ -12,6 +12,11 @@ env = false
 	# do not auto-install dependencies
 	auto = "disable"
 
+	# do not auto-install peer dependencies (Bun installs them by default);
+	# e.g. bun-plugin-tailwind's peer "bun" puts an npm Bun in node_modules/.bin
+	# that shadows the pinned Bun in package scripts
+	peer = false
+
 	# prefer exact package versions in package.json
 	exact = true
 
