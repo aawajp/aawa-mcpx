@@ -174,12 +174,7 @@ const createMcpUpstreamManager = (
 	};
 
 	const operations = createMcpUpstreamOperations({
-		getEnabledTools: catalog.getEnabledTools,
-		getInputValidator: catalog.getInputValidator,
-		getOutputSchema: ({ serverName, toolName }) =>
-			backends
-				.get(serverName)
-				?.tools?.tools.find((tool) => tool.name === toolName)?.outputSchema,
+		getEnabledTool: catalog.getEnabledTool,
 		getBackend: connections.getBackend,
 		trafficStore,
 		waitForRateLimit: connections.waitForRateLimit,

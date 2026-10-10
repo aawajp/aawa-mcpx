@@ -231,9 +231,10 @@ test('recognized mirrors compare decoded values, safe integers, and omitted/null
 		},
 		schema,
 	);
+	const rules = toolHeaderParameters(schema);
 	headers.set('Mcp-Param-Count', '42.0');
 	headers.set('Mcp-Param-Unknown', 'opaque');
-	expect(validateToolHeaders(headers, args, schema)).toBeUndefined();
+	expect(validateToolHeaders(headers, args, rules)).toBeUndefined();
 	for (const count of [
 		'0x2a',
 		'',
@@ -242,7 +243,7 @@ test('recognized mirrors compare decoded values, safe integers, and omitted/null
 		'9007199254740992',
 	]) {
 		headers.set('Mcp-Param-Count', count);
-		expect(validateToolHeaders(headers, args, schema)).toBeDefined();
+		expect(validateToolHeaders(headers, args, rules)).toBeDefined();
 	}
 	expect(
 		validateToolHeaders(
@@ -252,7 +253,7 @@ test('recognized mirrors compare decoded values, safe integers, and omitted/null
 			{
 				count: null,
 			},
-			schema,
+			rules,
 		),
 	).toBeDefined();
 	expect(
@@ -261,7 +262,7 @@ test('recognized mirrors compare decoded values, safe integers, and omitted/null
 				'Mcp-Param-Count': '0',
 			}),
 			{},
-			schema,
+			rules,
 		),
 	).toBeDefined();
 	expect(
@@ -270,7 +271,7 @@ test('recognized mirrors compare decoded values, safe integers, and omitted/null
 			{
 				count: null,
 			},
-			schema,
+			rules,
 		),
 	).toBeUndefined();
 	expect(
@@ -279,7 +280,7 @@ test('recognized mirrors compare decoded values, safe integers, and omitted/null
 			{
 				count: 0,
 			},
-			schema,
+			rules,
 		),
 	).toBeDefined();
 });

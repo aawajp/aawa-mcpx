@@ -49,13 +49,20 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 			if ('issue' in compiled) throw new Error(compiled.issue.detail);
 			const validate = mock(compiled.validate);
 			const operations = createMcpUpstreamOperations({
-				getEnabledTools: () => [
-					'echo',
-				],
-				getInputValidator: () => ({
-					validate,
-				}),
-				getOutputSchema: () => undefined,
+				getEnabledTool: ({ toolName }) =>
+					toolName === 'echo'
+						? {
+								tool: {
+									name: 'echo',
+									inputSchema: {
+										type: 'object',
+									},
+								},
+								inputValidator: {
+									validate,
+								},
+							}
+						: undefined,
 				getBackend: () => ({
 					...createMcpUpstreamBackend(server),
 					client,

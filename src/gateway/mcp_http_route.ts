@@ -27,6 +27,7 @@ import {
 	PROTOCOL_VERSION_META,
 	recordOf,
 	SUPPORTED_PROTOCOL_VERSIONS,
+	toolHeaderParameters,
 	validateToolHeaders,
 } from '@/shared/mcp_protocol';
 
@@ -530,17 +531,28 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 				}
 				// Header rules were compiled at catalog fetch. Compare values directly
 				// without encoding the body and decoding it again on every request.
-				try {
-					if (message.method === 'tools/call') {
+				if (message.method === 'tools/call') {
+					const name = String(bodyParams?.name);
+					const schema = params.getToolSchema?.(name);
+					let rules: ReturnType<typeof toolHeaderParameters>;
+					try {
+						rules = toolHeaderParameters(schema);
+					} catch {
+						return fail(
+							-32602,
+							`Tool "${name}" has invalid HTTP header annotations`,
+						);
+					}
+					try {
 						const issue = validateToolHeaders(
 							request.headers,
 							bodyParams?.arguments,
-							params.getToolSchema?.(String(bodyParams?.name)),
+							rules,
 						);
 						if (issue) return fail(-32020, issue);
+					} catch {
+						return fail(-32020, 'Invalid mirrored tool parameter');
 					}
-				} catch {
-					return fail(-32020, 'Invalid mirrored tool parameter');
 				}
 				// Metadata is already validated; activity tracking needs no second
 				// parse/validation of client identity and grants it no capabilities.

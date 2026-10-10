@@ -78,11 +78,18 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 								}),
 								client: name === 'fixture' ? client : undefined,
 							},
-				getEnabledTools: () => [
-					'echo',
-				],
-				getInputValidator: () => compiled,
-				getOutputSchema: () => undefined,
+				getEnabledTool: ({ toolName }) =>
+					toolName === 'echo'
+						? {
+								tool: {
+									name: 'echo',
+									inputSchema: {
+										type: 'object',
+									},
+								},
+								inputValidator: compiled,
+							}
+						: undefined,
 				waitForRateLimit: rateLimit,
 			});
 			const manager = {
@@ -415,6 +422,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 	test(`${version}: unexpected gateway and HTTP handler failures use internal error`, async () => {
 		const manager = {
+			listEnabledTools: () => new Map(),
 			callTool: async () => {
 				throw new Error('Unexpected dispatcher error');
 			},

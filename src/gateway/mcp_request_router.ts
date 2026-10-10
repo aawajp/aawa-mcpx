@@ -319,11 +319,8 @@ const createMcpRequestRouter = (
 				const structured = sessionResult.structuredContent;
 				const outputSchema =
 					request.method === 'tools/call'
-						? handlers
-								.listTools()
-								.tools.find(
-									(tool) => tool.name === recordOf(request.params)?.name,
-								)?.outputSchema
+						? handlers.findTool(String(recordOf(request.params)?.name))
+								?.outputSchema
 						: undefined;
 				// Both 2025 revisions require an object here; wrapping preserves scalar,
 				// array, and null values returned by a 2026-07-28 backend.

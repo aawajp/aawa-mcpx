@@ -39,6 +39,7 @@ import type {
 } from '@modelcontextprotocol/sdk/types';
 
 import type { McpConfig, McpServerConfig } from '@/config/schema';
+import type { CompiledSchema } from '@/mcp_upstreams/json_schema';
 import type { TrafficStore } from '@/server/traffic_store';
 import type { ProtocolVersion } from '@/shared/mcp_protocol';
 import type { ToolCallResult } from '@/shared/mcp_results';
@@ -51,6 +52,11 @@ type CreateMcpUpstreamManagerParams = {
 
 type ServerCapabilitiesInfo = ReturnType<Client['getServerCapabilities']>;
 type ImplementationInfo = ReturnType<Client['getServerVersion']>;
+
+type EnabledTool = {
+	tool: Tool;
+	inputValidator?: CompiledSchema;
+};
 
 type CallToolParams = {
 	serverName: string;
@@ -216,6 +222,7 @@ export type {
 	CatalogRequest,
 	Client,
 	CreateMcpUpstreamManagerParams,
+	EnabledTool,
 	GetPromptParams,
 	McpUpstreamBackend,
 	McpUpstreamErrorState,

@@ -3,12 +3,12 @@ import type {
 	ReadResourceResult,
 } from '@modelcontextprotocol/sdk/types';
 
-import type { CompiledSchema } from '@/mcp_upstreams/json_schema';
 import { runLoggedRequest } from '@/mcp_upstreams/logged_request';
 import { BackendRpcError } from '@/mcp_upstreams/protocol_client';
 import { createToolResultNormalizer } from '@/mcp_upstreams/tool_result';
 import type {
 	CallToolParams,
+	EnabledTool,
 	GetPromptParams,
 	McpUpstreamBackend,
 	ReadResourceParams,
@@ -18,15 +18,10 @@ import { errorMessage } from '@/shared/common';
 import { type ToolCallResult, toolErrorResult } from '@/shared/mcp_results';
 
 type CreateMcpUpstreamOperationsParams = {
-	getEnabledTools: (params: { serverName: string }) => string[];
-	getOutputSchema: (params: {
+	getEnabledTool: (params: {
 		serverName: string;
 		toolName: string;
-	}) => unknown;
-	getInputValidator: (params: {
-		serverName: string;
-		toolName: string;
-	}) => CompiledSchema | undefined;
+	}) => EnabledTool | undefined;
 	getBackend: (serverName: string) => McpUpstreamBackend | undefined;
 	trafficStore?: TrafficStore;
 	waitForRateLimit: (
@@ -38,8 +33,7 @@ type CreateMcpUpstreamOperationsParams = {
 const createMcpUpstreamOperations = (
 	params: CreateMcpUpstreamOperationsParams,
 ) => {
-	const { getEnabledTools, getBackend, trafficStore, waitForRateLimit } =
-		params;
+	const { getEnabledTool, getBackend, trafficStore, waitForRateLimit } = params;
 	const normalizeToolResult = createToolResultNormalizer();
 
 	const callTool = async (
@@ -59,10 +53,11 @@ const createMcpUpstreamOperations = (
 				`MCP upstream "${serverName}" is not available`,
 				-32603,
 			);
-		const enabledTools = getEnabledTools({
+		const enabled = getEnabledTool({
 			serverName,
+			toolName,
 		});
-		if (!enabledTools.includes(toolName)) {
+		if (!enabled) {
 			throw new BackendRpcError(
 				`Tool "${toolName}" is unknown or disabled on MCP upstream "${serverName}"`,
 				-32602,
@@ -71,10 +66,7 @@ const createMcpUpstreamOperations = (
 
 		// Catalog refresh compiled the schema once. Both dashboard and MCP calls
 		// validate their arguments here exactly once, before any backend work.
-		const inputValidator = params.getInputValidator({
-			serverName,
-			toolName,
-		});
+		const { tool, inputValidator } = enabled;
 		if (!inputValidator || 'issue' in inputValidator) {
 			throw new BackendRpcError(
 				`Tool "${toolName}" input schema is unusable: ${inputValidator && 'issue' in inputValidator ? inputValidator.issue.detail : 'No validated catalog schema'}`,
@@ -95,10 +87,6 @@ const createMcpUpstreamOperations = (
 				throw new BackendRpcError(message, -32602);
 			return toolErrorResult(message);
 		}
-		const outputSchema = params.getOutputSchema({
-			serverName,
-			toolName,
-		});
 		await waitForRateLimit(server, callParams.signal);
 		callParams.signal?.throwIfAborted();
 		try {
@@ -124,7 +112,7 @@ const createMcpUpstreamOperations = (
 					),
 				trafficStore,
 			});
-			return normalizeToolResult(result, outputSchema, {
+			return normalizeToolResult(result, tool.outputSchema, {
 				backend: serverName,
 				tool: toolName,
 				protocolVersion: client.protocolVersion,

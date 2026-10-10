@@ -89,11 +89,18 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 			const compiled = createInputSchemaCompiler()(inputSchema);
 			const rateLimit = mock(async () => undefined);
 			const operations = createMcpUpstreamOperations({
-				getEnabledTools: () => [
-					'echo',
-				],
-				getInputValidator: () => compiled,
-				getOutputSchema: () => undefined,
+				getEnabledTool: ({ toolName }) =>
+					toolName === 'echo'
+						? {
+								tool: {
+									name: 'echo',
+									inputSchema: {
+										type: 'object',
+									},
+								},
+								inputValidator: compiled,
+							}
+						: undefined,
 				getBackend: (name) => {
 					const existing = servers.get(name);
 					if (existing)

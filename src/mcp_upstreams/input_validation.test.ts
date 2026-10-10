@@ -58,11 +58,18 @@ test('the shared call path validates arguments exactly once before backend work'
 			...createMcpUpstreamBackend(server),
 			client,
 		}),
-		getEnabledTools: () => [
-			'echo',
-		],
-		getInputValidator: () => compiled,
-		getOutputSchema: () => undefined,
+		getEnabledTool: ({ toolName }) =>
+			toolName === 'echo'
+				? {
+						tool: {
+							name: 'echo',
+							inputSchema: {
+								type: 'object',
+							},
+						},
+						inputValidator: compiled,
+					}
+				: undefined,
 		waitForRateLimit,
 	});
 	try {

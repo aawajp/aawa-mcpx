@@ -4,10 +4,7 @@ import { createMcpRequestRouter } from '@/gateway/mcp_request_router';
 import { createMcpSessionManager } from '@/gateway/mcp_session';
 import type { CatalogRequest, McpUpstreamManager } from '@/mcp_upstreams/types';
 import type { TrafficStore } from '@/server/traffic_store';
-import {
-	CURRENT_PROTOCOL_VERSION,
-	SUPPORTED_PROTOCOL_VERSIONS,
-} from '@/shared/mcp_protocol';
+import { SUPPORTED_PROTOCOL_VERSIONS } from '@/shared/mcp_protocol';
 
 import { mock } from 'bun:test';
 
@@ -16,8 +13,6 @@ const createRouteFixture = (
 	manager: McpUpstreamManager,
 	options: {
 		refreshCatalogs?: (request: CatalogRequest) => Promise<void>;
-		// Check x-mcp-header mirrors against the listed tool schemas.
-		checkToolHeaders?: boolean;
 	} = {},
 ) => {
 	const sessions = createMcpSessionManager({
@@ -35,12 +30,7 @@ const createRouteFixture = (
 		}),
 	);
 	const route = createMcpHttpRoute({
-		getToolSchema: options.checkToolHeaders
-			? (name) =>
-					handlers
-						.listTools(CURRENT_PROTOCOL_VERSION)
-						.tools.find((tool) => tool.name === name)?.inputSchema
-			: undefined,
+		getToolSchema: (name) => handlers.findTool(name)?.inputSchema,
 		refreshCatalogs: options.refreshCatalogs,
 		mcpSessions: sessions,
 		routeRequest,

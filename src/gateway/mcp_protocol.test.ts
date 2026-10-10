@@ -52,7 +52,6 @@ const fixture = () => {
 	} as unknown as McpUpstreamManager;
 	const { route, sessions } = createRouteFixture(manager, {
 		refreshCatalogs,
-		checkToolHeaders: true,
 	});
 	return {
 		route,

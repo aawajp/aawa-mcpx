@@ -5,6 +5,7 @@ import type {
 	ListResourceTemplatesResult,
 	ListToolsResult,
 	ReadResourceResult,
+	Tool,
 } from '@modelcontextprotocol/sdk/types';
 
 import {
@@ -91,6 +92,20 @@ const createHandlers = (params: CreateHandlersParams) => {
 		};
 	};
 
+	// The enabled tool behind a namespaced name, without building the catalog.
+	const findTool = (name: string): Tool | undefined => {
+		let parsed: ParsePrefixResult;
+		try {
+			parsed = parsePrefix(name);
+		} catch {
+			return undefined;
+		}
+		return mcpUpstreamManager
+			.listEnabledTools()
+			.get(parsed.serverName)
+			?.tools.find((tool) => tool.name === parsed.originalName);
+	};
+
 	const listPrompts = (): ListPromptsResult => {
 		const prompts: ListPromptsResult['prompts'] = [];
 		const allPrompts = mcpUpstreamManager.listAllPrompts();
@@ -163,22 +178,6 @@ const createHandlers = (params: CreateHandlersParams) => {
 		}
 
 		try {
-			if (request.clientProtocolVersion === CURRENT_PROTOCOL_VERSION) {
-				const tool = mcpUpstreamManager
-					.listEnabledTools()
-					.get(parsed.serverName)
-					?.tools.find((tool) => tool.name === parsed.originalName);
-				if (tool) {
-					try {
-						toolHeaderParameters(tool.inputSchema);
-					} catch {
-						throw new BackendRpcError(
-							`Tool "${name}" has invalid HTTP header annotations`,
-							-32602,
-						);
-					}
-				}
-			}
 			const result = await mcpUpstreamManager.callTool({
 				serverName: parsed.serverName,
 				toolName: parsed.originalName,
@@ -310,6 +309,7 @@ const createHandlers = (params: CreateHandlersParams) => {
 		listPrompts,
 		listResources,
 		listResourceTemplates,
+		findTool,
 		callTool,
 		getPrompt,
 		readResource,

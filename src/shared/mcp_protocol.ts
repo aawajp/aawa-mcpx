@@ -181,9 +181,9 @@ const compileToolHeaderParameters = (schema: unknown): HeaderParameter[] => {
 const validateToolHeaders = (
 	headers: Headers,
 	args: unknown,
-	schema: unknown,
+	parameters: HeaderParameter[],
 ): string | undefined => {
-	for (const parameter of toolHeaderParameters(schema)) {
+	for (const parameter of parameters) {
 		const headerName = `Mcp-Param-${parameter.name}`;
 		const header = headers.get(headerName);
 		let value: unknown = args;

@@ -191,11 +191,18 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 					...createMcpUpstreamBackend(server),
 					client,
 				}),
-				getEnabledTools: () => [
-					'echo',
-				],
-				getInputValidator: () => compiled,
-				getOutputSchema: () => undefined,
+				getEnabledTool: ({ toolName }) =>
+					toolName === 'echo'
+						? {
+								tool: {
+									name: 'echo',
+									inputSchema: {
+										type: 'object',
+									},
+								},
+								inputValidator: compiled,
+							}
+						: undefined,
 				waitForRateLimit: async () => undefined,
 			});
 			const manager = {

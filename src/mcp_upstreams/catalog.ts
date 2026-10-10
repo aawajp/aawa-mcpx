@@ -12,6 +12,7 @@ import { createInputSchemaCompiler } from '@/mcp_upstreams/input_schema';
 import type { CompiledSchema } from '@/mcp_upstreams/json_schema';
 import type {
 	Client,
+	EnabledTool,
 	McpUpstreamBackend,
 	McpUpstreamPromptsMap,
 	McpUpstreamResourcesMap,
@@ -437,14 +438,24 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 		);
 	};
 
-	const getInputValidator = (catalogParams: {
+	// A call needs the enabled tool and its compiled input schema: one lookup.
+	const getEnabledTool = (catalogParams: {
 		serverName: string;
 		toolName: string;
-	}): CompiledSchema | undefined => {
-		const tool = backends
-			.get(catalogParams.serverName)
-			?.tools?.tools.find((tool) => tool.name === catalogParams.toolName);
-		return tool ? inputValidators.get(tool) : undefined;
+	}): EnabledTool | undefined => {
+		const backend = backends.get(catalogParams.serverName);
+		const enabledTools = backend?.serverConfig.enabledTools;
+		if (enabledTools && !enabledTools.includes(catalogParams.toolName))
+			return undefined;
+		const tool = backend?.tools?.tools.find(
+			(tool) => tool.name === catalogParams.toolName,
+		);
+		return (
+			tool && {
+				tool,
+				inputValidator: inputValidators.get(tool),
+			}
+		);
 	};
 
 	const toggleTool = async (
@@ -515,7 +526,7 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 		listAllResourceTemplates,
 		listAllTools,
 		listEnabledTools,
-		getInputValidator,
+		getEnabledTool,
 		toggleTool,
 	};
 };

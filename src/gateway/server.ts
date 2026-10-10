@@ -155,10 +155,7 @@ const startServer = async (
 				onRequestMetadata: (_metadata, client) => {
 					clientActivity.observe(client, CURRENT_PROTOCOL_VERSION);
 				},
-				getToolSchema: (name) =>
-					handlers
-						.listTools(CURRENT_PROTOCOL_VERSION)
-						.tools.find((tool) => tool.name === name)?.inputSchema,
+				getToolSchema: (name) => handlers.findTool(name)?.inputSchema,
 				initialization,
 				mcpSessions,
 				routeRequest,
