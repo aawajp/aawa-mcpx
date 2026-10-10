@@ -275,10 +275,6 @@ const createMcpRequestRouter = (
 			case 'logging/setLevel':
 			case 'ping':
 				return success({});
-			case 'sampling/createMessage':
-				return unsupported('Sampling not supported');
-			case 'elicitation/create':
-				return unsupported('Elicitation not supported');
 			default:
 				return unsupported(`Method not found: ${request.method}`);
 		}
@@ -444,8 +440,4 @@ const createMcpRequestRouter = (
 	};
 };
 
-export {
-	createMcpRequestRouter,
-	namedArgumentsParamsType,
-	resourceReadParamsType,
-};
+export { createMcpRequestRouter };

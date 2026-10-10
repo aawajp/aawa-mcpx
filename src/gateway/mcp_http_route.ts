@@ -2,10 +2,10 @@ import { type } from 'arktype';
 
 import {
 	getJsonRpcId,
-	getRecord,
 	type IncomingJsonRpcRequest,
 	isIncomingJsonRpcNotification,
 	isIncomingJsonRpcResponse,
+	isJsonRpcErrorResponse,
 	type OutgoingJsonRpcResponse,
 	parseIncomingJsonRpcMessage,
 	type RouteResult,
@@ -104,12 +104,6 @@ type CreateMcpHttpRouteParams = {
 		requestParams?: unknown;
 		id?: string | number;
 	}) => Promise<Response | null>;
-};
-
-const isJsonRpcErrorResponse = (
-	payload: OutgoingJsonRpcResponse | null,
-): boolean => {
-	return !!payload && 'error' in payload;
 };
 
 const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
@@ -290,7 +284,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 			}
 			const message = parseIncomingJsonRpcMessage(rawBody);
 			if (!message) {
-				const record = getRecord(rawBody);
+				const record = recordOf(rawBody);
 				const maybeId =
 					record && 'id' in record
 						? (getJsonRpcId(record.id) ?? undefined)

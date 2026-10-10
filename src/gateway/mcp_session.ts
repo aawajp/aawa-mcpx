@@ -1,16 +1,16 @@
 import { randomUUID } from 'node:crypto';
 
-import {
-	getRecord,
-	type IncomingJsonRpcNotification,
-	type IncomingJsonRpcRequest,
-	type RouteResult,
+import type {
+	IncomingJsonRpcNotification,
+	IncomingJsonRpcRequest,
+	RouteResult,
 } from '@/gateway/json_rpc';
 import { logger } from '@/server/logger';
 import { type ClientInfo, parseClientInfo } from '@/shared/client_info';
 import {
 	isProtocolVersion,
 	type ProtocolVersion,
+	recordOf,
 	requiresInitialization,
 	SUPPORTED_PROTOCOL_VERSIONS,
 } from '@/shared/mcp_protocol';
@@ -69,7 +69,7 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 	const activeCount = (): number => sessions.size;
 
 	const getClientInfo = (value: unknown): ClientInfo | undefined => {
-		const record = getRecord(value);
+		const record = recordOf(value);
 		return parseClientInfo(record?.clientInfo);
 	};
 
@@ -97,7 +97,7 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 		client: ClientInfo | undefined;
 		protocolVersion?: string;
 	} => {
-		const requestParams = getRecord(request.params);
+		const requestParams = recordOf(request.params);
 		const client = getClientInfo(request.params);
 		return {
 			client,
@@ -323,7 +323,4 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 	};
 };
 
-export type { ClientInfo } from '@/shared/client_info';
-
-export type { CloseSessionResult, SessionInfo };
 export { createMcpSessionManager };

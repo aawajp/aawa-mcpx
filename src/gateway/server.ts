@@ -1,5 +1,4 @@
 import type {
-	JSONRPCErrorResponse,
 	ListPromptsResult,
 	ListResourcesResult,
 	ListToolsResult,
@@ -7,7 +6,10 @@ import type {
 } from '@modelcontextprotocol/sdk/types';
 
 import { createClientActivityTracker } from '@/gateway/client_activity';
-import type { OutgoingJsonRpcResponse } from '@/gateway/json_rpc';
+import {
+	isJsonRpcErrorResponse,
+	type OutgoingJsonRpcResponse,
+} from '@/gateway/json_rpc';
 import { createHandlers } from '@/gateway/mcp_handlers';
 import { createMcpHttpRoute } from '@/gateway/mcp_http_route';
 import { namespaceTool } from '@/gateway/mcp_namespaces';
@@ -287,12 +289,6 @@ const startServer = async (
 		return `Message: ${buildLogFields(method, sessionId, params)}`;
 	};
 
-	const isJsonRpcErrorResponse = (
-		payload: OutgoingJsonRpcResponse | null,
-	): payload is JSONRPCErrorResponse => {
-		return payload !== null && 'error' in payload;
-	};
-
 	const logResponseError = (params: {
 		method: string;
 		sessionId: string | undefined;
@@ -401,4 +397,4 @@ const startServer = async (
 	};
 };
 
-export { type ServerInstance, type StartServerParams, startServer };
+export { startServer };

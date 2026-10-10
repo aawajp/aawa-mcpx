@@ -3,6 +3,7 @@ import type {
 	JSONRPCResultResponse,
 } from '@modelcontextprotocol/sdk/types';
 
+import { recordOf } from '@/shared/mcp_protocol';
 import { jsonRpcResponseType } from '@/shared/mcp_schemas';
 
 type IncomingJsonRpcRequest = {
@@ -62,11 +63,6 @@ type RouteResult = {
 	status?: number;
 };
 
-const getRecord = (value: unknown): Record<string, unknown> | null => {
-	if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-	return value as Record<string, unknown>;
-};
-
 const getJsonRpcId = (value: unknown): string | number | null => {
 	if (typeof value === 'string') return value;
 	if (typeof value === 'number' && Number.isInteger(value)) return value;
@@ -76,14 +72,14 @@ const getJsonRpcId = (value: unknown): string | number | null => {
 const parseIncomingJsonRpcMessage = (
 	value: unknown,
 ): IncomingJsonRpcMessage | null => {
-	const record = getRecord(value);
+	const record = recordOf(value);
 	if (!record) return null;
 	if (record.jsonrpc !== '2.0') return null;
 
 	if ('method' in record) {
 		if (typeof record.method !== 'string') return null;
 		if ('result' in record || 'error' in record) return null;
-		if ('params' in record && !getRecord(record.params)) return null;
+		if ('params' in record && !recordOf(record.params)) return null;
 		if ('id' in record) {
 			const id = getJsonRpcId(record.id);
 			if (id === null) return null;
@@ -110,6 +106,10 @@ const parseIncomingJsonRpcMessage = (
 	return jsonRpcResponseType.allows(record) ? record : null;
 };
 
+const isJsonRpcErrorResponse = (
+	payload: OutgoingJsonRpcResponse | null,
+): payload is JSONRPCErrorResponse => payload !== null && 'error' in payload;
+
 const isIncomingJsonRpcNotification = (
 	message: IncomingJsonRpcMessage,
 ): message is IncomingJsonRpcNotification => {
@@ -132,8 +132,8 @@ export type {
 };
 export {
 	getJsonRpcId,
-	getRecord,
 	isIncomingJsonRpcNotification,
 	isIncomingJsonRpcResponse,
+	isJsonRpcErrorResponse,
 	parseIncomingJsonRpcMessage,
 };
