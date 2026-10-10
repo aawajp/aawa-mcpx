@@ -138,31 +138,31 @@ const createMcpUpstreamConnections = (
 		signal?: AbortSignal,
 	): Promise<void> => {
 		signal?.throwIfAborted();
-		const now = Date.now();
-		const trafficLimit = backend.serverConfig.trafficLimit;
-		const minInterval = MIN_INTERVAL_MS / trafficLimit;
-		const timeSinceLastRequest = now - backend.lastRequestTime;
-
-		if (timeSinceLastRequest < minInterval) {
-			const waitTime = minInterval - timeSinceLastRequest;
-			let timer: ReturnType<typeof setTimeout> | undefined;
-			let abort: () => void = () => undefined;
-			try {
-				await new Promise<void>((resolve, reject) => {
-					timer = setTimeout(resolve, waitTime);
-					abort = () => reject(signal?.reason);
-					signal?.addEventListener('abort', abort, {
-						once: true,
-					});
+		const minInterval = MIN_INTERVAL_MS / backend.serverConfig.trafficLimit;
+		const previous = backend.lastRequestTime;
+		// Reserve the slot before sleeping, so concurrent requests are spaced.
+		const slot = Math.max(Date.now(), previous + minInterval);
+		backend.lastRequestTime = slot;
+		const waitTime = slot - Date.now();
+		if (waitTime <= 0) return;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		let abort: () => void = () => undefined;
+		try {
+			await new Promise<void>((resolve, reject) => {
+				timer = setTimeout(resolve, waitTime);
+				abort = () => reject(signal?.reason);
+				signal?.addEventListener('abort', abort, {
+					once: true,
 				});
-			} finally {
-				clearTimeout(timer);
-				signal?.removeEventListener('abort', abort);
-			}
+			});
+		} catch (error) {
+			// A cancelled wait frees its slot unless a later request queued behind it.
+			if (backend.lastRequestTime === slot) backend.lastRequestTime = previous;
+			throw error;
+		} finally {
+			clearTimeout(timer);
+			signal?.removeEventListener('abort', abort);
 		}
-
-		signal?.throwIfAborted();
-		backend.lastRequestTime = Date.now();
 	};
 
 	const onValidationError: OnValidationError = (validationParams): void => {

@@ -126,6 +126,8 @@ entry under the date its change was committed. The project uses
   keeps its place in `enabledTools`. Before, it was dropped from the backend's
   catalog, pruned from `enabledTools`, and stayed off after the backend fixed
   the annotation.
+- `trafficLimit` spaces requests that arrive together. Before, concurrent
+  requests waited once and were sent at the same moment.
 
 ### 2026-10-09
 

@@ -108,3 +108,46 @@ test('protocol failure stops reconnects until explicitly re-enabled', async () =
 		connect.mockRestore();
 	}
 });
+
+test('concurrent requests wait for their own rate-limit slots', async () => {
+	const config = mcpConfigType.assert({
+		mcpServers: {
+			mock: {
+				type: 'http',
+				url: 'http://localhost/mcp',
+				enabled: true,
+				trafficLimit: 20,
+			},
+		},
+	});
+	const serverConfig = config.mcpServers.mock;
+	if (!serverConfig) throw new Error('Missing fixture');
+	const backend = createMcpUpstreamBackend({
+		serverName: 'mock',
+		serverConfig,
+	});
+	const connections = createMcpUpstreamConnections({
+		backends: new Map([
+			[
+				'mock',
+				backend,
+			],
+		]),
+		refreshCatalog: async () => undefined,
+	});
+	const started = performance.now();
+	const done = await Promise.all(
+		Array.from(
+			{
+				length: 4,
+			},
+			async () => {
+				await connections.waitForRateLimit(backend);
+				return performance.now() - started;
+			},
+		),
+	);
+	// 20 requests per second: one every 50 ms.
+	for (const [index, elapsed] of done.entries())
+		expect(elapsed).toBeGreaterThanOrEqual(index * 50 - 5);
+});
