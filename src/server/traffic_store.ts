@@ -7,6 +7,9 @@ import { recordOf } from '@/shared/mcp_protocol';
 
 import { Database } from 'bun:sqlite';
 
+// Only the newest records are kept, so a long run cannot fill the disk.
+const MAX_TRAFFIC_RECORDS = 10_000;
+
 type TrafficKind = 'client' | 'backend';
 type TrafficEventType = 'success' | 'error' | 'validation_error';
 
@@ -60,16 +63,6 @@ type TrafficStore = {
 		offset: number;
 		errorsOnly?: boolean;
 	}) => TrafficQueryResult;
-	upsertBackendInfo: (params: {
-		backend: string;
-		url: string;
-		capabilities?: unknown;
-		implementation?: unknown;
-		instructions?: string;
-	}) => void;
-	upsertTools: (params: { backend: string; tools: unknown[] }) => void;
-	upsertPrompts: (params: { backend: string; prompts: unknown[] }) => void;
-	upsertResources: (params: { backend: string; resources: unknown[] }) => void;
 };
 
 const safeParse = (value: string): unknown => {
@@ -93,6 +86,8 @@ const createTrafficStore = (dbPath: string): TrafficStore => {
 	}
 	const db = new Database(dbPath);
 	db.exec('PRAGMA journal_mode = WAL;');
+	// Traffic is a debugging aid; WAL keeps it consistent without a sync per write.
+	db.exec('PRAGMA synchronous = NORMAL;');
 	db.exec('DROP TABLE IF EXISTS traffic;');
 	db.exec(`
 		CREATE TABLE IF NOT EXISTS traffic (
@@ -118,81 +113,10 @@ const createTrafficStore = (dbPath: string): TrafficStore => {
 	db.exec(
 		'CREATE INDEX IF NOT EXISTS idx_traffic_backend_peer_method_error_id ON traffic(kind, peer, method, is_error, id DESC);',
 	);
-	db.exec(`
-		CREATE TABLE IF NOT EXISTS backends (
-			name TEXT PRIMARY KEY,
-			url TEXT NOT NULL,
-			capabilities TEXT,
-			implementation TEXT,
-			instructions TEXT,
-			updated_at INTEGER NOT NULL
-		);
-	`);
-	db.exec(`
-		CREATE TABLE IF NOT EXISTS tools (
-			backend TEXT NOT NULL,
-			name TEXT NOT NULL,
-			data TEXT,
-			updated_at INTEGER NOT NULL,
-			PRIMARY KEY (backend, name)
-		);
-	`);
-	db.exec(`
-		CREATE TABLE IF NOT EXISTS prompts (
-			backend TEXT NOT NULL,
-			name TEXT NOT NULL,
-			data TEXT,
-			updated_at INTEGER NOT NULL,
-			PRIMARY KEY (backend, name)
-		);
-	`);
-	db.exec(`
-		CREATE TABLE IF NOT EXISTS resources (
-			backend TEXT NOT NULL,
-			uri TEXT NOT NULL,
-			data TEXT,
-			updated_at INTEGER NOT NULL,
-			PRIMARY KEY (backend, uri)
-		);
-	`);
-
 	const insertStmt = db.prepare(
 		'INSERT INTO traffic (kind, peer, method, related_method, event_type, is_error, request, response, created_at, protocol_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
 	);
-	const upsertBackendStmt = db.prepare(
-		`
-			INSERT INTO backends (name, url, capabilities, implementation, instructions, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?)
-			ON CONFLICT(name) DO UPDATE SET
-				url=excluded.url,
-				capabilities=excluded.capabilities,
-				implementation=excluded.implementation,
-				instructions=excluded.instructions,
-				updated_at=excluded.updated_at
-		`,
-	);
-	const upsertToolStmt = db.prepare(
-		`
-			INSERT INTO tools (backend, name, data, updated_at)
-			VALUES (?, ?, ?, ?)
-			ON CONFLICT(backend, name) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at
-		`,
-	);
-	const upsertPromptStmt = db.prepare(
-		`
-			INSERT INTO prompts (backend, name, data, updated_at)
-			VALUES (?, ?, ?, ?)
-			ON CONFLICT(backend, name) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at
-		`,
-	);
-	const upsertResourceStmt = db.prepare(
-		`
-			INSERT INTO resources (backend, uri, data, updated_at)
-			VALUES (?, ?, ?, ?)
-			ON CONFLICT(backend, uri) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at
-		`,
-	);
-
+	const pruneStmt = db.prepare('DELETE FROM traffic WHERE id <= ?');
 	// A tool result with isError: true is logged as is (backend) or inside a
 	// JSON-RPC response (client); both count as errors.
 	const isErrorResponse = (value: unknown): boolean => {
@@ -257,7 +181,7 @@ const createTrafficStore = (dbPath: string): TrafficStore => {
 		const event = classifyEvent(params);
 		// Logging is for debugging; a failed write never changes the reply.
 		try {
-			insertStmt.run(
+			const { lastInsertRowid } = insertStmt.run(
 				kind,
 				peer,
 				params.method ?? null,
@@ -269,6 +193,7 @@ const createTrafficStore = (dbPath: string): TrafficStore => {
 				Date.now(),
 				params.protocolVersion ?? null,
 			);
+			pruneStmt.run(Number(lastInsertRowid) - MAX_TRAFFIC_RECORDS);
 		} catch (error) {
 			logger.error(`Traffic log write failed: ${errorMessage(error)}`);
 		}
@@ -350,80 +275,11 @@ const createTrafficStore = (dbPath: string): TrafficStore => {
 			kind: 'backend',
 		});
 
-	const upsertBackendInfo = (params: {
-		backend: string;
-		url: string;
-		capabilities?: unknown;
-		implementation?: unknown;
-		instructions?: string;
-	}) => {
-		const { backend, url, capabilities, implementation, instructions } = params;
-		upsertBackendStmt.run(
-			backend,
-			url,
-			capabilities ? JSON.stringify(capabilities) : null,
-			implementation ? JSON.stringify(implementation) : null,
-			instructions ?? null,
-			Date.now(),
-		);
-	};
-
-	const upsertTools = (params: { backend: string; tools: unknown[] }) => {
-		const now = Date.now();
-		for (const tool of params.tools) {
-			const name = (
-				tool as {
-					name?: string;
-				}
-			).name;
-			if (!name) continue;
-			upsertToolStmt.run(params.backend, name, JSON.stringify(tool), now);
-		}
-	};
-
-	const upsertPrompts = (params: { backend: string; prompts: unknown[] }) => {
-		const now = Date.now();
-		for (const prompt of params.prompts) {
-			const name = (
-				prompt as {
-					name?: string;
-				}
-			).name;
-			if (!name) continue;
-			upsertPromptStmt.run(params.backend, name, JSON.stringify(prompt), now);
-		}
-	};
-
-	const upsertResources = (params: {
-		backend: string;
-		resources: unknown[];
-	}) => {
-		const now = Date.now();
-		for (const resource of params.resources) {
-			const uri = (
-				resource as {
-					uri?: string;
-				}
-			).uri;
-			if (!uri) continue;
-			upsertResourceStmt.run(
-				params.backend,
-				uri,
-				JSON.stringify(resource),
-				now,
-			);
-		}
-	};
-
 	return {
 		logClientTraffic,
 		logBackendTraffic,
 		getClientTraffic,
 		getBackendTraffic,
-		upsertBackendInfo,
-		upsertTools,
-		upsertPrompts,
-		upsertResources,
 	};
 };
 
@@ -434,4 +290,4 @@ export type {
 	TrafficRecord,
 	TrafficStore,
 };
-export { createTrafficStore };
+export { createTrafficStore, MAX_TRAFFIC_RECORDS };

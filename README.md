@@ -189,7 +189,7 @@ The separate **Debug** page (`/debug`) shows client and backend traffic from the
 | `/api/debug/client` | GET | Client traffic (`?limit=&offset=&errorsOnly=`) |
 | `/api/debug/backend` | GET | One backend's traffic (`?backend=&method=&limit=&offset=&errorsOnly=`; `backend` required) |
 
-Toggles persist to `mcp.json`. Traffic is stored in `db/traffic.db` and cleared at startup. Any other path serves the dashboard page.
+Toggles persist to `mcp.json`. Traffic is stored in `db/traffic.db`, which keeps the newest 10,000 records and is cleared at startup. Any other path serves the dashboard page.
 
 ## Development
 

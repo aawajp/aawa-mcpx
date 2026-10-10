@@ -56,6 +56,8 @@ entry under the date its change was committed. The project uses
 
 - Unused dependencies `hono`, `qs`, `lucide-react`, `@radix-ui/react-label`, and
   `@radix-ui/react-select`.
+- The `backends`, `tools`, `prompts`, and `resources` tables in `db/traffic.db`,
+  which were written on every catalog fetch but never read.
 
 #### Fixed
 
@@ -146,6 +148,8 @@ entry under the date its change was committed. The project uses
 - **Refresh** in the dashboard updates a `2026-07-28` backend's server info,
   capabilities, and instructions, not only its catalogs. Before, they stayed as
   they were at connect time.
+- The traffic log keeps only the newest 10,000 records. Before, it grew without
+  limit during a long run.
 
 ### 2026-10-09
 

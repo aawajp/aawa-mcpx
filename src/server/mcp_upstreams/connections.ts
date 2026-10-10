@@ -360,15 +360,6 @@ const createMcpUpstreamConnections = (
 				error: undefined,
 			};
 			backend.status = status;
-			const identifier =
-				serverConfig.type === 'stdio' ? serverConfig.command : serverConfig.url;
-			trafficStore?.upsertBackendInfo({
-				backend: serverName,
-				url: identifier,
-				capabilities: status.capabilities,
-				implementation: status.implementation,
-				instructions: status.instructions,
-			});
 			logger.info(`Connected to MCP upstream "${serverName}"`);
 			return true;
 		} catch (err) {

@@ -3,7 +3,10 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import { logger } from '@/server/logger';
-import { createTrafficStore } from '@/server/traffic_store';
+import {
+	createTrafficStore,
+	MAX_TRAFFIC_RECORDS,
+} from '@/server/traffic_store';
 import { trafficPageType } from '@/shared/ui_api';
 
 import { Database } from 'bun:sqlite';
@@ -167,4 +170,20 @@ test('a failed traffic write is logged and does not throw', async () => {
 			force: true,
 		});
 	}
+});
+
+test('traffic keeps only the newest records', () => {
+	const store = createTrafficStore(':memory:');
+	for (let index = 0; index < MAX_TRAFFIC_RECORDS + 5; index++)
+		store.logClientTraffic({
+			method: `method-${index}`,
+			request: {},
+			response: {},
+		});
+	const page = store.getClientTraffic({
+		limit: 1,
+		offset: MAX_TRAFFIC_RECORDS - 1,
+	});
+	expect(page.total).toBe(MAX_TRAFFIC_RECORDS);
+	expect(page.records[0]?.method).toBe('method-5');
 });

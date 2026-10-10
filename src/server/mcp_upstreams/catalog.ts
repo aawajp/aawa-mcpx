@@ -149,7 +149,6 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 			// Returns true when the result is rejected and must not be logged as a
 			// normal fetch.
 			reject?: (result: T, client: Client) => boolean;
-			persist?: (result: T) => void;
 		},
 	): Promise<boolean> => {
 		const serverName = server.serverName;
@@ -179,7 +178,6 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 				request: {},
 				response: result,
 			});
-			options.persist?.(result);
 			return true;
 		} catch (error) {
 			if (!isCurrent()) return false;
@@ -312,11 +310,6 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 			},
 			reject: (result, client) =>
 				rejectUnknownEnabledTools(server, client, result.tools),
-			persist: (result) =>
-				trafficStore?.upsertTools({
-					backend: server.serverName,
-					tools: result.tools,
-				}),
 		});
 	const fetchPrompts = (server: McpUpstreamBackend): Promise<boolean> =>
 		fetchCatalog(server, {
@@ -333,11 +326,6 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 						timeout: server.serverConfig.timeout,
 					},
 				),
-			persist: (result) =>
-				trafficStore?.upsertPrompts({
-					backend: server.serverName,
-					prompts: result.prompts,
-				}),
 		});
 	const fetchResources = (server: McpUpstreamBackend): Promise<boolean> =>
 		fetchCatalog(server, {
@@ -354,14 +342,9 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 						timeout: server.serverConfig.timeout,
 					},
 				),
-			persist: (result) =>
-				trafficStore?.upsertResources({
-					backend: server.serverName,
-					resources: result.resources,
-				}),
 		});
 
-	// Templates share the resources capability and are not persisted.
+	// Templates share the resources capability.
 	const fetchResourceTemplates = (
 		server: McpUpstreamBackend,
 	): Promise<boolean> =>
