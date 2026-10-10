@@ -3,7 +3,7 @@ import { createMcpRequestRouter } from '@/gateway/mcp_request_router';
 import { createInputSchemaCompiler } from '@/mcp_upstreams/input_schema';
 import { createMcpUpstreamOperations } from '@/mcp_upstreams/method_calls';
 import { ProtocolClient } from '@/mcp_upstreams/protocol_client';
-import { fixtureReply } from '@/mcp_upstreams/protocol_fixture';
+import { startFixtureBackend } from '@/mcp_upstreams/protocol_fixture';
 import type {
 	CallToolParams,
 	McpUpstreamManager,
@@ -28,53 +28,17 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 		'stdio',
 	] as const)
 		test(`${backendVersion} ${transport}: dispatch preserves application metadata with independent client revisions`, async () => {
-			const endpoint =
-				transport === 'http'
-					? Bun.serve({
-							port: 0,
-							hostname: '127.0.0.1',
-							async fetch(request) {
-								const message = recordOf(await request.json()) ?? {};
-								if (!('id' in message))
-									return new Response(null, {
-										status: 202,
-									});
-								const reply = fixtureReply(message, backendVersion);
-								const result = recordOf(reply.result);
-								if (result)
-									result._meta = {
-										'com.example/request': message.params,
-									};
-								return Response.json(reply);
-							},
-						})
-					: undefined;
+			const backend = startFixtureBackend(transport, backendVersion, {
+				echoRequest: true,
+			});
 			const server: McpUpstreamServer = {
 				serverName: 'backend',
-				serverConfig:
-					transport === 'http'
-						? {
-								type: 'http',
-								url: endpoint?.url.href ?? '',
-								enabled: true,
-								timeout: 2000,
-								trafficLimit: 1000,
-							}
-						: {
-								type: 'stdio',
-								command: process.execPath,
-								args: [
-									new URL(
-										'../mcp_upstreams/protocol_fixture.ts',
-										import.meta.url,
-									).pathname,
-									backendVersion,
-									'--echo-request',
-								],
-								enabled: true,
-								timeout: 2000,
-								trafficLimit: 1000,
-							},
+				serverConfig: {
+					...backend.config,
+					enabled: true,
+					timeout: 2000,
+					trafficLimit: 1000,
+				},
 			};
 			const client = new ProtocolClient(server, backendVersion);
 			const inputSchema = {
@@ -277,7 +241,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 				expect(validate).toHaveBeenCalledTimes(6);
 			} finally {
 				await client.close();
-				endpoint?.stop(true);
+				backend.stop();
 			}
 		});
 

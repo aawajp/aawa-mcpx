@@ -4,11 +4,10 @@ import path from 'node:path';
 import { mcpConfigType } from '@/config/schema';
 import { createUiRoutes } from '@/gateway/ui_routes';
 import { createMcpUpstreamManager } from '@/mcp_upstreams/manager';
-import { fixtureReply } from '@/mcp_upstreams/protocol_fixture';
+import { startFixtureBackend } from '@/mcp_upstreams/protocol_fixture';
 import type { TrafficStore } from '@/server/traffic_store';
 import {
 	CURRENT_PROTOCOL_VERSION,
-	recordOf,
 	SUPPORTED_PROTOCOL_VERSIONS,
 } from '@/shared/mcp_protocol';
 
@@ -41,49 +40,18 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 					tool('off'),
 				]),
 			);
-			const server =
-				transport === 'stdio'
-					? undefined
-					: Bun.serve({
-							port: 0,
-							hostname: '127.0.0.1',
-							async fetch(request) {
-								const message = recordOf(await request.json()) ?? {};
-								if (!('id' in message))
-									return new Response(null, {
-										status: 202,
-									});
-								const reply = fixtureReply(message, version);
-								const result = recordOf(reply.result);
-								if (result) {
-									if (message.method === 'tools/list') {
-										result.tools = await Bun.file(catalogPath).json();
-										if (holdNextToolsRequest) {
-											holdNextToolsRequest = false;
-											held.resolve();
-											await release.promise;
-										}
-									}
-									if ('ttlMs' in result) result.ttlMs = 3_600_000;
-								}
-								return Response.json(reply);
-							},
-						});
-			const backend =
-				transport === 'stdio'
-					? {
-							type: 'stdio',
-							command: process.execPath,
-							args: [
-								new URL('./protocol_fixture.ts', import.meta.url).pathname,
-								version,
-								catalogPath,
-							],
-						}
-					: {
-							type: 'http',
-							url: server?.url.href ?? '',
-						};
+			const fixture = startFixtureBackend(transport, version, {
+				catalogPath,
+				handle: async (message) => {
+					if (message.method !== 'tools/list' || !holdNextToolsRequest)
+						return undefined;
+					holdNextToolsRequest = false;
+					held.resolve();
+					await release.promise;
+					return undefined;
+				},
+			});
+			const backend = fixture.config;
 			const config = mcpConfigType.assert({
 				mcpServers: {
 					selected: {
@@ -313,7 +281,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 			} finally {
 				release.resolve();
 				await manager.disconnect();
-				server?.stop(true);
+				fixture.stop();
 				process.chdir(originalCwd);
 				await rm(root, {
 					recursive: true,

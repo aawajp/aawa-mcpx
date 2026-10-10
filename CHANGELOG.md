@@ -44,6 +44,14 @@ entry under the date its change was committed. The project uses
   `enabledTools` in `mcp.json`, also after a restart.
 - `ajv` 8.20.0 and `ajv-formats` 3.0.1 are new peer dependencies;
   `@modelcontextprotocol/sdk` updated to 1.32.1.
+- `@modelcontextprotocol/sdk` is a dev dependency, since the gateway uses only
+  its types. The Tailwind packages and `tailwind-merge` are runtime
+  dependencies, since the server bundles the dashboard at startup.
+
+#### Removed
+
+- Unused dependencies `hono`, `qs`, `lucide-react`, `@radix-ui/react-label`, and
+  `@radix-ui/react-select`.
 
 #### Fixed
 

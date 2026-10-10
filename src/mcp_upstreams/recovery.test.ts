@@ -15,7 +15,7 @@ import {
 	SUPPORTED_PROTOCOL_VERSIONS,
 } from '@/shared/mcp_protocol';
 
-import { expect, spyOn, test } from 'bun:test';
+import { expect, jest, spyOn, test } from 'bun:test';
 
 const createHarness = (
 	url = 'http://127.0.0.1/mcp',
@@ -192,6 +192,7 @@ test('a backend reconnects automatically when the outage ends', async () => {
 	const harness = createHarness(endpoint.url.href, async () => {
 		refreshes += 1;
 	});
+	jest.useFakeTimers();
 	try {
 		await harness.connections.initialize();
 		expect(harness.statuses.get('recovery')).toMatchObject({
@@ -199,22 +200,24 @@ test('a backend reconnects automatically when the outage ends', async () => {
 			actionRequired: false,
 		});
 		online = true;
-		const deadline = Date.now() + 6500;
-		while (
-			!harness.statuses.get('recovery')?.connected &&
-			Date.now() < deadline
+		jest.advanceTimersByTime(5000);
+		for (
+			let turn = 0;
+			turn < 1000 && !harness.statuses.get('recovery')?.connected;
+			turn += 1
 		)
-			await Bun.sleep(20);
+			await new Promise((resolve) => setImmediate(resolve));
 		expect(harness.statuses.get('recovery')?.connected).toBe(true);
 		expect(discoveries).toBe(2);
 		expect(refreshes).toBe(1);
 		expect(harness.reconnectTimers.size).toBe(0);
 	} finally {
+		jest.useRealTimers();
 		await harness.connections.disconnect();
 		random.mockRestore();
 		endpoint.stop(true);
 	}
-}, 8000);
+});
 
 for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 	test(`${version}: request failure recovers the backend without replaying the tool`, async () => {

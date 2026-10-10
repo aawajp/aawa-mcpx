@@ -3,7 +3,7 @@ import { createMcpRequestRouter } from '@/gateway/mcp_request_router';
 import { createInputSchemaCompiler } from '@/mcp_upstreams/input_schema';
 import { createMcpUpstreamOperations } from '@/mcp_upstreams/method_calls';
 import { ProtocolClient } from '@/mcp_upstreams/protocol_client';
-import { fixtureReply } from '@/mcp_upstreams/protocol_fixture';
+import { startFixtureBackend } from '@/mcp_upstreams/protocol_fixture';
 import type {
 	McpUpstreamManager,
 	McpUpstreamServer,
@@ -23,57 +23,42 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 		'stdio',
 	] as const) {
 		test(`${backendVersion} ${transport}: namespaces route resources, tools, and prompts for every client revision`, async () => {
-			const backend =
-				transport === 'stdio'
-					? undefined
-					: Bun.serve({
-							port: 0,
-							hostname: '127.0.0.1',
-							async fetch(request) {
-								const message = recordOf(await request.json()) ?? {};
-								if (!('id' in message))
-									return new Response(null, {
-										status: 202,
-									});
-								const reply = fixtureReply(message, backendVersion);
-								const params = recordOf(message.params);
-								if (
-									message.method === 'resources/read' &&
-									params?.uri === 'file:///missing'
-								)
-									return Response.json({
-										jsonrpc: '2.0',
-										id: message.id,
-										error: {
-											code:
-												backendVersion === CURRENT_PROTOCOL_VERSION
-													? -32602
-													: -32002,
-											message: 'Resource not found',
-											data: {
-												uri: params.uri,
-											},
-										},
-									});
-								const result = recordOf(reply.result);
-								if (message.method === 'resources/read' && result)
-									result.contents = [
-										{
-											uri: params?.uri,
-											text: 'hello',
-											_meta: {
-												source: 'requested',
-											},
-										},
-										{
-											uri: 'urn:example:attachment',
-											blob: 'aGk=',
-											mimeType: 'text/plain',
-										},
-									];
-								return Response.json(reply);
+			const backend = startFixtureBackend(transport, backendVersion, {
+				handle: (message, reply) => {
+					const params = recordOf(message.params);
+					if (message.method !== 'resources/read' || !reply) return undefined;
+					if (params?.uri === 'file:///missing')
+						return Response.json({
+							jsonrpc: '2.0',
+							id: message.id,
+							error: {
+								code:
+									backendVersion === CURRENT_PROTOCOL_VERSION ? -32602 : -32002,
+								message: 'Resource not found',
+								data: {
+									uri: params.uri,
+								},
 							},
 						});
+					const result = recordOf(reply.result);
+					if (result)
+						result.contents = [
+							{
+								uri: params?.uri,
+								text: 'hello',
+								_meta: {
+									source: 'requested',
+								},
+							},
+							{
+								uri: 'urn:example:attachment',
+								blob: 'aGk=',
+								mimeType: 'text/plain',
+							},
+						];
+					return undefined;
+				},
+			});
 			const servers = new Map<string, McpUpstreamServer>();
 			const clients = new Map<string, ProtocolClient>();
 			for (const serverName of [
@@ -83,29 +68,12 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 			]) {
 				const server: McpUpstreamServer = {
 					serverName,
-					serverConfig:
-						transport === 'stdio'
-							? {
-									type: 'stdio',
-									command: process.execPath,
-									args: [
-										new URL(
-											'../mcp_upstreams/protocol_fixture.ts',
-											import.meta.url,
-										).pathname,
-										backendVersion,
-									],
-									enabled: true,
-									timeout: 2000,
-									trafficLimit: 10000,
-								}
-							: {
-									type: 'http',
-									url: backend?.url.href ?? '',
-									enabled: true,
-									timeout: 2000,
-									trafficLimit: 10000,
-								},
+					serverConfig: {
+						...backend.config,
+						enabled: true,
+						timeout: 2000,
+						trafficLimit: 10000,
+					},
 				};
 				servers.set(serverName, server);
 				clients.set(serverName, new ProtocolClient(server, backendVersion));
@@ -487,7 +455,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 				}
 			} finally {
 				for (const client of clients.values()) await client.close();
-				backend?.stop(true);
+				backend.stop();
 			}
 		});
 	}

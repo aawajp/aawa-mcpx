@@ -1,17 +1,13 @@
-import { createHandlers } from '@/gateway/mcp_handlers';
-import { createMcpHttpRoute } from '@/gateway/mcp_http_route';
-import { createMcpRequestRouter } from '@/gateway/mcp_request_router';
-import { createMcpSessionManager } from '@/gateway/mcp_session';
+import { createRouteFixture } from '@/gateway/route_fixture';
 import { createInputSchemaCompiler } from '@/mcp_upstreams/input_schema';
 import { createMcpUpstreamOperations } from '@/mcp_upstreams/method_calls';
 import { ProtocolClient } from '@/mcp_upstreams/protocol_client';
-import { fixtureReply } from '@/mcp_upstreams/protocol_fixture';
+import { startFixtureBackend } from '@/mcp_upstreams/protocol_fixture';
 import type {
 	CallToolParams,
 	McpUpstreamManager,
 	McpUpstreamServer,
 } from '@/mcp_upstreams/types';
-import type { TrafficStore } from '@/server/traffic_store';
 import { addResourcePrefix } from '@/shared/mcp_namespaces';
 import {
 	CLIENT_CAPABILITIES_META,
@@ -39,53 +35,8 @@ const gateway = (
 	manager: McpUpstreamManager,
 	beforeRequest?: () => Promise<void>,
 ) => {
-	const sessions = createMcpSessionManager({
-		protocolHeaderName: 'MCP-Protocol-Version',
-		supportedProtocolVersions: SUPPORTED_PROTOCOL_VERSIONS,
-	});
-	const route = createMcpHttpRoute({
-		acceptsContentType: () => true,
-		isValidOrigin: () => true,
-		buildInboundMessageLog: () => '',
-		buildLogFields: () => '',
-		createJsonResponse: (body, session, status) =>
-			Response.json(body, {
-				status: status ?? 200,
-				headers: session
-					? {
-							'Mcp-Session-Id': session,
-						}
-					: {},
-			}),
-		createMethodNotAllowedResponse: () =>
-			new Response(null, {
-				status: 405,
-			}),
-		createNotificationResponse: () =>
-			new Response(null, {
-				status: 202,
-			}),
-		createOriginForbiddenResponse: () =>
-			new Response(null, {
-				status: 403,
-			}),
-		logResponseError: () => undefined,
-		mcpSessions: sessions,
-		parseSessionId: (request) =>
-			request.headers.get('Mcp-Session-Id') ?? undefined,
-		routeRequest: createMcpRequestRouter({
-			handlers: createHandlers({
-				mcpUpstreamManager: manager,
-			}),
-			requireSession: sessions.requireSession,
-			handleInitialize: sessions.handleInitialize,
-			beforeRequest,
-		}),
-		refreshCatalogs: beforeRequest,
-		trafficStore: {
-			logClientTraffic: () => undefined,
-		} as unknown as TrafficStore,
-		waitForInitialization: async () => null,
+	const { route } = createRouteFixture(manager, {
+		beforeRequest,
 	});
 	const send = (
 		version: ProtocolVersion,
@@ -164,102 +115,69 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 			const received: Record<string, unknown>[] = [];
 			const cancellationHeaders = new Map<unknown, Headers>();
 			let disconnected = 0;
-			const endpoint =
-				transport === 'http'
-					? Bun.serve({
-							port: 0,
-							hostname: '127.0.0.1',
-							async fetch(request) {
-								const message = recordOf(await request.json()) ?? {};
-								received.push(message);
-								if (message.method === 'notifications/cancelled')
-									cancellationHeaders.set(
-										recordOf(message.params)?.requestId,
-										request.headers,
+			const sessionHeaders = (method: unknown): Record<string, string> =>
+				method === 'initialize'
+					? {
+							'Mcp-Session-Id': 'backend-session',
+						}
+					: {};
+			const backend = startFixtureBackend(transport, backendVersion, {
+				cancellation: true,
+				handle: (message, reply, request) => {
+					received.push(message);
+					if (message.method === 'notifications/cancelled')
+						cancellationHeaders.set(
+							recordOf(message.params)?.requestId,
+							request.headers,
+						);
+					if (!reply) return undefined;
+					if (
+						!(
+							recordOf(recordOf(message.params)?.arguments)?.fixtureMode ===
+								'delayed' ||
+							recordOf(message.params)?.fixtureDelay ||
+							recordOf(recordOf(message.params)?._meta)?.['com.example/delayed']
+						)
+					)
+						return Response.json(reply, {
+							headers: sessionHeaders(message.method),
+						});
+					let timer: ReturnType<typeof setTimeout>;
+					return new Response(
+						new ReadableStream<Uint8Array>({
+							start(controller) {
+								controller.enqueue(new TextEncoder().encode(': started\n\n'));
+								timer = setTimeout(() => {
+									controller.enqueue(
+										new TextEncoder().encode(
+											`data: ${JSON.stringify(reply)}\n\n`,
+										),
 									);
-								if (!('id' in message))
-									return new Response(null, {
-										status: 202,
-									});
-								const reply = fixtureReply(message, backendVersion);
-								if (
-									recordOf(recordOf(message.params)?.arguments)?.fixtureMode ===
-										'delayed' ||
-									recordOf(message.params)?.fixtureDelay ||
-									recordOf(recordOf(message.params)?._meta)?.[
-										'com.example/delayed'
-									]
-								) {
-									let timer: ReturnType<typeof setTimeout>;
-									return new Response(
-										new ReadableStream<Uint8Array>({
-											start(controller) {
-												controller.enqueue(
-													new TextEncoder().encode(': started\n\n'),
-												);
-												timer = setTimeout(() => {
-													controller.enqueue(
-														new TextEncoder().encode(
-															`data: ${JSON.stringify(reply)}\n\n`,
-														),
-													);
-													controller.close();
-												}, 2000);
-											},
-											cancel() {
-												clearTimeout(timer);
-												disconnected++;
-											},
-										}),
-										{
-											headers: {
-												'Content-Type': 'text/event-stream',
-												...(message.method === 'initialize'
-													? {
-															'Mcp-Session-Id': 'backend-session',
-														}
-													: {}),
-											},
-										},
-									);
-								}
-								return Response.json(reply, {
-									headers:
-										message.method === 'initialize'
-											? {
-													'Mcp-Session-Id': 'backend-session',
-												}
-											: {},
-								});
+									controller.close();
+								}, 2000);
 							},
-						})
-					: undefined;
+							cancel() {
+								clearTimeout(timer);
+								disconnected++;
+							},
+						}),
+						{
+							headers: {
+								'Content-Type': 'text/event-stream',
+								...sessionHeaders(message.method),
+							},
+						},
+					);
+				},
+			});
 			const server: McpUpstreamServer = {
 				serverName: 'backend',
-				serverConfig:
-					transport === 'http'
-						? {
-								type: 'http',
-								url: endpoint?.url.href ?? '',
-								enabled: true,
-								timeout: 3000,
-								trafficLimit: 1000,
-							}
-						: {
-								type: 'stdio',
-								command: process.execPath,
-								args: [
-									new URL(
-										'../mcp_upstreams/protocol_fixture.ts',
-										import.meta.url,
-									).pathname,
-									backendVersion,
-									'--cancellation',
-								],
-								enabled: true,
-								timeout: 3000,
-								trafficLimit: 1000,
-							},
+				serverConfig: {
+					...backend.config,
+					enabled: true,
+					timeout: 3000,
+					trafficLimit: 1000,
+				},
 			};
 			const client = new ProtocolClient(server, backendVersion);
 			const recovery = mock(() => undefined);
@@ -476,7 +394,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 				expect(recovery).not.toHaveBeenCalled();
 			} finally {
 				await client.close();
-				endpoint?.stop(true);
+				backend.stop();
 			}
 		});
 

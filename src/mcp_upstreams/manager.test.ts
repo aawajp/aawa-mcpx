@@ -238,6 +238,7 @@ test('backend lifecycle preserves tool exposure state', async () => {
 					type: 'http',
 					url,
 					enabled,
+					trafficLimit: 1000,
 					enabledTools: [
 						'alpha',
 					],

@@ -7,7 +7,10 @@ import {
 	ProtocolClient,
 	ProtocolNegotiationError,
 } from '@/mcp_upstreams/protocol_client';
-import { fixtureReply } from '@/mcp_upstreams/protocol_fixture';
+import {
+	fixtureReply,
+	startFixtureBackend,
+} from '@/mcp_upstreams/protocol_fixture';
 import type { McpUpstreamManager } from '@/mcp_upstreams/types';
 import { logger } from '@/server/logger';
 import {
@@ -625,90 +628,62 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 	] as const) {
 		test(`${transport} backend ${version}: selection, core calls and pinned reconnect`, async () => {
 			const methods: string[] = [];
-			const server =
-				transport === 'http'
-					? Bun.serve({
-							port: 0,
-							hostname: '127.0.0.1',
-							async fetch(request) {
-								const message = recordOf(await request.json());
-								if (!message)
-									return new Response(null, {
-										status: 400,
-									});
-								methods.push(String(message.method));
-								if (!('id' in message))
-									return new Response(null, {
-										status: 202,
-									});
-								if (version === CURRENT_PROTOCOL_VERSION) {
-									for (const [name, value] of protocolHeaders(
-										String(message.method),
-										recordOf(message.params) ?? {},
-									))
-										expect(request.headers.get(name)).toBe(value);
-									if (message.method === 'tools/call')
-										expect(request.headers.get('Mcp-Param-Text')).toBe(
-											'=?base64?SGVsbG8sIOS4lueVjA==?=',
-										);
-								}
-								const reply = fixtureReply(message, version);
-								if (
-									message.method === 'server/discover' &&
-									version !== CURRENT_PROTOCOL_VERSION
-								)
-									return Response.json(
-										version === '2025-06-18'
-											? {
-													jsonrpc: '2.0',
-													id: message.id,
-													error: {
-														code: -32601,
-														message: 'Method not found',
-													},
-												}
-											: reply,
-										{
-											status: version === '2025-06-18' ? 200 : 400,
+			const fixture = startFixtureBackend(transport, version, {
+				handle: (message, reply, request) => {
+					methods.push(String(message.method));
+					if (!reply) return undefined;
+					if (version === CURRENT_PROTOCOL_VERSION) {
+						for (const [name, value] of protocolHeaders(
+							String(message.method),
+							recordOf(message.params) ?? {},
+						))
+							expect(request.headers.get(name)).toBe(value);
+						if (message.method === 'tools/call')
+							expect(request.headers.get('Mcp-Param-Text')).toBe(
+								'=?base64?SGVsbG8sIOS4lueVjA==?=',
+							);
+					}
+					if (
+						message.method === 'server/discover' &&
+						version !== CURRENT_PROTOCOL_VERSION
+					)
+						return Response.json(
+							version === '2025-06-18'
+								? {
+										jsonrpc: '2.0',
+										id: message.id,
+										error: {
+											code: -32601,
+											message: 'Method not found',
 										},
-									);
-								if (message.method === 'tools/call')
-									return new Response(
-										`: keepalive\n\ndata: ${JSON.stringify({
-											jsonrpc: '2.0',
-											method: 'notifications/progress',
-											params: {},
-										})}\n\ndata: ${JSON.stringify(reply)}\n\n`,
-										{
-											headers: {
-												'content-type': 'text/event-stream',
-											},
-										},
-									);
-								return Response.json(reply);
+									}
+								: reply,
+							{
+								status: version === '2025-06-18' ? 200 : 400,
 							},
-						})
-					: undefined;
-			const config =
-				transport === 'http'
-					? {
-							type: 'http' as const,
-							url: `http://127.0.0.1:${server?.port}/mcp`,
-							enabled: true,
-							timeout: 2000,
-							trafficLimit: 1000,
-						}
-					: {
-							type: 'stdio' as const,
-							command: process.execPath,
-							args: [
-								new URL('./protocol_fixture.ts', import.meta.url).pathname,
-								version,
-							],
-							enabled: true,
-							timeout: 2000,
-							trafficLimit: 1000,
-						};
+						);
+					if (message.method === 'tools/call')
+						return new Response(
+							`: keepalive\n\ndata: ${JSON.stringify({
+								jsonrpc: '2.0',
+								method: 'notifications/progress',
+								params: {},
+							})}\n\ndata: ${JSON.stringify(reply)}\n\n`,
+							{
+								headers: {
+									'content-type': 'text/event-stream',
+								},
+							},
+						);
+					return undefined;
+				},
+			});
+			const config = {
+				...fixture.config,
+				enabled: true,
+				timeout: 2000,
+				trafficLimit: 1000,
+			};
 			const backend = {
 				serverName: 'fixture',
 				serverConfig: config,
@@ -901,7 +876,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 			} finally {
 				await client.close();
 				await reconnect?.close();
-				server?.stop(true);
+				fixture.stop();
 			}
 		});
 	}

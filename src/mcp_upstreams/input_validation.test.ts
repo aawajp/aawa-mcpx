@@ -12,7 +12,7 @@ import { createInputSchemaCompiler } from '@/mcp_upstreams/input_schema';
 import { createMcpUpstreamManager } from '@/mcp_upstreams/manager';
 import { createMcpUpstreamOperations } from '@/mcp_upstreams/method_calls';
 import { ProtocolClient } from '@/mcp_upstreams/protocol_client';
-import { fixtureReply } from '@/mcp_upstreams/protocol_fixture';
+import { startFixtureBackend } from '@/mcp_upstreams/protocol_fixture';
 import type { McpUpstreamServer } from '@/mcp_upstreams/types';
 import { logger } from '@/server/logger';
 import type { TrafficStore } from '@/server/traffic_store';
@@ -187,45 +187,13 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 					})),
 				]),
 			);
-			const server =
-				transport === 'stdio'
-					? undefined
-					: Bun.serve({
-							port: 0,
-							hostname: '127.0.0.1',
-							async fetch(request) {
-								const message = recordOf(await request.json()) ?? {};
-								if (!('id' in message))
-									return new Response(null, {
-										status: 202,
-									});
-								const reply = fixtureReply(message, backendVersion);
-								const result = recordOf(reply.result);
-								if (result) {
-									if (message.method === 'tools/list')
-										result.tools = await Bun.file(catalogPath).json();
-									if ('ttlMs' in result) result.ttlMs = 3_600_000;
-								}
-								return Response.json(reply);
-							},
-						});
+			const backend = startFixtureBackend(transport, backendVersion, {
+				catalogPath,
+			});
 			const config = mcpConfigType.assert({
 				mcpServers: {
 					fixture: {
-						...(transport === 'stdio'
-							? {
-									type: 'stdio',
-									command: process.execPath,
-									args: [
-										new URL('./protocol_fixture.ts', import.meta.url).pathname,
-										backendVersion,
-										catalogPath,
-									],
-								}
-							: {
-									type: 'http',
-									url: server?.url.href ?? '',
-								}),
+						...backend.config,
 						timeout: 2000,
 						trafficLimit: 10000,
 					},
@@ -477,7 +445,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 				invoke.mockRestore();
 				warn.mockRestore();
 				await manager.disconnect();
-				server?.stop(true);
+				backend.stop();
 				process.chdir(originalCwd);
 				await rm(root, {
 					recursive: true,

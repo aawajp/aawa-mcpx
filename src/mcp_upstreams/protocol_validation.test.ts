@@ -6,7 +6,7 @@ import {
 	BackendTransportError,
 	ProtocolClient,
 } from '@/mcp_upstreams/protocol_client';
-import { fixtureReply } from '@/mcp_upstreams/protocol_fixture';
+import { startFixtureBackend } from '@/mcp_upstreams/protocol_fixture';
 import type { McpUpstreamManager } from '@/mcp_upstreams/types';
 import { addResourcePrefix } from '@/shared/mcp_namespaces';
 import {
@@ -28,58 +28,36 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 		'stdio',
 	] as const) {
 		test(`${version} ${transport}: validates envelopes and content without breaking client versions`, async () => {
-			const server =
-				transport === 'stdio'
-					? undefined
-					: Bun.serve({
-							port: 0,
-							hostname: '127.0.0.1',
-							async fetch(request) {
-								const message = recordOf(await request.json()) ?? {};
-								if (!('id' in message))
-									return new Response(null, {
-										status: 202,
-									});
-								const reply = fixtureReply(message, version);
-								if (transport === 'sse' && message.method === 'tools/call')
-									return new Response(
-										`data: ${JSON.stringify({
-											jsonrpc: '2.0',
-											method: 'notifications/progress',
-											params: {},
-										})}\n\ndata: ${JSON.stringify(reply)}\n\n`,
-										{
-											headers: {
-												'Content-Type': 'text/event-stream',
-											},
+			const backend = startFixtureBackend(
+				transport === 'stdio' ? 'stdio' : 'http',
+				version,
+				{
+					handle: (message, reply) =>
+						transport === 'sse' && reply && message.method === 'tools/call'
+							? new Response(
+									`data: ${JSON.stringify({
+										jsonrpc: '2.0',
+										method: 'notifications/progress',
+										params: {},
+									})}\n\ndata: ${JSON.stringify(reply)}\n\n`,
+									{
+										headers: {
+											'Content-Type': 'text/event-stream',
 										},
-									);
-								return Response.json(reply);
-							},
-						});
+									},
+								)
+							: undefined,
+				},
+			);
 			const client = new ProtocolClient(
 				{
 					serverName: 'fixture',
-					serverConfig:
-						transport === 'stdio'
-							? {
-									type: 'stdio',
-									command: process.execPath,
-									args: [
-										new URL('./protocol_fixture.ts', import.meta.url).pathname,
-										version,
-									],
-									enabled: true,
-									timeout: 2000,
-									trafficLimit: 1000,
-								}
-							: {
-									type: 'http',
-									url: server?.url.href ?? '',
-									enabled: true,
-									timeout: 2000,
-									trafficLimit: 1000,
-								},
+					serverConfig: {
+						...backend.config,
+						enabled: true,
+						timeout: 2000,
+						trafficLimit: 1000,
+					},
 				},
 				version,
 			);
@@ -155,9 +133,28 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 						},
 						undefined,
 						{
-							timeout: omitId ? 100 : 2000,
+							timeout: 200,
 						},
 					);
+				// Only a JSON body belongs to its request. Stdio waits for a reply
+				// with the request's ID, and SSE waits for a reply that has a result
+				// or error.
+				const expectInvalidEnvelope = (
+					reply: Record<string, unknown>,
+					omitId = false,
+				) => {
+					const matched =
+						!omitId &&
+						reply.id !== 'wrong' &&
+						(transport !== 'sse' || 'result' in reply || 'error' in reply);
+					return expect(callEnvelope(reply, omitId)).rejects.toThrow(
+						matched || transport === 'json'
+							? 'Invalid backend RPC response'
+							: transport === 'sse'
+								? 'Backend stream ended without a result'
+								: 'The operation was aborted',
+					);
+				};
 				await expect(
 					callEnvelope({
 						error,
@@ -219,15 +216,13 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 						error,
 					},
 				])
-					await expect(callEnvelope(reply)).rejects.toThrow();
-				await expect(
-					callEnvelope(
-						{
-							error,
-						},
-						true,
-					),
-				).rejects.toThrow();
+					await expectInvalidEnvelope(reply);
+				await expectInvalidEnvelope(
+					{
+						error,
+					},
+					true,
+				);
 
 				const sessions = createMcpSessionManager({
 					protocolHeaderName: 'MCP-Protocol-Version',
@@ -306,7 +301,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 				}
 			} finally {
 				await client.close();
-				server?.stop(true);
+				backend.stop();
 			}
 		});
 	}

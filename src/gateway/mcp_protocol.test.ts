@@ -1,14 +1,10 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types';
 
-import { createHandlers } from '@/gateway/mcp_handlers';
-import { createMcpHttpRoute } from '@/gateway/mcp_http_route';
-import { createMcpRequestRouter } from '@/gateway/mcp_request_router';
-import { createMcpSessionManager } from '@/gateway/mcp_session';
+import { createRouteFixture } from '@/gateway/route_fixture';
 import { createOutputSchemaValidator } from '@/mcp_upstreams/output_schema';
 import { BackendRpcError } from '@/mcp_upstreams/protocol_client';
 import { createToolResultNormalizer } from '@/mcp_upstreams/tool_result';
 import type { McpUpstreamManager } from '@/mcp_upstreams/types';
-import type { TrafficStore } from '@/server/traffic_store';
 import {
 	CLIENT_CAPABILITIES_META,
 	CLIENT_INFO_META,
@@ -28,10 +24,6 @@ const fixture = () => {
 		refreshes++;
 		await manager.refreshStaleCatalogs?.();
 	};
-	const sessions = createMcpSessionManager({
-		protocolHeaderName: 'MCP-Protocol-Version',
-		supportedProtocolVersions: SUPPORTED_PROTOCOL_VERSIONS,
-	});
 	const manager = {
 		listEnabledTools: () =>
 			new Map([
@@ -58,55 +50,9 @@ const fixture = () => {
 			],
 		}),
 	} as unknown as McpUpstreamManager;
-	const handlers = createHandlers({
-		mcpUpstreamManager: manager,
-	});
-	const routeRequest = createMcpRequestRouter({
+	const { route, sessions } = createRouteFixture(manager, {
 		beforeRequest: refreshCatalogs,
-		handlers,
-		requireSession: sessions.requireSession,
-		handleInitialize: sessions.handleInitialize,
-	});
-	const route = createMcpHttpRoute({
-		getToolSchema: (name) =>
-			handlers
-				.listTools(CURRENT_PROTOCOL_VERSION)
-				.tools.find((tool) => tool.name === name)?.inputSchema,
-		refreshCatalogs,
-		acceptsContentType: () => true,
-		buildInboundMessageLog: () => '',
-		buildLogFields: () => '',
-		createJsonResponse: (body, session, status) =>
-			Response.json(body, {
-				status: status ?? 200,
-				headers: session
-					? {
-							'Mcp-Session-Id': session,
-						}
-					: {},
-			}),
-		createMethodNotAllowedResponse: () =>
-			new Response(null, {
-				status: 405,
-			}),
-		createNotificationResponse: () =>
-			new Response(null, {
-				status: 202,
-			}),
-		createOriginForbiddenResponse: () =>
-			new Response(null, {
-				status: 403,
-			}),
-		isValidOrigin: () => true,
-		logResponseError: () => undefined,
-		mcpSessions: sessions,
-		parseSessionId: (request) =>
-			request.headers.get('Mcp-Session-Id') ?? undefined,
-		routeRequest,
-		trafficStore: {
-			logClientTraffic: () => undefined,
-		} as unknown as TrafficStore,
-		waitForInitialization: async () => null,
+		checkToolHeaders: true,
 	});
 	return {
 		route,

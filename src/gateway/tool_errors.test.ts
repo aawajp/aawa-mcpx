@@ -1,85 +1,25 @@
-import { createHandlers } from '@/gateway/mcp_handlers';
-import { createMcpHttpRoute } from '@/gateway/mcp_http_route';
-import { createMcpRequestRouter } from '@/gateway/mcp_request_router';
-import { createMcpSessionManager } from '@/gateway/mcp_session';
+import { createRouteFixture } from '@/gateway/route_fixture';
 import { createInputSchemaCompiler } from '@/mcp_upstreams/input_schema';
 import { createMcpUpstreamOperations } from '@/mcp_upstreams/method_calls';
 import {
 	BackendTransportError,
 	ProtocolClient,
 } from '@/mcp_upstreams/protocol_client';
-import { fixtureReply } from '@/mcp_upstreams/protocol_fixture';
+import { startFixtureBackend } from '@/mcp_upstreams/protocol_fixture';
 import type {
 	McpUpstreamManager,
 	McpUpstreamServer,
 } from '@/mcp_upstreams/types';
 import { logger } from '@/server/logger';
-import type { TrafficStore } from '@/server/traffic_store';
 import {
 	CLIENT_CAPABILITIES_META,
 	CURRENT_PROTOCOL_VERSION,
 	PROTOCOL_VERSION_META,
 	protocolHeaders,
-	recordOf,
 	SUPPORTED_PROTOCOL_VERSIONS,
 } from '@/shared/mcp_protocol';
 
 import { expect, mock, spyOn, test } from 'bun:test';
-
-const httpFixture = (manager: McpUpstreamManager) => {
-	const sessions = createMcpSessionManager({
-		protocolHeaderName: 'MCP-Protocol-Version',
-		supportedProtocolVersions: SUPPORTED_PROTOCOL_VERSIONS,
-	});
-	const router = createMcpRequestRouter({
-		handlers: createHandlers({
-			mcpUpstreamManager: manager,
-		}),
-		requireSession: sessions.requireSession,
-		handleInitialize: sessions.handleInitialize,
-	});
-	const routeRequest = mock(router);
-	const route = createMcpHttpRoute({
-		acceptsContentType: () => true,
-		buildInboundMessageLog: () => '',
-		buildLogFields: () => '',
-		createJsonResponse: (body, session, status) =>
-			Response.json(body, {
-				status: status ?? 200,
-				headers: session
-					? {
-							'Mcp-Session-Id': session,
-						}
-					: {},
-			}),
-		createMethodNotAllowedResponse: () =>
-			new Response(null, {
-				status: 405,
-			}),
-		createNotificationResponse: () =>
-			new Response(null, {
-				status: 202,
-			}),
-		createOriginForbiddenResponse: () =>
-			new Response(null, {
-				status: 403,
-			}),
-		isValidOrigin: () => true,
-		logResponseError: () => undefined,
-		mcpSessions: sessions,
-		parseSessionId: (request) =>
-			request.headers.get('Mcp-Session-Id') ?? undefined,
-		routeRequest,
-		trafficStore: {
-			logClientTraffic: () => undefined,
-		} as unknown as TrafficStore,
-		waitForInitialization: async () => null,
-	});
-	return {
-		route,
-		routeRequest,
-	};
-};
 
 for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 	for (const transport of [
@@ -87,53 +27,23 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 		'stdio',
 	] as const) {
 		test(`${backendVersion} ${transport}: tool errors keep their classification for every client revision`, async () => {
-			const backend =
-				transport === 'stdio'
-					? undefined
-					: Bun.serve({
-							port: 0,
-							hostname: '127.0.0.1',
-							async fetch(request) {
-								const message = recordOf(await request.json()) ?? {};
-								if (!('id' in message))
-									return new Response(null, {
-										status: 202,
-									});
-								const reply = fixtureReply(message, backendVersion);
-								// An upstream HTTP status belongs to that hop, not the public one.
-								return Response.json(reply, {
-									status:
-										'error' in reply && message.method === 'tools/call'
-											? 400
-											: 200,
-								});
-							},
-						});
+			const backend = startFixtureBackend(transport, backendVersion, {
+				// An upstream HTTP status belongs to that hop, not the public one.
+				handle: (message, reply) =>
+					reply && 'error' in reply && message.method === 'tools/call'
+						? Response.json(reply, {
+								status: 400,
+							})
+						: undefined,
+			});
 			const server: McpUpstreamServer = {
 				serverName: 'fixture',
-				serverConfig:
-					transport === 'stdio'
-						? {
-								type: 'stdio',
-								command: process.execPath,
-								args: [
-									new URL(
-										'../mcp_upstreams/protocol_fixture.ts',
-										import.meta.url,
-									).pathname,
-									backendVersion,
-								],
-								enabled: true,
-								timeout: 2000,
-								trafficLimit: 10000,
-							}
-						: {
-								type: 'http',
-								url: backend?.url.href ?? '',
-								enabled: true,
-								timeout: 2000,
-								trafficLimit: 10000,
-							},
+				serverConfig: {
+					...backend.config,
+					enabled: true,
+					timeout: 2000,
+					trafficLimit: 10000,
+				},
 			};
 			const client = new ProtocolClient(server, backendVersion);
 			const inputSchema = {
@@ -195,7 +105,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 						],
 					]),
 			} as unknown as McpUpstreamManager;
-			const { route } = httpFixture(manager);
+			const { route } = createRouteFixture(manager);
 			try {
 				await client.connect();
 				await client.listTools();
@@ -500,7 +410,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 				invoke.mockRestore();
 				log.mockRestore();
 				await client.close();
-				backend?.stop(true);
+				backend.stop();
 			}
 		});
 	}
@@ -513,7 +423,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 				throw new Error('Unexpected dispatcher error');
 			},
 		} as unknown as McpUpstreamManager;
-		const { route, routeRequest } = httpFixture(manager);
+		const { route, routeRequest } = createRouteFixture(manager);
 		const log = spyOn(logger, 'error').mockImplementation(() => undefined);
 		const modern = version === CURRENT_PROTOCOL_VERSION;
 		const params = {

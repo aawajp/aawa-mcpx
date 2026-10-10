@@ -67,8 +67,11 @@ SDK supplies types only; the gateway implements dispatch and transports itself.
 | `ui/` | `main.tsx`: entrypoint from `../index.html`; `App.tsx`: state/routing; `base_components/`: low-level components; `components/`: app components; `sections/`: pages; `i18n/` and `styles/`: assets. |
 
 The compact footer links `© [current year] Aawa Technologies / Mikael Nakajima`
-to [Aawa Technologies](https://aawa.jp). Test fixtures live next to the tests
-(`mcp_upstreams/protocol_fixture.ts`, `shared/mcp_schema_fixtures.ts`).
+to [Aawa Technologies](https://aawa.jp). Test fixtures live next to the tests:
+`mcp_upstreams/protocol_fixture.ts` runs a fake backend over HTTP or stdio,
+`gateway/route_fixture.ts` wires the public route, and
+`shared/mcp_schema_fixtures.ts` holds sample MCP values. `test_preload.ts`
+silences the logger during tests.
 
 ### 2.2 Backend connections and recovery
 

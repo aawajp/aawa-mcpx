@@ -174,9 +174,124 @@ const fixtureReply = (
 	};
 };
 
+type FixtureOptions = {
+	// Serve tools from this JSON file with an hour-long cache TTL.
+	catalogPath?: string;
+	// Return each request's params in the result's _meta.
+	echoRequest?: boolean;
+};
+
+type FixtureHttpHandler = (
+	message: Record<string, unknown>,
+	reply: Record<string, unknown> | undefined,
+	request: Request,
+) => Response | undefined | Promise<Response | undefined>;
+
+type FixtureBackend = {
+	config:
+		| {
+				type: 'stdio';
+				command: string;
+				args: string[];
+		  }
+		| {
+				type: 'http';
+				url: string;
+		  };
+	stop: () => void;
+};
+
+const optionReply = async (
+	message: Record<string, unknown>,
+	version: string,
+	options: FixtureOptions,
+): Promise<Record<string, unknown>> => {
+	const reply = fixtureReply(message, version);
+	const result = recordOf(reply.result);
+	if (result && options.echoRequest)
+		result._meta = {
+			'com.example/request': message.params,
+		};
+	if (result && options.catalogPath) {
+		if (message.method === 'tools/list')
+			result.tools = await Bun.file(options.catalogPath).json();
+		if ('ttlMs' in result) result.ttlMs = 3_600_000;
+	}
+	return reply;
+};
+
+// Starts the same fixture over either transport. Over HTTP, `handle` sees every
+// message with its reply (undefined for notifications); it may change the reply
+// in place or return its own response.
+const startFixtureBackend = (
+	transport: 'http' | 'stdio',
+	version: string,
+	options: FixtureOptions & {
+		cancellation?: boolean;
+		handle?: FixtureHttpHandler;
+	} = {},
+): FixtureBackend => {
+	if (transport === 'stdio') {
+		const mode =
+			options.catalogPath ??
+			(options.echoRequest
+				? '--echo-request'
+				: options.cancellation
+					? '--cancellation'
+					: undefined);
+		return {
+			config: {
+				type: 'stdio',
+				command: process.execPath,
+				args: [
+					import.meta.path,
+					version,
+					...(mode
+						? [
+								mode,
+							]
+						: []),
+				],
+			},
+			stop: () => undefined,
+		};
+	}
+	const server = Bun.serve({
+		port: 0,
+		hostname: '127.0.0.1',
+		async fetch(request) {
+			const message = recordOf(await request.json()) ?? {};
+			const reply =
+				'id' in message
+					? await optionReply(message, version, options)
+					: undefined;
+			return (
+				(await options.handle?.(message, reply, request)) ??
+				(reply
+					? Response.json(reply)
+					: new Response(null, {
+							status: 202,
+						}))
+			);
+		},
+	});
+	return {
+		config: {
+			type: 'http',
+			url: server.url.href,
+		},
+		stop: () => server.stop(true),
+	};
+};
+
 if (import.meta.main) {
 	const version = process.argv[2] ?? '2025-11-25';
-	const cancellationMode = process.argv[3] === '--cancellation';
+	const mode = process.argv[3];
+	const cancellationMode = mode === '--cancellation';
+	const options: FixtureOptions = {
+		echoRequest: mode === '--echo-request',
+		catalogPath: mode && !mode.startsWith('--') ? mode : undefined,
+	};
 	const events: Record<string, unknown>[] = [];
 	let buffer = '';
 	for await (const chunk of Bun.stdin.stream()) {
@@ -187,18 +302,8 @@ if (import.meta.main) {
 			buffer = buffer.slice(end + 1);
 			if (message && cancellationMode) events.push(message);
 			if (message && 'id' in message) {
-				const reply = fixtureReply(message, version);
-				const catalogPath = process.argv[3];
+				const reply = await optionReply(message, version, options);
 				const result = recordOf(reply.result);
-				if (catalogPath === '--echo-request' && result)
-					result._meta = {
-						'com.example/request': message.params,
-					};
-				if (catalogPath && !catalogPath.startsWith('--') && result) {
-					if (message.method === 'tools/list')
-						result.tools = await Bun.file(catalogPath).json();
-					if ('ttlMs' in result) result.ttlMs = 3_600_000;
-				}
 				if (cancellationMode && result) {
 					const mode = recordOf(
 						recordOf(message.params)?.arguments,
@@ -222,4 +327,4 @@ if (import.meta.main) {
 	}
 }
 
-export { fixtureReply };
+export { fixtureReply, startFixtureBackend };
