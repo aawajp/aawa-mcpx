@@ -126,9 +126,7 @@ const startServer = async (
 
 		return {
 			protocolVersion: DEFAULT_GATEWAY_PROTOCOL_VERSION,
-			supportedProtocolVersions: [
-				...SUPPORTED_PROTOCOL_VERSIONS,
-			],
+			supportedProtocolVersions: [...SUPPORTED_PROTOCOL_VERSIONS],
 			aggregated: {
 				tools: aggregatedTools,
 				prompts: prompts.prompts,

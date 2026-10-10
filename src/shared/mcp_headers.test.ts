@@ -59,10 +59,7 @@ test('header rules compile once per schema object, including failures, and ignor
 	expect(first).toEqual([
 		{
 			name: 'Value',
-			path: [
-				'nested',
-				'value',
-			],
+			path: ['nested', 'value'],
 			type: 'string',
 		},
 	]);
@@ -150,10 +147,7 @@ test('only static primitive property paths are valid header sources', () => {
 		{
 			properties: {
 				a: {
-					type: [
-						'string',
-						'null',
-					],
+					type: ['string', 'null'],
 					'x-mcp-header': 'A',
 				},
 			},
@@ -235,13 +229,7 @@ test('recognized mirrors compare decoded values, safe integers, and omitted/null
 	headers.set('Mcp-Param-Count', '42.0');
 	headers.set('Mcp-Param-Unknown', 'opaque');
 	expect(validateToolHeaders(headers, args, rules)).toBeUndefined();
-	for (const count of [
-		'0x2a',
-		'',
-		'Infinity',
-		'42.1',
-		'9007199254740992',
-	]) {
+	for (const count of ['0x2a', '', 'Infinity', '42.1', '9007199254740992']) {
 		headers.set('Mcp-Param-Count', count);
 		expect(validateToolHeaders(headers, args, rules)).toBeDefined();
 	}

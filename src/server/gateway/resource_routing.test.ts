@@ -23,10 +23,7 @@ import {
 import { expect, mock, test } from 'bun:test';
 
 for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
-	for (const transport of [
-		'http',
-		'stdio',
-	] as const) {
+	for (const transport of ['http', 'stdio'] as const) {
 		test(`${backendVersion} ${transport}: namespaces route resources, tools, and prompts for every client revision`, async () => {
 			const backend = startFixtureBackend(transport, backendVersion, {
 				handle: (message, reply) => {
@@ -66,11 +63,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 			});
 			const servers = new Map<string, McpUpstreamServer>();
 			const clients = new Map<string, ProtocolClient>();
-			for (const serverName of [
-				'fixture',
-				'fixture__extra',
-				'fixture_',
-			]) {
+			for (const serverName of ['fixture', 'fixture__extra', 'fixture_']) {
 				const server: McpUpstreamServer = {
 					serverName,
 					serverConfig: {
@@ -109,14 +102,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 							client: clients.get(name),
 						};
 					const base = servers.get('fixture');
-					if (
-						!base ||
-						![
-							'disabled',
-							'down',
-						].includes(name)
-					)
-						return undefined;
+					if (!base || !['disabled', 'down'].includes(name)) return undefined;
 					return createMcpUpstreamBackend({
 						serverName: name,
 						serverConfig: {
@@ -131,9 +117,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 				...operations,
 				listEnabledTools: () =>
 					new Map(
-						[
-							...servers.keys(),
-						].map((name) => [
+						[...servers.keys()].map((name) => [
 							name,
 							{
 								tools: [
@@ -147,9 +131,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 					),
 				listAllPrompts: () =>
 					new Map(
-						[
-							...servers.keys(),
-						].map((name) => [
+						[...servers.keys()].map((name) => [
 							name,
 							{
 								prompts: [
@@ -162,9 +144,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 					),
 				listAllResources: () =>
 					new Map(
-						[
-							...servers.keys(),
-						].map((name) => [
+						[...servers.keys()].map((name) => [
 							name,
 							{
 								resources: [
@@ -178,9 +158,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 					),
 				listAllResourceTemplates: () =>
 					new Map(
-						[
-							...servers.keys(),
-						].map((name) => [
+						[...servers.keys()].map((name) => [
 							name,
 							{
 								resourceTemplates: [
@@ -232,9 +210,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 					const tools = await resultOf('tools/list');
 					expect(tools.tools).toEqual(
 						expect.arrayContaining(
-							[
-								...servers.keys(),
-							].map((serverName) =>
+							[...servers.keys()].map((serverName) =>
 								expect.objectContaining({
 									name: addPrefix({
 										serverName,
@@ -247,9 +223,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 					const prompts = await resultOf('prompts/list');
 					expect(prompts.prompts).toEqual(
 						expect.arrayContaining(
-							[
-								...servers.keys(),
-							].map((serverName) =>
+							[...servers.keys()].map((serverName) =>
 								expect.objectContaining({
 									name: addPrefix({
 										serverName,
@@ -262,9 +236,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 					const resources = await resultOf('resources/list');
 					expect(resources.resources).toEqual(
 						expect.arrayContaining(
-							[
-								...servers.keys(),
-							].map((serverName) =>
+							[...servers.keys()].map((serverName) =>
 								expect.objectContaining({
 									uri: addResourcePrefix({
 										serverName,
@@ -276,9 +248,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 					);
 					const templates = await resultOf('resources/templates/list');
 					expect(templates.resourceTemplates).toEqual(
-						[
-							...servers.keys(),
-						].map((serverName) => ({
+						[...servers.keys()].map((serverName) => ({
 							name: 'logs',
 							uriTemplate: addResourceTemplatePrefix({
 								serverName,
@@ -459,11 +429,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 						'file:///raw',
 						'fixture://relative',
 						'aawa-mcpx://resource/fixture/%ZZ',
-						...[
-							'missing',
-							'disabled',
-							'down',
-						].map((serverName) =>
+						...['missing', 'disabled', 'down'].map((serverName) =>
 							addResourcePrefix({
 								serverName,
 								uri: 'file:///example',

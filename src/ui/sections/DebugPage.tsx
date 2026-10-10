@@ -173,10 +173,7 @@ const TrafficErrorFilter = ({
 	onChange: (errorsOnly: boolean) => void;
 }) => (
 	<div className="flex items-center gap-2">
-		{[
-			false,
-			true,
-		].map((value) => (
+		{[false, true].map((value) => (
 			<button
 				key={String(value)}
 				type="button"
@@ -235,9 +232,7 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 
 	useEffect(() => {
 		void loadDebugSummary();
-	}, [
-		loadDebugSummary,
-	]);
+	}, [loadDebugSummary]);
 
 	const loadClientPage = useCallback(
 		async (page: number, errorsOnly: boolean) => {
@@ -326,9 +321,7 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 			Object.values(backendEntries).sort((a, b) =>
 				a.name.localeCompare(b.name),
 			),
-		[
-			backendEntries,
-		],
+		[backendEntries],
 	);
 	const backendName = selectedBackend || backendList[0]?.name || '';
 	const reloadActiveTab = () => {
@@ -352,9 +345,7 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 		return () => {
 			clientRequest.current += 1;
 		};
-	}, [
-		activeTab,
-	]);
+	}, [activeTab]);
 	useEffect(() => {
 		if (activeTab !== 'backend' || !backendName) return;
 		reloadShownTab();
@@ -364,10 +355,7 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 				(backendRequests.current.get(backendName) ?? 0) + 1,
 			);
 		};
-	}, [
-		activeTab,
-		backendName,
-	]);
+	}, [activeTab, backendName]);
 
 	return (
 		<div className="app-shell container mx-auto max-w-[1600px] p-6 space-y-6">
@@ -399,12 +387,7 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 			</div>
 
 			<div role="tablist" aria-label={t('debug.title')} className="flex gap-2">
-				{(
-					[
-						'client',
-						'backend',
-					] as const
-				).map((tab) => (
+				{(['client', 'backend'] as const).map((tab) => (
 					<button
 						key={tab}
 						id={`${tabsId}-${tab}-tab`}
@@ -417,12 +400,7 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 						onClick={() => setActiveTab(tab)}
 						onKeyDown={(event) => {
 							if (
-								[
-									'ArrowLeft',
-									'ArrowRight',
-									'Home',
-									'End',
-								].includes(event.key)
+								['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)
 							) {
 								event.preventDefault();
 								const next =

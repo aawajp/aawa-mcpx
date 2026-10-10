@@ -16,10 +16,7 @@ import {
 import { expect, test } from 'bun:test';
 
 for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
-	for (const transport of [
-		'http',
-		'stdio',
-	] as const) {
+	for (const transport of ['http', 'stdio'] as const) {
 		test(`${version} ${transport}: manual refresh fetches changed tools and preserves exposure`, async () => {
 			const root = await mkdtemp(path.join(tmpdir(), 'mcpx-refresh-'));
 			const catalogPath = path.join(root, 'tools.json');
@@ -35,11 +32,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 			});
 			await Bun.write(
 				catalogPath,
-				JSON.stringify([
-					tool('keep'),
-					tool('remove'),
-					tool('off'),
-				]),
+				JSON.stringify([tool('keep'), tool('remove'), tool('off')]),
 			);
 			const fixture = startFixtureBackend(transport, version, {
 				catalogPath,
@@ -59,25 +52,14 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 						...backend,
 						timeout: 2000,
 						trafficLimit: 10000,
-						enabledTools: [
-							'keep',
-							'remove',
-							'previously-discovered',
-						],
-						availableTools: [
-							'keep',
-							'remove',
-							'previously-discovered',
-						],
+						enabledTools: ['keep', 'remove', 'previously-discovered'],
+						availableTools: ['keep', 'remove', 'previously-discovered'],
 					},
 					other: {
 						...backend,
 						timeout: 2000,
 						trafficLimit: 10000,
-						enabledTools: [
-							'keep',
-							'remove',
-						],
+						enabledTools: ['keep', 'remove'],
 					},
 					disabled: {
 						...backend,
@@ -123,11 +105,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 					await manager.refreshStaleCatalogs?.({
 						method: 'tools/list',
 					});
-				expect(names('selected')).toEqual([
-					'keep',
-					'remove',
-					'off',
-				]);
+				expect(names('selected')).toEqual(['keep', 'remove', 'off']);
 				const response = await routes['/api/backends/refresh'].POST(
 					new Request('http://localhost/api/backends/refresh', {
 						method: 'POST',
@@ -141,26 +119,16 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 					(await response.json()).tools.selected.tools.map(
 						(tool: { name: string }) => tool.name,
 					),
-				).toEqual([
-					'keep',
-					'off',
-					'added',
-				]);
+				).toEqual(['keep', 'off', 'added']);
 				expect(
 					manager.listAllTools().get('selected')?.tools[0]?.description,
 				).toBe('Updated description');
-				expect(names('other')).toEqual([
-					'keep',
-					'remove',
-					'off',
-				]);
+				expect(names('other')).toEqual(['keep', 'remove', 'off']);
 				expect(
 					manager.getEnabledTools({
 						serverName: 'selected',
 					}),
-				).toEqual([
-					'keep',
-				]);
+				).toEqual(['keep']);
 				expect(
 					manager
 						.getStatuses()
@@ -171,9 +139,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 						.listEnabledTools()
 						.get('selected')
 						?.tools.map((tool) => tool.name),
-				).toEqual([
-					'keep',
-				]);
+				).toEqual(['keep']);
 				const persisted = mcpConfigType.assert(
 					await Bun.file(path.join(root, 'mcp.json')).json(),
 				);
@@ -182,9 +148,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 					'off',
 					'added',
 				]);
-				expect(persisted.mcpServers.selected?.enabledTools).toEqual([
-					'keep',
-				]);
+				expect(persisted.mcpServers.selected?.enabledTools).toEqual(['keep']);
 				// The summary button refreshes every connected backend, regardless of version.
 				expect(
 					(
@@ -196,11 +160,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 						)
 					).status,
 				).toBe(200);
-				expect(names('other')).toEqual([
-					'keep',
-					'off',
-					'added',
-				]);
+				expect(names('other')).toEqual(['keep', 'off', 'added']);
 				expect(names('disabled')).toBeUndefined();
 				if (transport === 'http' && version === CURRENT_PROTOCOL_VERSION) {
 					// An earlier request can contain stale data even while in flight.
@@ -222,10 +182,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 						serverName: 'selected',
 					});
 					release.resolve();
-					await Promise.all([
-						earlierRefresh,
-						buttonRefresh,
-					]);
+					await Promise.all([earlierRefresh, buttonRefresh]);
 					expect(
 						manager.listAllTools().get('selected')?.tools[0]?.description,
 					).toBe('Changed during refresh');
@@ -238,10 +195,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 				});
 				await Bun.write(
 					catalogPath,
-					JSON.stringify([
-						tool('off'),
-						tool('added'),
-					]),
+					JSON.stringify([tool('off'), tool('added')]),
 				);
 				await manager.toggleBackend({
 					serverName: 'selected',
@@ -319,10 +273,7 @@ test('2026-07-28 lists go stale on their own and refresh only for the request ta
 				return undefined;
 			},
 		});
-	const fixtures = [
-		start('a'),
-		start('b'),
-	];
+	const fixtures = [start('a'), start('b')];
 	const manager = createMcpUpstreamManager({
 		config: mcpConfigType.assert({
 			mcpServers: Object.fromEntries(
@@ -356,9 +307,7 @@ test('2026-07-28 lists go stale on their own and refresh only for the request ta
 				name: 'a__echo',
 			},
 		});
-		expect(requests).toEqual([
-			'a tools/list',
-		]);
+		expect(requests).toEqual(['a tools/list']);
 
 		requests.length = 0;
 		await manager.refreshStaleCatalogs?.({
@@ -392,17 +341,13 @@ test('2026-07-28 lists go stale on their own and refresh only for the request ta
 				name: 'a__echo',
 			},
 		});
-		expect(requests).toEqual([
-			'a tools/list',
-		]);
+		expect(requests).toEqual(['a tools/list']);
 		expect(
 			manager
 				.listAllTools()
 				.get('a')
 				?.tools.map((tool) => tool.name),
-		).toEqual([
-			'echo',
-		]);
+		).toEqual(['echo']);
 	} finally {
 		await manager.disconnect();
 		for (const fixture of fixtures) fixture.stop();

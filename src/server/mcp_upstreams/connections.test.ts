@@ -28,12 +28,7 @@ test('cancellation frees a rate-limit wait without reserving a dispatch time', a
 		serverConfig,
 	});
 	const connections = createMcpUpstreamConnections({
-		backends: new Map([
-			[
-				'mock',
-				backend,
-			],
-		]),
+		backends: new Map([['mock', backend]]),
 		refreshCatalog: async () => undefined,
 	});
 	await connections.waitForRateLimit(backend);
@@ -78,12 +73,7 @@ test('protocol failure stops reconnects until explicitly re-enabled', async () =
 		),
 	);
 	const connections = createMcpUpstreamConnections({
-		backends: new Map([
-			[
-				'mock',
-				backend,
-			],
-		]),
+		backends: new Map([['mock', backend]]),
 		refreshCatalog: async () => undefined,
 	});
 	try {
@@ -127,12 +117,7 @@ test('concurrent requests wait for their own rate-limit slots', async () => {
 		serverConfig,
 	});
 	const connections = createMcpUpstreamConnections({
-		backends: new Map([
-			[
-				'mock',
-				backend,
-			],
-		]),
+		backends: new Map([['mock', backend]]),
 		refreshCatalog: async () => undefined,
 	});
 	const started = performance.now();

@@ -24,16 +24,10 @@ test('default 2020-12 validation supports refs, conditionals and fractional mult
 				$ref: '#/$defs/amount',
 			},
 			kind: {
-				enum: [
-					'paid',
-					'free',
-				],
+				enum: ['paid', 'free'],
 			},
 		},
-		required: [
-			'kind',
-			'amount',
-		],
+		required: ['kind', 'amount'],
 		if: {
 			properties: {
 				kind: {
@@ -104,26 +98,11 @@ test('2020-12 array, composition and dependency keywords are enforced', () => {
 		minContains: 1,
 		maxContains: 1,
 	};
-	expect(
-		validate(schema, [
-			'first',
-			3,
-		]),
-	).toBeUndefined();
-	expect(
-		validate(schema, [
-			'first',
-			3,
-			3,
-		])?.reason,
-	).toBe('schema_mismatch');
-	expect(
-		validate(schema, [
-			'first',
-			3,
-			'invalid',
-		])?.reason,
-	).toBe('schema_mismatch');
+	expect(validate(schema, ['first', 3])).toBeUndefined();
+	expect(validate(schema, ['first', 3, 3])?.reason).toBe('schema_mismatch');
+	expect(validate(schema, ['first', 3, 'invalid'])?.reason).toBe(
+		'schema_mismatch',
+	);
 	const object = {
 		type: 'object',
 		properties: {
@@ -142,9 +121,7 @@ test('2020-12 array, composition and dependency keywords are enforced', () => {
 			},
 		},
 		dependentRequired: {
-			count: [
-				'total',
-			],
+			count: ['total'],
 		},
 	};
 	expect(
@@ -298,37 +275,21 @@ for (const $schema of [
 		const validate = createOutputSchemaValidator();
 		expect(
 			validate(wrapped, {
-				value: [
-					1,
-					2,
-				],
+				value: [1, 2],
 			}),
 		).toBeUndefined();
 		expect(
 			validate(wrapped, {
-				value: [
-					'bad',
-				],
+				value: ['bad'],
 			})?.reason,
 		).toBe('schema_mismatch');
-		expect(
-			validate(
-				wrapped,
-				[
-					1,
-					2,
-				],
-			)?.reason,
-		).toBe('schema_mismatch');
+		expect(validate(wrapped, [1, 2])?.reason).toBe('schema_mismatch');
 		expect(requiresOutputWrapper(schema)).toBe(true);
 	});
 
 test('legacy wrappers preserve recursive refs and anchors and avoid changing object schemas', () => {
 	const recursive = {
-		type: [
-			'object',
-			'null',
-		],
+		type: ['object', 'null'],
 		$defs: {
 			node: {
 				$anchor: 'node',
@@ -415,23 +376,17 @@ test('legacy wrappers keep a root $ref compilable in draft-07 and 2020-12', () =
 		}).compile(wrapped as object);
 		expect(
 			validate({
-				value: [
-					1,
-				],
+				value: [1],
 			}),
 		).toBe(true);
 		expect(
 			validate({
-				value: [
-					'bad',
-				],
+				value: ['bad'],
 			}),
 		).toBe(false);
 		expect(
 			createOutputSchemaValidator()(wrapped, {
-				value: [
-					'bad',
-				],
+				value: ['bad'],
 			})?.reason,
 		).toBe('schema_mismatch');
 	}

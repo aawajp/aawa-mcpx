@@ -12,9 +12,7 @@ test('dashboard toggles use the same escaped namespaces as the MCP catalog', asy
 		mcpUpstreamManager: {
 			async toggleTool(params: unknown): Promise<string[]> {
 				toggled = params;
-				return [
-					'_echo',
-				];
+				return ['_echo'];
 			},
 		} as unknown as McpUpstreamManager,
 		shutdownSignal: new AbortController().signal,
@@ -90,11 +88,7 @@ test('backend refresh rejects malformed requests without fetching catalogs', asy
 		shutdownSignal: new AbortController().signal,
 		trafficStore: {} as unknown as TrafficStore,
 	});
-	for (const body of [
-		'{',
-		'null',
-		'{"serverName":42}',
-	]) {
+	for (const body of ['{', 'null', '{"serverName":42}']) {
 		const response = await routes['/api/backends/refresh'].POST(
 			new Request('http://localhost/api/backends/refresh', {
 				method: 'POST',

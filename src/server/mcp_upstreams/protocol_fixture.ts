@@ -30,9 +30,7 @@ const fixtureReply = (
 	switch (message.method) {
 		case 'server/discover':
 			result = {
-				supportedVersions: [
-					version,
-				],
+				supportedVersions: [version],
 				capabilities: {
 					tools: {},
 					prompts: {},
@@ -256,15 +254,7 @@ const startFixtureBackend = (
 			config: {
 				type: 'stdio',
 				command: process.execPath,
-				args: [
-					import.meta.path,
-					version,
-					...(mode
-						? [
-								mode,
-							]
-						: []),
-				],
+				args: [import.meta.path, version, ...(mode ? [mode] : [])],
 			},
 			stop: () => undefined,
 		};

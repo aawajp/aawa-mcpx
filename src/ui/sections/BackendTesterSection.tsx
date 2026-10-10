@@ -146,9 +146,7 @@ const BackendTesterSection = ({ backends }: Props) => {
 					sensitivity: 'base',
 				}),
 			);
-	}, [
-		backends,
-	]);
+	}, [backends]);
 
 	useEffect(() => {
 		if (sortedBackends.length === 0) {
@@ -161,26 +159,19 @@ const BackendTesterSection = ({ backends }: Props) => {
 		if (!exists) {
 			setSelectedBackend(sortedBackends[0]?.serverName ?? '');
 		}
-	}, [
-		sortedBackends,
-		selectedBackend,
-	]);
+	}, [sortedBackends, selectedBackend]);
 
 	const currentBackend =
 		sortedBackends.find((backend) => backend.serverName === selectedBackend) ??
 		null;
 	const tools = useMemo(() => {
 		const backendTools = currentBackend?.tools.tools ?? [];
-		return [
-			...backendTools,
-		].sort((a, b) =>
+		return [...backendTools].sort((a, b) =>
 			a.name.localeCompare(b.name, undefined, {
 				sensitivity: 'base',
 			}),
 		);
-	}, [
-		currentBackend,
-	]);
+	}, [currentBackend]);
 
 	useEffect(() => {
 		if (tools.length === 0) {
@@ -191,18 +182,10 @@ const BackendTesterSection = ({ backends }: Props) => {
 		if (!exists) {
 			setSelectedTool(tools[0]?.name ?? '');
 		}
-	}, [
-		tools,
-		selectedTool,
-	]);
+	}, [tools, selectedTool]);
 
 	const tool = tools.find((item) => item.name === selectedTool) ?? null;
-	const fields = useMemo(
-		() => getToolFields(tool),
-		[
-			tool,
-		],
-	);
+	const fields = useMemo(() => getToolFields(tool), [tool]);
 
 	useEffect(() => {
 		setValues((current) => {
@@ -221,9 +204,7 @@ const BackendTesterSection = ({ backends }: Props) => {
 			});
 			return next;
 		});
-	}, [
-		fields,
-	]);
+	}, [fields]);
 
 	const updateValue = (name: string, value: string) => {
 		setValues((current) => ({

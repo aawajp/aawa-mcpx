@@ -42,10 +42,7 @@ test('client info requires name and version when present; omitted identity uses 
 import { expect, spyOn, test } from 'bun:test';
 
 test('initialization retains the newest sessions per name/version without idle expiration', async () => {
-	for (const maxSessionsPerClient of [
-		undefined,
-		2,
-	]) {
+	for (const maxSessionsPerClient of [undefined, 2]) {
 		const sessions = createMcpSessionManager({
 			maxSessionsPerClient,
 			protocolHeaderName: 'MCP-Protocol-Version',
@@ -173,10 +170,7 @@ test('client activity groups revisions and reconnects without exposing sessions'
 		name: 'test-client',
 		version: '1',
 	};
-	for (const protocolVersion of [
-		'2025-06-18',
-		'2025-11-25',
-	]) {
+	for (const protocolVersion of ['2025-06-18', '2025-11-25']) {
 		const result = await sessions.handleInitialize(
 			{
 				jsonrpc: '2.0',

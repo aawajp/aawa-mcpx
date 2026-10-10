@@ -32,12 +32,7 @@ const createHarness = (
 		},
 	});
 	const connections = createMcpUpstreamConnections({
-		backends: new Map([
-			[
-				backend.serverName,
-				backend,
-			],
-		]),
+		backends: new Map([[backend.serverName, backend]]),
 		refreshCatalog,
 	});
 	return {
@@ -58,12 +53,7 @@ test('reconnects back off with jitter, cap traffic, and reset after recovery', a
 		for (let attempt = 0; attempt < 5; attempt += 1)
 			await harness.connections.attemptReconnect(harness.backend);
 		expect(timers.mock.calls.map((call) => call[1])).toEqual([
-			7500,
-			15000,
-			30000,
-			45000,
-			45000,
-			45000,
+			7500, 15000, 30000, 45000, 45000, 45000,
 		]);
 		expect(harness.backend.reconnectTimer).toBeDefined();
 		expect(harness.backend.status).toMatchObject({
@@ -111,10 +101,7 @@ test('concurrent reconnects share one handshake and catalog refresh', async () =
 		await Bun.sleep(0);
 		expect(connect).toHaveBeenCalledTimes(2);
 		release();
-		await Promise.all([
-			first,
-			second,
-		]);
+		await Promise.all([first, second]);
 		expect(refreshes).toBe(1);
 		expect(harness.backend.reconnectTimer).toBeUndefined();
 	} finally {

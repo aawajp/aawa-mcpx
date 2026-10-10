@@ -6,24 +6,9 @@ import {
 import { expect, test } from 'bun:test';
 
 test('JSON-RPC IDs are strings or finite integers, including zero', () => {
-	for (const id of [
-		'',
-		'request',
-		0,
-		-1,
-		42,
-	])
+	for (const id of ['', 'request', 0, -1, 42])
 		expect(getJsonRpcId(id)).toBe(id);
-	for (const id of [
-		null,
-		undefined,
-		1.5,
-		NaN,
-		Infinity,
-		-Infinity,
-		true,
-		{},
-	])
+	for (const id of [null, undefined, 1.5, NaN, Infinity, -Infinity, true, {}])
 		expect(getJsonRpcId(id)).toBeNull();
 });
 

@@ -292,12 +292,8 @@ const createTrafficStore = (dbPath: string): TrafficStore => {
 		offset: number;
 		errorsOnly?: boolean;
 	}): TrafficQueryResult => {
-		const conditions = [
-			'kind = ?',
-		];
-		const bindings: Array<string | number> = [
-			params.kind,
-		];
+		const conditions = ['kind = ?'];
+		const bindings: Array<string | number> = [params.kind];
 		if (params.backend !== undefined) {
 			conditions.push('peer = ?');
 			bindings.push(params.backend);

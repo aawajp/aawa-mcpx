@@ -13,10 +13,7 @@ const createClientActivityTracker = (limit: number) => {
 			version: 'unknown',
 		};
 		// Identify an application by its reported name/version.
-		const key = JSON.stringify([
-			client.name,
-			client.version,
-		]);
+		const key = JSON.stringify([client.name, client.version]);
 		const previous = clients.get(key);
 		const now = Date.now();
 		clients.delete(key);

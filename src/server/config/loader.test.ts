@@ -31,13 +31,8 @@ test('saving changes only gateway-owned fields and skips unchanged state', async
 			configPath,
 			config,
 			serverName: 'backend',
-			enabledTools: [
-				'a',
-			],
-			availableTools: [
-				'a',
-				'b',
-			],
+			enabledTools: ['a'],
+			availableTools: ['a', 'b'],
 		};
 		await saveToolState(toolState);
 		// Defaults filled in at load (timeout, enabled, trafficLimit) stay out.
@@ -45,13 +40,8 @@ test('saving changes only gateway-owned fields and skips unchanged state', async
 			mcpServers: {
 				backend: {
 					...backend,
-					enabledTools: [
-						'a',
-					],
-					availableTools: [
-						'a',
-						'b',
-					],
+					enabledTools: ['a'],
+					availableTools: ['a', 'b'],
 				},
 			},
 		});
@@ -68,13 +58,8 @@ test('saving changes only gateway-owned fields and skips unchanged state', async
 			mcpServers: {
 				backend: {
 					...backend,
-					enabledTools: [
-						'a',
-					],
-					availableTools: [
-						'a',
-						'b',
-					],
+					enabledTools: ['a'],
+					availableTools: ['a', 'b'],
 					enabled: false,
 				},
 			},

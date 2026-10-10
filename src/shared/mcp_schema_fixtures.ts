@@ -35,9 +35,7 @@ const validToolContent: typeof callToolResultType.infer.content = [
 			uri: 'file:///notes',
 			text: '',
 			annotations: {
-				audience: [
-					'user',
-				],
+				audience: ['user'],
 				priority: 0,
 				lastModified: '2025-01-12T15:00:58Z',
 			},
@@ -71,14 +69,10 @@ const invalidToolResults: unknown[] = [
 		structuredContent: {},
 	},
 	{
-		content: [
-			null,
-		],
+		content: [null],
 	},
 	{
-		content: [
-			1,
-		],
+		content: [1],
 	},
 	{
 		content: [
@@ -226,9 +220,7 @@ const invalidToolResults: unknown[] = [
 				type: 'text',
 				text: 'hello',
 				annotations: {
-					audience: [
-						'system',
-					],
+					audience: ['system'],
 				},
 			},
 		],

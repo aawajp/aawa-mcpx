@@ -5,18 +5,9 @@ import { expect, test } from 'bun:test';
 
 test('traffic filters isolate peers and keep paginated totals consistent', () => {
 	const store = createTrafficStore(':memory:');
-	for (const backend of [
-		'first',
-		'second',
-	]) {
-		for (const method of [
-			'tools/list',
-			'prompts/list',
-		]) {
-			for (const failed of [
-				false,
-				true,
-			]) {
+	for (const backend of ['first', 'second']) {
+		for (const method of ['tools/list', 'prompts/list']) {
+			for (const failed of [false, true]) {
 				const entry = {
 					method,
 					request: {},
@@ -34,14 +25,8 @@ test('traffic filters isolate peers and keep paginated totals consistent', () =>
 			}
 		}
 	}
-	for (const errorsOnly of [
-		false,
-		true,
-	]) {
-		for (const method of [
-			undefined,
-			'tools/list',
-		]) {
+	for (const errorsOnly of [false, true]) {
+		for (const method of [undefined, 'tools/list']) {
 			const page = store.getBackendTraffic({
 				backend: 'first',
 				method,
@@ -94,14 +79,8 @@ test('traffic snapshots retain client and backend protocol versions', () => {
 			}),
 		).records[0]?.protocolVersion,
 	).toBe('2026-07-28');
-	for (const errorsOnly of [
-		false,
-		true,
-	])
-		for (const method of [
-			undefined,
-			'tools/list',
-		])
+	for (const errorsOnly of [false, true])
+		for (const method of [undefined, 'tools/list'])
 			expect(
 				trafficPageType.assert(
 					store.getBackendTraffic({

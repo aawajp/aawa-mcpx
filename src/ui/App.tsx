@@ -112,9 +112,7 @@ export default function App() {
 				}));
 			}
 		},
-		[
-			refresh,
-		],
+		[refresh],
 	);
 
 	useEffect(() => {
@@ -122,10 +120,7 @@ export default function App() {
 			return;
 		}
 		void refresh();
-	}, [
-		refresh,
-		route,
-	]);
+	}, [refresh, route]);
 
 	const toggleTool = useCallback(
 		async (params: { name: string; enabled: boolean }) => {
@@ -185,9 +180,7 @@ export default function App() {
 			map.set(tool.name, tool.enabled);
 		}
 		return map;
-	}, [
-		overview,
-	]);
+	}, [overview]);
 
 	useEffect(() => {
 		if (route !== 'main') {
@@ -215,9 +208,7 @@ export default function App() {
 		return () => {
 			eventSource.close();
 		};
-	}, [
-		route,
-	]);
+	}, [route]);
 
 	useEffect(() => {
 		const syncRoute = () => {
@@ -235,9 +226,7 @@ export default function App() {
 		return () => {
 			window.removeEventListener('popstate', syncRoute);
 		};
-	}, [
-		resolveRoute,
-	]);
+	}, [resolveRoute]);
 
 	const navigate = useCallback((target: 'main' | 'debug') => {
 		setRoute(target);
@@ -261,9 +250,7 @@ export default function App() {
 			}
 			return `${base} hover:bg-muted`;
 		},
-		[
-			mainTab,
-		],
+		[mainTab],
 	);
 
 	return (

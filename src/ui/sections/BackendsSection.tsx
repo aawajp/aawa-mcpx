@@ -41,9 +41,7 @@ const BackendsSection = ({
 	isToolEnabled,
 	isToolPending,
 }: Props) => {
-	const sortedBackends = [
-		...backends,
-	].sort((a, b) =>
+	const sortedBackends = [...backends].sort((a, b) =>
 		a.serverName.localeCompare(b.serverName, undefined, {
 			sensitivity: 'base',
 		}),

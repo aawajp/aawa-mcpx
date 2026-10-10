@@ -15,16 +15,11 @@ const ClientsSection = ({ clients }: { clients: ClientActivity[] }) => (
 			<p className="text-sm text-muted-foreground">{t('clients.none')}</p>
 		) : (
 			<div className="grid gap-3">
-				{[
-					...clients,
-				]
+				{[...clients]
 					.sort((a, b) => b.lastSeen - a.lastSeen)
 					.map((entry) => (
 						<Card
-							key={JSON.stringify([
-								entry.client.name,
-								entry.client.version,
-							])}
+							key={JSON.stringify([entry.client.name, entry.client.version])}
 						>
 							<CardHeader className="gap-1 pb-3">
 								<CardTitle className="truncate text-xl">

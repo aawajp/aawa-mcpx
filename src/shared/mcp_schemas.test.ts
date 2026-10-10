@@ -11,9 +11,7 @@ test('validates every tool content type without stripping extensions or metadata
 		content: validToolContent.map((block) => ({
 			...block,
 			annotations: {
-				audience: [
-					'assistant' as const,
-				],
+				audience: ['assistant' as const],
 				priority: 1,
 			},
 			_meta: {
@@ -31,14 +29,7 @@ test('validates every tool content type without stripping extensions or metadata
 		},
 	};
 	expect(callToolResultType.assert(result)).toEqual(result);
-	for (const structuredContent of [
-		{},
-		[],
-		'',
-		0,
-		false,
-		null,
-	])
+	for (const structuredContent of [{}, [], '', 0, false, null])
 		expect(
 			callToolResultType.allows({
 				content: [],

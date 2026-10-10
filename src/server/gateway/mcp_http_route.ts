@@ -474,19 +474,15 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 				if (version !== CURRENT_PROTOCOL_VERSION)
 					return fail(-32022, 'Unsupported protocol version', {
 						requested: version,
-						supported: [
-							...SUPPORTED_PROTOCOL_VERSIONS,
-						],
+						supported: [...SUPPORTED_PROTOCOL_VERSIONS],
 					});
 				if (request.headers.get('Mcp-Method') !== message.method)
 					return fail(-32020, 'Missing or mismatched Mcp-Method');
 				const bodyParams = recordOf(message.params);
 				if (
-					[
-						'tools/call',
-						'prompts/get',
-						'resources/read',
-					].includes(message.method)
+					['tools/call', 'prompts/get', 'resources/read'].includes(
+						message.method,
+					)
 				) {
 					const name =
 						message.method === 'resources/read'
@@ -564,9 +560,9 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 						CURRENT_PROTOCOL_VERSION,
 						// Unknown parameter mirrors remain opaque to this hop.
 						Object.fromEntries(
-							[
-								...request.headers,
-							].filter(([name]) => name.startsWith('mcp-param-')),
+							[...request.headers].filter(([name]) =>
+								name.startsWith('mcp-param-'),
+							),
 						),
 						request.signal,
 					);

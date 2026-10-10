@@ -290,14 +290,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 	test(`public ${version}: output schema and structured result agree after adaptation`, async () => {
 		const { route, manager } = fixture();
 		const schema = {
-			type: [
-				'object',
-				'array',
-				'null',
-				'string',
-				'number',
-				'boolean',
-			],
+			type: ['object', 'array', 'null', 'string', 'number', 'boolean'],
 			$defs: {
 				item: {
 					type: 'integer',
@@ -398,10 +391,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 				count: 2,
 			},
 			{},
-			[
-				1,
-				2,
-			],
+			[1, 2],
 			[],
 			'hello',
 			'',
@@ -481,10 +471,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 		const schemaFreeCatalog = await (await send('tools/list')).json();
 		expect(schemaFreeCatalog.result.tools[0].outputSchema).toBeUndefined();
 		for (const structuredContent of values) {
-			for (const recover of [
-				false,
-				true,
-			]) {
+			for (const recover of [false, true]) {
 				backendResult = {
 					content: [
 						{
@@ -529,9 +516,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 					type: 'integer',
 				},
 			},
-			required: [
-				'count',
-			],
+			required: ['count'],
 		};
 		backendResult = {
 			content: [],
@@ -561,10 +546,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 
 test('initialize proposals choose a supported alternative and enforce stored version', async () => {
 	const { sessions } = fixture();
-	for (const protocolVersion of [
-		'2025-06-18',
-		'2025-11-25',
-	]) {
+	for (const protocolVersion of ['2025-06-18', '2025-11-25']) {
 		for (const clientInfo of [
 			undefined,
 			{
@@ -667,9 +649,7 @@ test('2026-07-28 header failures, unsupported version, and irrelevant sessions',
 		code: -32022,
 		data: {
 			requested: '2099-01-01',
-			supported: [
-				...SUPPORTED_PROTOCOL_VERSIONS,
-			],
+			supported: [...SUPPORTED_PROTOCOL_VERSIONS],
 		},
 	});
 	const response = await send(CURRENT_PROTOCOL_VERSION, 'server/discover');
@@ -822,9 +802,7 @@ test('modern metadata validates per request without requiring or inheriting opti
 			},
 			extensions: {
 				'com.example/ui': {
-					mimeTypes: [
-						'text/html',
-					],
+					mimeTypes: ['text/html'],
 				},
 			},
 		},
@@ -1066,13 +1044,8 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 		const catalog = (await (await send('tools/list')).json()).result.tools;
 		expect(catalog.map((tool: Record<string, unknown>) => tool.name)).toEqual(
 			version === CURRENT_PROTOCOL_VERSION
-				? [
-						'backend__echo',
-					]
-				: [
-						'backend__echo',
-						'backend__bad',
-					],
+				? ['backend__echo']
+				: ['backend__echo', 'backend__bad'],
 		);
 		const called = await send('tools/call', {
 			name: 'backend__bad',
@@ -1114,10 +1087,7 @@ test('POST checks Origin and Accept before reading the body', async () => {
 			})
 		).status,
 	).toBe(403);
-	for (const value of [
-		'application/json',
-		'text/event-stream',
-	])
+	for (const value of ['application/json', 'text/event-stream'])
 		expect(
 			(
 				await post({
@@ -1136,11 +1106,7 @@ test('POST checks Origin and Accept before reading the body', async () => {
 
 test('unknown protocol version headers without request metadata get HTTP 400', async () => {
 	const { route } = fixture();
-	for (const header of [
-		'zzz',
-		'2026-01-01',
-		'2099-01-01',
-	]) {
+	for (const header of ['zzz', '2026-01-01', '2099-01-01']) {
 		const response = await route.POST(
 			mcpPost({
 				headers: {
@@ -1191,10 +1157,7 @@ test('gateway transport errors keep their HTTP status and use Invalid Request', 
 			},
 		});
 	const session = (await initialize()).headers.get('Mcp-Session-Id') ?? '';
-	const cases: [
-		Promise<Response>,
-		number,
-	][] = [
+	const cases: [Promise<Response>, number][] = [
 		[
 			post({
 				Origin: 'http://evil.example',
@@ -1207,10 +1170,7 @@ test('gateway transport errors keep their HTTP status and use Invalid Request', 
 			}),
 			400,
 		],
-		[
-			post({}),
-			400,
-		],
+		[post({}), 400],
 		[
 			post({
 				'Mcp-Session-Id': 'unknown',

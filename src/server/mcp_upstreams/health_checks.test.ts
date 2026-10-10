@@ -37,12 +37,7 @@ const createChecks = (
 	},
 ) =>
 	createMcpUpstreamHealthChecks({
-		backends: new Map([
-			[
-				backend.serverName,
-				backend,
-			],
-		]),
+		backends: new Map([[backend.serverName, backend]]),
 		markMcpUpstreamDown,
 		onValidationError: () => undefined,
 		waitForRateLimit: async () => undefined,
@@ -163,8 +158,5 @@ test('enabled backends use bounded heartbeat timeouts and failure threshold', as
 	await checks.runHealthChecks();
 	expect(backend.healthCheckFailures).toBe(2);
 	expect(markedDown).toBe(1);
-	expect(observedTimeouts).toEqual([
-		9000,
-		3000,
-	]);
+	expect(observedTimeouts).toEqual([9000, 3000]);
 });

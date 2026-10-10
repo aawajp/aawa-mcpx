@@ -21,11 +21,7 @@ import {
 import { expect, test } from 'bun:test';
 
 for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
-	for (const transport of [
-		'json',
-		'sse',
-		'stdio',
-	] as const) {
+	for (const transport of ['json', 'sse', 'stdio'] as const) {
 		test(`${version} ${transport}: validates envelopes and content without breaking client versions`, async () => {
 			const backend = startFixtureBackend(
 				transport === 'stdio' ? 'stdio' : 'http',
@@ -94,13 +90,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 				});
 				for (const reply of invalidToolResults)
 					await expect(callResult(recordOf(reply) ?? {})).rejects.toThrow();
-				for (const structuredContent of [
-					[],
-					'',
-					0,
-					false,
-					null,
-				]) {
+				for (const structuredContent of [[], '', 0, false, null]) {
 					const result = {
 						content: [],
 						structuredContent,
@@ -417,11 +407,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 				expect(caught).not.toBeInstanceOf(BackendRpcError);
 			}
 			expect(recoveries).toBe(0);
-			for (const transientStatus of [
-				408,
-				429,
-				503,
-			]) {
+			for (const transientStatus of [408, 429, 503]) {
 				status = transientStatus;
 				reply = {
 					id: 'wrong',

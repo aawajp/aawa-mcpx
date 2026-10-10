@@ -16,9 +16,7 @@ const objectSchema = {
 			type: 'integer',
 		},
 	},
-	required: [
-		'count',
-	],
+	required: ['count'],
 };
 
 test('schema mismatch logs a warning with tool context and returns normal data', () => {
@@ -61,10 +59,7 @@ for (const structuredContent of [
 	null,
 	false,
 	0,
-	[
-		1,
-		2,
-	],
+	[1, 2],
 	'hello',
 ])
 	test(`recovers missing structured content from JSON ${JSON.stringify(structuredContent)}`, () => {
@@ -95,9 +90,7 @@ for (const structuredContent of [
 			expect(original.content).toHaveLength(2);
 			expect(
 				warn.mock.calls.map((call) => JSON.parse(call[0]).context.reason),
-			).toEqual([
-				'structured_content_recovered',
-			]);
+			).toEqual(['structured_content_recovered']);
 		} finally {
 			warn.mockRestore();
 		}
@@ -124,10 +117,7 @@ test('recovers a unique JSON candidate even if it mismatches the provider schema
 		);
 		expect(
 			warn.mock.calls.map((call) => JSON.parse(call[0]).context.reason),
-		).toEqual([
-			'structured_content_recovered',
-			'schema_mismatch',
-		]);
+		).toEqual(['structured_content_recovered', 'schema_mismatch']);
 	} finally {
 		warn.mockRestore();
 	}
@@ -155,9 +145,7 @@ test('uses schema to select one candidate and preserves other JSON content', () 
 				context,
 			),
 		).toEqual({
-			content: [
-				unrelated,
-			],
+			content: [unrelated],
 			structuredContent: {
 				count: 2,
 			},
@@ -170,11 +158,7 @@ test('uses schema to select one candidate and preserves other JSON content', () 
 test('array item recovery preserves item order and duplicates', () => {
 	const warn = spyOn(logger, 'warn').mockImplementation(() => undefined);
 	try {
-		const content: ToolCallResult['content'] = [
-			2,
-			1,
-			2,
-		].map((value) => ({
+		const content: ToolCallResult['content'] = [2, 1, 2].map((value) => ({
 			type: 'text',
 			text: String(value),
 		}));
@@ -193,11 +177,7 @@ test('array item recovery preserves item order and duplicates', () => {
 			),
 		).toEqual({
 			content,
-			structuredContent: [
-				2,
-				1,
-				2,
-			],
+			structuredContent: [2, 1, 2],
 		});
 		expect(
 			createToolResultNormalizer()(
@@ -221,10 +201,7 @@ test('array item recovery preserves item order and duplicates', () => {
 				},
 				context,
 			).structuredContent,
-		).toEqual([
-			2,
-			2,
-		]);
+		).toEqual([2, 2]);
 	} finally {
 		warn.mockRestore();
 	}
@@ -234,16 +211,9 @@ test('preserves ambiguous or non-JSON content and reports missing structured out
 	const warn = spyOn(logger, 'warn').mockImplementation(() => undefined);
 	try {
 		for (const texts of [
-			[
-				'plain text',
-			],
-			[
-				'{"count":1}',
-				'{"count":2}',
-			],
-			[
-				'{"count":',
-			],
+			['plain text'],
+			['{"count":1}', '{"count":2}'],
+			['{"count":'],
 		]) {
 			const original: ToolCallResult = {
 				content: texts.map((text) => ({
@@ -321,10 +291,7 @@ test('error results skip the success schema and content-only tools remain suppor
 		};
 		expect(normalize(normal, undefined, context)).toBe(normal);
 		// Without an output schema, JSON-looking text is just text.
-		for (const text of [
-			'{"count":2}',
-			'42',
-		]) {
+		for (const text of ['{"count":2}', '42']) {
 			const plain: ToolCallResult = {
 				content: [
 					{

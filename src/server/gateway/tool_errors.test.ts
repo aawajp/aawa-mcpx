@@ -25,10 +25,7 @@ import {
 import { expect, mock, spyOn, test } from 'bun:test';
 
 for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
-	for (const transport of [
-		'http',
-		'stdio',
-	] as const) {
+	for (const transport of ['http', 'stdio'] as const) {
 		test(`${backendVersion} ${transport}: tool errors keep their classification for every client revision`, async () => {
 			const backend = startFixtureBackend(transport, backendVersion, {
 				// An upstream HTTP status belongs to that hop, not the public one.
@@ -56,9 +53,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 						type: 'integer',
 					},
 				},
-				required: [
-					'count',
-				],
+				required: ['count'],
 			};
 			const compiled = createInputSchemaCompiler()(inputSchema);
 			if ('issue' in compiled) throw new Error(compiled.issue.detail);
@@ -218,14 +213,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 					expect(invoke.mock.calls).toHaveLength(sent);
 					expect(validate.mock.calls).toHaveLength(validated);
 					expect(rateLimit.mock.calls).toHaveLength(limited);
-					for (const omitVersion of modern
-						? [
-								false,
-							]
-						: [
-								false,
-								true,
-							]) {
+					for (const omitVersion of modern ? [false] : [false, true]) {
 						const response = await send(
 							'tools/call',
 							{
@@ -272,33 +260,16 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 						modern ? 'complete' : undefined,
 					);
 					for (const code of [
-						-32602,
-						-32603,
-						-32601,
-						-32002,
-						-32042,
-						-32023,
-						-32000,
-						-32020,
-						-32021,
-						-32022,
-						42,
+						-32602, -32603, -32601, -32002, -32042, -32023, -32000, -32020,
+						-32021, -32022, 42,
 					]) {
 						const expected = modern
 							? code === -32002
 								? -32602
-								: [
-											-32042,
-											-32023,
-											-32000,
-										].includes(code)
+								: [-32042, -32023, -32000].includes(code)
 									? -32603
 									: code
-							: [
-										-32020,
-										-32021,
-										-32022,
-									].includes(code) ||
+							: [-32020, -32021, -32022].includes(code) ||
 									(code === -32042 && clientVersion === '2025-06-18')
 								? -32603
 								: code;
@@ -331,9 +302,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 								...(code === -32022
 									? {
 											requested: backendVersion,
-											supported: [
-												backendVersion,
-											],
+											supported: [backendVersion],
 										}
 									: {}),
 								...(code === -32042
@@ -498,14 +467,9 @@ test('malformed prompt and resource results are JSON-RPC errors for every client
 	const backend = startFixtureBackend('http', '2025-11-25', {
 		handle: (message, reply) => {
 			const result = recordOf(reply?.result);
-			if (result && message.method === 'prompts/get')
-				result.messages = [
-					null,
-				];
+			if (result && message.method === 'prompts/get') result.messages = [null];
 			if (result && message.method === 'resources/read')
-				result.contents = [
-					null,
-				];
+				result.contents = [null];
 			return undefined;
 		},
 	});

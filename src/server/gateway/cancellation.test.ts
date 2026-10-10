@@ -107,10 +107,7 @@ const gateway = (
 };
 
 for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
-	for (const transport of [
-		'http',
-		'stdio',
-	] as const)
+	for (const transport of ['http', 'stdio'] as const)
 		test(`${backendVersion} ${transport}: cancellation translates every client revision and preserves connection health`, async () => {
 			const received: Record<string, unknown>[] = [];
 			const cancellationHeaders = new Map<unknown, Headers>();
@@ -401,10 +398,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 			}
 		});
 
-for (const version of [
-	'2025-06-18',
-	'2025-11-25',
-] as const)
+for (const version of ['2025-06-18', '2025-11-25'] as const)
 	test(`${version}: cancellation isolates sessions and typed IDs, ignores invalid/completed IDs and protects initialize`, async () => {
 		const signals: AbortSignal[] = [];
 		const gates: (() => void)[] = [];

@@ -29,9 +29,7 @@ const SummarySection = ({
 	error,
 }: Props) => {
 	const sortedBackends = overview?.backends
-		? [
-				...overview.backends,
-			].sort((a, b) =>
+		? [...overview.backends].sort((a, b) =>
 				a.serverName.localeCompare(b.serverName, undefined, {
 					sensitivity: 'base',
 				}),

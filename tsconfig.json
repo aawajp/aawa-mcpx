@@ -1,15 +1,8 @@
 {
-	"include": [
-		"src/**/*",
-		"*.json",
-		"*.jsonc",
-		"*.ts"
-	],
+	"include": ["src/**/*", "*.json", "*.jsonc", "*.ts"],
 	"compilerOptions": {
 		"paths": {
-			"@/*": [
-				"./src/*"
-			],
+			"@/*": ["./src/*"],
 			"@modelcontextprotocol/sdk/*": [
 				"./node_modules/@modelcontextprotocol/sdk/dist/esm/*"
 			]
@@ -19,11 +12,7 @@
 		"composite": true,
 		"isolatedModules": true,
 		"jsx": "react-jsx",
-		"lib": [
-			"dom",
-			"dom.iterable",
-			"esnext"
-		],
+		"lib": ["dom", "dom.iterable", "esnext"],
 		"module": "Preserve",
 		"moduleDetection": "force",
 		"moduleResolution": "bundler",
@@ -40,9 +29,7 @@
 		"typeRoots": [
 			"./node_modules/@types" // prevent types being included from outside module dirs
 		],
-		"types": [
-			"bun"
-		],
+		"types": ["bun"],
 		"verbatimModuleSyntax": true // force 'type' specifier for type imports
 	}
 }

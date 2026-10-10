@@ -34,9 +34,7 @@ const wrapOutputSchema = (schema: unknown, toolName: string): unknown => {
 				...value,
 			},
 		},
-		required: [
-			'value',
-		],
+		required: ['value'],
 		additionalProperties: false,
 	};
 };

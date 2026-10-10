@@ -53,9 +53,7 @@
 	},
 	"overrides": [
 		{
-			"includes": [
-				"**"
-			],
+			"includes": ["**"],
 			"linter": {
 				"rules": {
 					"style": {
@@ -79,9 +77,7 @@
 			}
 		},
 		{
-			"includes": [
-				"src/ui/**"
-			],
+			"includes": ["src/ui/**"],
 			"linter": {
 				"rules": {
 					"style": {
@@ -101,10 +97,7 @@
 										"message": "Use the @/ alias for code imports; relative paths are only for non-code files such as JSON, CSS and HTML."
 									},
 									{
-										"group": [
-											"@/server/**",
-											"node:*"
-										],
+										"group": ["@/server/**", "node:*"],
 										"message": "UI code may import only @/shared and @/ui."
 									}
 								]
@@ -115,9 +108,7 @@
 			}
 		},
 		{
-			"includes": [
-				"src/shared/**"
-			],
+			"includes": ["src/shared/**"],
 			"linter": {
 				"rules": {
 					"style": {
@@ -139,10 +130,7 @@
 										"message": "Use the @/ alias for code imports; relative paths are only for non-code files such as JSON, CSS and HTML."
 									},
 									{
-										"group": [
-											"@/ui/**",
-											"@/server/**"
-										],
+										"group": ["@/ui/**", "@/server/**"],
 										"message": "shared/ must not import from other layers."
 									}
 								]
@@ -178,7 +166,6 @@
 	},
 	"formatter": {
 		"enabled": true,
-		"expand": "always",
 		"indentStyle": "tab",
 		"lineEnding": "lf",
 		"trailingNewline": true

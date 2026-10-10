@@ -116,10 +116,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 		};
 		try {
 			const tools = (await client.listTools()).tools;
-			expect(tools.map((tool) => tool.name)).toEqual([
-				'echo',
-				'bad',
-			]);
+			expect(tools.map((tool) => tool.name)).toEqual(['echo', 'bad']);
 			await client.callTool(
 				{
 					name: 'echo',
@@ -220,11 +217,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 				);
 				expect(calls[0]?.headers.get('Mcp-Param-Count')).toBe('0');
 				expect(calls[0]?.headers.get('Mcp-Param-Flag')).toBe('false');
-				for (const name of [
-					'Text',
-					'Count',
-					'Flag',
-				])
+				for (const name of ['Text', 'Count', 'Flag'])
 					expect(calls[1]?.headers.has(`Mcp-Param-${name}`)).toBe(false);
 				expect(calls[2]?.headers.get('Mcp-Param-Updated')).toBe('new');
 				expect(calls[2]?.headers.has('Mcp-Param-Text')).toBe(false);
@@ -376,11 +369,7 @@ for (const method of [
 	'initialize',
 	'notifications/initialized',
 ]) {
-	for (const failure of [
-		'timeout',
-		'reset',
-		'503',
-	]) {
+	for (const failure of ['timeout', 'reset', '503']) {
 		test(`${method}: ${failure} remains retryable during the handshake`, async () => {
 			const endpoint = Bun.serve({
 				port: 0,
@@ -441,21 +430,10 @@ for (const method of [
 // Legacy servers may reject discovery before initialization with id:null (or
 // another uncorrelated ID). Strict envelope validation must not lose the HTTP
 // rejection status and prevent negotiation with an otherwise supported peer.
-for (const version of [
-	'2025-11-25',
-	'2025-06-18',
-] as const) {
-	for (const status of [
-		400,
-		404,
-		405,
-	]) {
+for (const version of ['2025-11-25', '2025-06-18'] as const) {
+	for (const status of [400, 404, 405]) {
 		test(`initial discovery HTTP ${status} with an uncorrelated error falls back to ${version}`, async () => {
-			for (const rejectedId of [
-				null,
-				undefined,
-				'unrelated',
-			]) {
+			for (const rejectedId of [null, undefined, 'unrelated']) {
 				const methods: string[] = [];
 				const endpoint = Bun.serve({
 					port: 0,
@@ -520,14 +498,7 @@ for (const version of [
 	}
 }
 
-for (const status of [
-	200,
-	400,
-	401,
-	403,
-	429,
-	503,
-]) {
+for (const status of [200, 400, 401, 403, 429, 503]) {
 	test(`uncorrelated HTTP ${status} discovery errors do not downgrade ${status === 400 ? 'a pinned modern peer' : 'without a legacy rejection'}`, async () => {
 		const methods: string[] = [];
 		const endpoint = Bun.serve({
@@ -574,9 +545,7 @@ for (const status of [
 					? BackendRpcError
 					: ProtocolNegotiationError,
 			);
-			expect(methods).toEqual([
-				'server/discover',
-			]);
+			expect(methods).toEqual(['server/discover']);
 		} finally {
 			await client.close();
 			endpoint.stop(true);
@@ -584,11 +553,7 @@ for (const status of [
 	});
 }
 
-for (const code of [
-	-32020,
-	-32021,
-	-32022,
-]) {
+for (const code of [-32020, -32021, -32022]) {
 	test(`valid modern discovery error ${code} never triggers initialization`, async () => {
 		const methods: string[] = [];
 		const endpoint = Bun.serve({
@@ -633,9 +598,7 @@ for (const code of [
 					rpcCode: code,
 				},
 			});
-			expect(methods).toEqual([
-				'server/discover',
-			]);
+			expect(methods).toEqual(['server/discover']);
 		} finally {
 			await client.close();
 			endpoint.stop(true);
@@ -644,10 +607,7 @@ for (const code of [
 }
 
 for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
-	for (const transport of [
-		'http',
-		'stdio',
-	] as const) {
+	for (const transport of ['http', 'stdio'] as const) {
 		test(`${transport} backend ${version}: selection, core calls and pinned reconnect`, async () => {
 			const methods: string[] = [];
 			const fixture = startFixtureBackend(transport, version, {
@@ -754,13 +714,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 					supportedProtocolVersions: SUPPORTED_PROTOCOL_VERSIONS,
 				});
 				const manager = {
-					listEnabledTools: () =>
-						new Map([
-							[
-								'fixture',
-								tools,
-							],
-						]),
+					listEnabledTools: () => new Map([['fixture', tools]]),
 					callTool: (params: {
 						toolName: string;
 						args: Record<string, unknown>;
@@ -831,10 +785,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 										count: 2,
 									},
 									{},
-									[
-										1,
-										2,
-									],
+									[1, 2],
 									[],
 									'hello',
 									'',
@@ -895,10 +846,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 				await reconnect.connect();
 				expect(reconnect.protocolVersion).toBe(version);
 				if (transport === 'http' && version !== CURRENT_PROTOCOL_VERSION)
-					expect(methods).toEqual([
-						'initialize',
-						'notifications/initialized',
-					]);
+					expect(methods).toEqual(['initialize', 'notifications/initialized']);
 			} finally {
 				await client.close();
 				await reconnect?.close();
@@ -938,24 +886,15 @@ test('old-only backends are rejected before initialized', async () => {
 		await expect(client.connect()).rejects.toThrow(
 			'Unsupported backend protocol selection',
 		);
-		expect(methods).toEqual([
-			'server/discover',
-			'initialize',
-		]);
+		expect(methods).toEqual(['server/discover', 'initialize']);
 	} finally {
 		await client.close();
 		server.stop(true);
 	}
 });
 
-for (const version of [
-	'2025-11-25',
-	CURRENT_PROTOCOL_VERSION,
-] as const)
-	for (const transport of [
-		'http',
-		'stdio',
-	] as const)
+for (const version of ['2025-11-25', CURRENT_PROTOCOL_VERSION] as const)
+	for (const transport of ['http', 'stdio'] as const)
 		test(`${transport} backend ${version}: backend requests get answers and never complete gateway calls`, async () => {
 			const answers: unknown[] = [];
 			const answered = Promise.withResolvers<void>();
@@ -1059,10 +998,7 @@ for (const version of [
 					]);
 					await answered.promise;
 					expect(answers).toEqual(expected);
-					expect(sessions).toEqual([
-						'session-1',
-						'session-1',
-					]);
+					expect(sessions).toEqual(['session-1', 'session-1']);
 				} else {
 					// A 2026-07-28 HTTP hop has no channel for answers.
 					expect(result.content).toEqual([
@@ -1182,9 +1118,7 @@ test('closing a 2025 HTTP backend ends its session with DELETE', async () => {
 });
 
 test('discovery without 2026-07-28 initializes with an offered 2025 revision', async () => {
-	let offered = [
-		'2025-06-18',
-	];
+	let offered = ['2025-06-18'];
 	const fixture = startFixtureBackend('http', '2025-06-18', {
 		handle: (message) =>
 			message.method === 'server/discover'
@@ -1223,9 +1157,7 @@ test('discovery without 2026-07-28 initializes with an offered 2025 revision', a
 		const client = await connect();
 		expect(client.protocolVersion).toBe('2025-06-18');
 		await client.close();
-		offered = [
-			'2024-11-05',
-		];
+		offered = ['2024-11-05'];
 		await expect(connect()).rejects.toThrow(
 			'Backend offers no supported protocol version: 2024-11-05',
 		);
@@ -1243,11 +1175,7 @@ test('SSE responses accept CR, LF and CRLF line endings across chunks', async ()
 			'\r',
 		],
 		// CRLF split between CR and LF, after a comment line.
-		(event: string) => [
-			': keepalive\r\ndata: ',
-			`${event}\r`,
-			'\n\r\n',
-		],
+		(event: string) => [': keepalive\r\ndata: ', `${event}\r`, '\n\r\n'],
 	];
 	let call = 0;
 	const fixture = startFixtureBackend('http', CURRENT_PROTOCOL_VERSION, {
@@ -1282,10 +1210,7 @@ test('SSE responses accept CR, LF and CRLF line endings across chunks', async ()
 	try {
 		await client.connect();
 		await client.listTools();
-		for (const text of [
-			'cr',
-			'crlf',
-		])
+		for (const text of ['cr', 'crlf'])
 			expect(
 				(
 					await client.callTool({

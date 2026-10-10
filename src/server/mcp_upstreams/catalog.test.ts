@@ -29,9 +29,7 @@ test('catalog responses invalidated by backend disable are discarded', async () 
 			enabled: true,
 			timeout: 10_000,
 			trafficLimit: 1,
-			enabledTools: [
-				'alpha',
-			],
+			enabledTools: ['alpha'],
 		},
 	});
 	let startedRequests = 0;
@@ -91,12 +89,7 @@ test('catalog responses invalidated by backend disable are discarded', async () 
 	const catalog = createMcpUpstreamCatalog({
 		attemptReconnect: async () => undefined,
 		configPath: path.join(root, 'mcp.json'),
-		backends: new Map([
-			[
-				server.serverName,
-				server,
-			],
-		]),
+		backends: new Map([[server.serverName, server]]),
 		config,
 		markMcpUpstreamConfigurationError: () => {
 			configurationErrors += 1;
@@ -153,12 +146,7 @@ test('lists a backend does not advertise are never requested', async () => {
 	const catalog = createMcpUpstreamCatalog({
 		attemptReconnect: async () => undefined,
 		configPath: path.join(root, 'mcp.json'),
-		backends: new Map([
-			[
-				server.serverName,
-				server,
-			],
-		]),
+		backends: new Map([[server.serverName, server]]),
 		config: {
 			mcpServers: {
 				[server.serverName]: server.serverConfig,

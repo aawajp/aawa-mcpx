@@ -141,11 +141,7 @@ const compileToolHeaderParameters = (schema: unknown): HeaderParameter[] => {
 				!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) ||
 				names.has(name.toLowerCase()) ||
 				typeof record.type !== 'string' ||
-				![
-					'string',
-					'integer',
-					'boolean',
-				].includes(String(record.type))
+				!['string', 'integer', 'boolean'].includes(String(record.type))
 			)
 				throw new Error('Invalid x-mcp-header annotation');
 			names.add(name.toLowerCase());
@@ -160,14 +156,7 @@ const compileToolHeaderParameters = (schema: unknown): HeaderParameter[] => {
 				for (const [property, definition] of Object.entries(
 					recordOf(child) ?? {},
 				))
-					visit(
-						definition,
-						[
-							...path,
-							property,
-						],
-						true,
-					);
+					visit(definition, [...path, property], true);
 				continue;
 			}
 			// Traverse schema-valued keywords only. Examples/defaults/const values
@@ -229,11 +218,7 @@ const protocolHeaders = (
 	});
 	const name = method === 'resources/read' ? params.uri : params.name;
 	if (
-		[
-			'tools/call',
-			'prompts/get',
-			'resources/read',
-		].includes(method) &&
+		['tools/call', 'prompts/get', 'resources/read'].includes(method) &&
 		typeof name === 'string'
 	)
 		headers.set('Mcp-Name', encodeHeaderValue(name));

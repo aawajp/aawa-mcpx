@@ -171,9 +171,7 @@ const createMcpRequestRouter = (
 					jsonrpc: '2.0',
 					id: request.id,
 					result: {
-						supportedVersions: [
-							...SUPPORTED_PROTOCOL_VERSIONS,
-						],
+						supportedVersions: [...SUPPORTED_PROTOCOL_VERSIONS],
 						capabilities: {
 							tools: {},
 							prompts: {},

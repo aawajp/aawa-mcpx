@@ -27,12 +27,7 @@ test('namespaces round-trip backend keys without separator or escape collisions'
 	];
 	const publicNames = new Set<string>();
 	for (const serverName of names)
-		for (const name of [
-			'b',
-			'_b',
-			'b__c',
-			'___b',
-		]) {
+		for (const name of ['b', '_b', 'b__c', '___b']) {
 			const prefixed = addPrefix({
 				serverName,
 				name,
@@ -133,11 +128,7 @@ test('resource requests reject malformed wrappers and decoded URI syntax', () =>
 });
 
 test('template wrappers keep the backend template so client expansions route intact', () => {
-	for (const serverName of [
-		'Backend',
-		'a__b',
-		'日本語',
-	]) {
+	for (const serverName of ['Backend', 'a__b', '日本語']) {
 		const wrapped = addResourceTemplatePrefix({
 			serverName,
 			uriTemplate: 'file:///logs/{name}{?lines}',

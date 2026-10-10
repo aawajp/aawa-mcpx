@@ -195,22 +195,16 @@ class ProtocolClient {
 				const value = process.env[key];
 				if (value !== undefined) processEnvironment[key] = value;
 			}
-			this.child = Bun.spawn(
-				[
-					config.command,
-					...(config.args ?? []),
-				],
-				{
-					cwd: config.cwd,
-					env: {
-						...processEnvironment,
-						...config.env,
-					},
-					stdin: 'pipe',
-					stdout: 'pipe',
-					stderr: 'pipe',
+			this.child = Bun.spawn([config.command, ...(config.args ?? [])], {
+				cwd: config.cwd,
+				env: {
+					...processEnvironment,
+					...config.env,
 				},
-			);
+				stdin: 'pipe',
+				stdout: 'pipe',
+				stderr: 'pipe',
+			});
 			void this.readStdout(this.child.stdout);
 			void this.readStderr(this.child.stderr);
 		}
@@ -257,14 +251,7 @@ class ProtocolClient {
 					error.code === -32601
 				)
 					throw error;
-				if (
-					[
-						-32020,
-						-32021,
-						-32022,
-					].includes(error.code)
-				)
-					throw error;
+				if ([-32020, -32021, -32022].includes(error.code)) throw error;
 				if (
 					config.type === 'http' &&
 					// Compatibility deviation from the 2026-07-28 HTTP fallback guidance:
@@ -278,9 +265,7 @@ class ProtocolClient {
 					![
 						// Only endpoint/protocol rejection permits HTTP fallback; an auth,
 						// rate-limit, network, or server failure does not establish version support.
-						400,
-						404,
-						405,
+						400, 404, 405,
 					].includes(error.status ?? 0)
 				)
 					throw error;
@@ -728,11 +713,7 @@ class ProtocolClient {
 					!this.selected &&
 					this.protocolVersion === CURRENT_PROTOCOL_VERSION &&
 					message.method === 'server/discover' &&
-					[
-						400,
-						404,
-						405,
-					].includes(response.status)
+					[400, 404, 405].includes(response.status)
 				)
 					throw new BackendRpcError(
 						`Backend HTTP ${response.status} rejected discovery`,
@@ -787,10 +768,7 @@ class ProtocolClient {
 			options.timeout ?? this.server.serverConfig.timeout,
 		);
 		const signal = options.signal
-			? AbortSignal.any([
-					controller.signal,
-					options.signal,
-				])
+			? AbortSignal.any([controller.signal, options.signal])
 			: controller.signal;
 		const id = ++this.sequence;
 		const usesRequestMetadata =
@@ -857,10 +835,7 @@ class ProtocolClient {
 				CACHEABLE_METHODS.has(method) &&
 				(!Number.isInteger(result.ttlMs) ||
 					Number(result.ttlMs) < 0 ||
-					![
-						'public',
-						'private',
-					].includes(String(result.cacheScope)))
+					!['public', 'private'].includes(String(result.cacheScope)))
 			)
 				throw new Error('Invalid MCP 2026-07-28 cache hints');
 			switch (method) {
@@ -959,9 +934,7 @@ class ProtocolClient {
 		const receivedAt = Date.now();
 		// rpc validated each page against the method's result type.
 		const first = await this.rpc(method, params, options);
-		const items = [
-			...(first[key] as unknown[]),
-		];
+		const items = [...(first[key] as unknown[])];
 		const cursors = new Set<string>();
 		let cursor = first.nextCursor;
 		let ttl = Number(first.ttlMs ?? 0);

@@ -25,10 +25,7 @@ import packageJson from '../../../package.json' with { type: 'json' };
 import { expect, mock, test } from 'bun:test';
 
 for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
-	for (const transport of [
-		'http',
-		'stdio',
-	] as const)
+	for (const transport of ['http', 'stdio'] as const)
 		test(`${backendVersion} ${transport}: dispatch preserves application metadata with independent client revisions`, async () => {
 			const backend = startFixtureBackend(transport, backendVersion, {
 				echoRequest: true,
@@ -102,11 +99,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 					const applicationMetadata = {
 						'com.example/context': {
 							locale: 'ja',
-							flags: [
-								false,
-								0,
-								null,
-							],
+							flags: [false, 0, null],
 							version: clientVersion,
 						},
 						'com.example/empty': '',

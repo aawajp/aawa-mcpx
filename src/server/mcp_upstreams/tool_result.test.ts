@@ -151,10 +151,7 @@ test('does not coerce types or reorder arrays when comparing JSON', () => {
 		stripDuplicateToolContent({
 			content,
 			structuredContent: {
-				values: [
-					1,
-					2,
-				],
+				values: [1, 2],
 				count: 2,
 			},
 		}).content,

@@ -21,9 +21,7 @@ const ToolList = <T extends Tool>({
 	emptyLabel,
 	renderAction,
 }: Props<T>) => {
-	const sortedTools = [
-		...tools,
-	].sort((a, b) =>
+	const sortedTools = [...tools].sort((a, b) =>
 		a.name.localeCompare(b.name, undefined, {
 			sensitivity: 'base',
 		}),

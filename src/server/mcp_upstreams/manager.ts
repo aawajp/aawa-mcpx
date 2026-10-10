@@ -155,9 +155,7 @@ const createMcpUpstreamManager = (
 		const serverName = refreshParams?.serverName;
 		const names =
 			serverName !== undefined
-				? [
-						serverName,
-					]
+				? [serverName]
 				: Array.from(backends.values())
 						.filter(
 							(backend) =>

@@ -29,9 +29,7 @@ import { expect, mock, spyOn, test } from 'bun:test';
 test('the shared call path validates arguments exactly once before backend work', async () => {
 	const compiled = createInputSchemaCompiler()({
 		type: 'object',
-		required: [
-			'count',
-		],
+		required: ['count'],
 	});
 	if ('issue' in compiled) throw new Error(compiled.issue.detail);
 	const validate = spyOn(compiled, 'validate');
@@ -105,10 +103,7 @@ test('the shared call path validates arguments exactly once before backend work'
 });
 
 for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
-	for (const transport of [
-		'http',
-		'stdio',
-	] as const) {
+	for (const transport of ['http', 'stdio'] as const) {
 		test(`${backendVersion} ${transport}: schemas gate exposure and calls across client revisions and refreshes`, async () => {
 			const root = await mkdtemp(path.join(tmpdir(), 'mcpx-input-'));
 			const catalogPath = path.join(root, 'tools.json');
@@ -126,10 +121,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 						$ref: '#/$defs/count',
 					},
 					mode: {
-						enum: [
-							'short',
-							'long',
-						],
+						enum: ['short', 'long'],
 					},
 					choice: {
 						oneOf: [
@@ -147,11 +139,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 						default: 5,
 					},
 				},
-				required: [
-					'count',
-					'mode',
-					'choice',
-				],
+				required: ['count', 'mode', 'choice'],
 			});
 			const badSchemas = [
 				null,
@@ -222,9 +210,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 						.listEnabledTools()
 						.get('fixture')
 						?.tools.map((tool) => tool.name),
-				).toEqual([
-					'echo',
-				]);
+				).toEqual(['echo']);
 				expect(
 					warn.mock.calls.filter(([message]) =>
 						String(message).includes('Tool input schema is unusable'),
@@ -345,11 +331,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 					}
 					// Malformed arguments are protocol errors, distinct from well-formed
 					// objects that fail a provider's schema, in every client revision.
-					for (const args of [
-						[],
-						null,
-						'text',
-					])
+					for (const args of [[], null, 'text'])
 						expect(recordOf((await call(args)).payload)?.error).toMatchObject({
 							code: -32602,
 						});
@@ -415,10 +397,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 						.listEnabledTools()
 						.get('fixture')
 						?.tools.map((tool) => tool.name),
-				).toEqual([
-					'echo',
-					'bad0',
-				]);
+				).toEqual(['echo', 'bad0']);
 				expect((await (await uiCall(valid)).json()).result).toMatchObject({
 					isError: true,
 				});

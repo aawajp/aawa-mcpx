@@ -99,9 +99,7 @@ const createToolResultNormalizer = (): ((
 					recordOf(schema)?.type === 'array' &&
 					validate(schema, parsedBlocks) === undefined
 				)
-					matches = [
-						parsedBlocks,
-					];
+					matches = [parsedBlocks];
 			}
 			if (matches.length === 1) {
 				normalized = {

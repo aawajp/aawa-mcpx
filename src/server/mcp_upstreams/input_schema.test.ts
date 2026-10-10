@@ -15,10 +15,7 @@ test('input schemas require an object root in every supported revision', () => {
 			type: 'string',
 		},
 		{
-			type: [
-				'object',
-				'null',
-			],
+			type: ['object', 'null'],
 		},
 	]) {
 		const result = compile(schema);
@@ -46,10 +43,7 @@ test('compiled provider schemas enforce references and composition without mutat
 				$ref: '#/$defs/positive',
 			},
 			mode: {
-				enum: [
-					'short',
-					'long',
-				],
+				enum: ['short', 'long'],
 			},
 			limit: {
 				type: 'integer',
@@ -67,11 +61,7 @@ test('compiled provider schemas enforce references and composition without mutat
 				],
 			},
 		},
-		required: [
-			'count',
-			'mode',
-			'choice',
-		],
+		required: ['count', 'mode', 'choice'],
 		unevaluatedProperties: false,
 	});
 	if ('issue' in compiled) throw new Error(compiled.issue.detail);
@@ -122,9 +112,7 @@ test('schema objects compile once, cache failures, and isolate replacement catal
 		const schema = {
 			$id: 'urn:fixture:input',
 			type: 'object',
-			required: [
-				'first',
-			],
+			required: ['first'],
 		};
 		const first = compile(schema);
 		expect(spy).toHaveBeenCalledTimes(1);
@@ -140,9 +128,7 @@ test('schema objects compile once, cache failures, and isolate replacement catal
 		expect(spy).toHaveBeenCalledTimes(1);
 		const replacement = compile({
 			...schema,
-			required: [
-				'second',
-			],
+			required: ['second'],
 		});
 		expect(spy).toHaveBeenCalledTimes(2);
 		if ('issue' in replacement) throw new Error(replacement.issue.detail);
