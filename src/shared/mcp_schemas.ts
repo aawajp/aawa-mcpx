@@ -166,15 +166,21 @@ const callToolResultType = type({
 	'[string]': 'unknown',
 });
 
+const promptMessageType = type({
+	role: "'user' | 'assistant'",
+	content: toolContentType,
+	'[string]': 'unknown',
+});
+
 const getPromptResultType = type({
-	messages: 'unknown[]',
+	messages: promptMessageType.array(),
 	'description?': 'string',
 	'_meta?': 'Record<string, unknown>',
 	'[string]': 'unknown',
 });
 
 const readResourceResultType = type({
-	contents: 'unknown[]',
+	contents: resourceContentsType.array(),
 	'_meta?': 'Record<string, unknown>',
 	'[string]': 'unknown',
 });

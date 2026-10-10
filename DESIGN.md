@@ -446,10 +446,11 @@ the [error-code policy](https://modelcontextprotocol.io/specification/2026-07-28
 Modern metadata errors become `-32603` for 2025 clients; URL-elicitation `-32042`
 is preserved only for [2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25/client/elicitation#url-elicitation-required-error).
 
-For `tools/call`, transport and malformed-result failures become `-32603` RPC
-errors. `prompts/get` and `resources/read` do not wrap them, so they return HTTP
-500 / `-32603` in every revision. An exposed tool with an unusable input schema
-also returns `-32603`.
+For `tools/call`, `prompts/get`, and `resources/read`, transport and
+malformed-result failures become `-32603` RPC errors: HTTP 200 for 2025 clients,
+HTTP 500 for 2026 clients. Prompt messages and resource contents are validated
+like tool content blocks. An exposed tool with an unusable input schema also
+returns `-32603`.
 
 Ordinary 2025 RPC errors keep HTTP 200. Gateway-generated transport errors use
 JSON-RPC `-32600` with these HTTP statuses: missing session 400, unknown session

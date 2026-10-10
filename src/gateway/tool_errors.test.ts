@@ -12,11 +12,13 @@ import type {
 	McpUpstreamServer,
 } from '@/mcp_upstreams/types';
 import { logger } from '@/server/logger';
+import { addResourcePrefix } from '@/shared/mcp_namespaces';
 import {
 	CLIENT_CAPABILITIES_META,
 	CURRENT_PROTOCOL_VERSION,
 	PROTOCOL_VERSION_META,
 	protocolHeaders,
+	recordOf,
 	SUPPORTED_PROTOCOL_VERSIONS,
 } from '@/shared/mcp_protocol';
 
@@ -491,3 +493,110 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 			log.mockRestore();
 		}
 	});
+
+test('malformed prompt and resource results are JSON-RPC errors for every client revision', async () => {
+	const backend = startFixtureBackend('http', '2025-11-25', {
+		handle: (message, reply) => {
+			const result = recordOf(reply?.result);
+			if (result && message.method === 'prompts/get')
+				result.messages = [
+					null,
+				];
+			if (result && message.method === 'resources/read')
+				result.contents = [
+					null,
+				];
+			return undefined;
+		},
+	});
+	const server: McpUpstreamServer = {
+		serverName: 'fixture',
+		serverConfig: {
+			...backend.config,
+			enabled: true,
+			timeout: 2000,
+			trafficLimit: 10000,
+		},
+	};
+	const client = new ProtocolClient(server, '2025-11-25');
+	const operations = createMcpUpstreamOperations({
+		getBackend: () => ({
+			...createMcpUpstreamBackend(server),
+			client,
+		}),
+		getEnabledTool: () => undefined,
+		waitForRateLimit: async () => undefined,
+	});
+	const manager = {
+		...operations,
+		listEnabledTools: () => new Map(),
+	} as unknown as McpUpstreamManager;
+	const { route } = createRouteFixture(manager);
+	try {
+		await client.connect();
+		for (const clientVersion of SUPPORTED_PROTOCOL_VERSIONS) {
+			const modern = clientVersion === CURRENT_PROTOCOL_VERSION;
+			let session: string | null = null;
+			const send = (method: string, params: Record<string, unknown>) => {
+				const body = modern
+					? {
+							...params,
+							_meta: {
+								[PROTOCOL_VERSION_META]: clientVersion,
+								[CLIENT_CAPABILITIES_META]: {},
+							},
+						}
+					: params;
+				const headers = modern
+					? protocolHeaders(method, body)
+					: new Headers({
+							'MCP-Protocol-Version': clientVersion,
+						});
+				if (session) headers.set('Mcp-Session-Id', session);
+				return route.POST(
+					mcpPost({
+						headers,
+						body: JSON.stringify({
+							jsonrpc: '2.0',
+							id: 1,
+							method,
+							params: body,
+						}),
+					}),
+				);
+			};
+			if (!modern)
+				session = (
+					await send('initialize', {
+						protocolVersion: clientVersion,
+						clientInfo: {
+							name: 'malformed-test',
+							version: '1',
+						},
+					})
+				).headers.get('Mcp-Session-Id');
+			for (const response of [
+				await send('prompts/get', {
+					name: 'fixture__greet',
+				}),
+				await send('resources/read', {
+					uri: addResourcePrefix({
+						serverName: 'fixture',
+						uri: 'file:///example',
+					}),
+				}),
+			]) {
+				expect(response.status).toBe(modern ? 500 : 200);
+				expect((await response.json()).error).toMatchObject({
+					code: -32603,
+					message: expect.stringContaining(
+						'MCP upstream "fixture" request failed',
+					),
+				});
+			}
+		}
+	} finally {
+		await client.close();
+		backend.stop();
+	}
+});

@@ -95,6 +95,10 @@ entry under the date its change was committed. The project uses
   `Accept`, missing or unknown session, protocol version header errors) return
   JSON-RPC `-32600` with the same HTTP status. Before, the HTTP status
   (`400`/`403`/`404`) was used as the JSON-RPC code.
+- Transport failures and malformed results from `prompts/get` and
+  `resources/read` return a JSON-RPC `-32603` error, like `tools/call`, so 2025
+  clients get HTTP `200` instead of `500`. Prompt messages and resource contents
+  are validated; before, a malformed one (for example `null`) crashed the request.
 
 ### 2026-10-09
 

@@ -30,6 +30,25 @@ type CreateMcpUpstreamOperationsParams = {
 	) => Promise<void>;
 };
 
+// RPC errors retain their code/data; transport and malformed-response failures
+// belong to the gateway's protocol boundary. Only a backend's explicit isError
+// tool result represents a tool execution failure.
+const wrapBackendFailure = async <T>(
+	serverName: string,
+	signal: AbortSignal | undefined,
+	run: () => Promise<T>,
+): Promise<T> => {
+	try {
+		return await run();
+	} catch (error) {
+		if (signal?.aborted || error instanceof BackendRpcError) throw error;
+		throw new BackendRpcError(
+			`MCP upstream "${serverName}" request failed: ${errorMessage(error)}`,
+			-32603,
+		);
+	}
+};
+
 const createMcpUpstreamOperations = (
 	params: CreateMcpUpstreamOperationsParams,
 ) => {
@@ -89,7 +108,7 @@ const createMcpUpstreamOperations = (
 		}
 		await waitForRateLimit(server, callParams.signal);
 		callParams.signal?.throwIfAborted();
-		try {
+		return wrapBackendFailure(serverName, callParams.signal, async () => {
 			const result = await runLoggedRequest<ToolCallResult>({
 				signal: callParams.signal,
 				server,
@@ -117,17 +136,7 @@ const createMcpUpstreamOperations = (
 				tool: toolName,
 				protocolVersion: client.protocolVersion,
 			});
-		} catch (error) {
-			if (callParams.signal?.aborted || error instanceof BackendRpcError)
-				throw error;
-			// RPC errors retain their code/data; transport and malformed-response
-			// failures belong to the gateway's protocol boundary. Only a backend's
-			// explicit isError result represents a tool execution failure here.
-			throw new BackendRpcError(
-				`MCP upstream "${serverName}" request failed: ${errorMessage(error)}`,
-				-32603,
-			);
-		}
+		});
 	};
 
 	const getPrompt = async (
@@ -150,27 +159,29 @@ const createMcpUpstreamOperations = (
 
 		await waitForRateLimit(server, promptParams.signal);
 		promptParams.signal?.throwIfAborted();
-		return runLoggedRequest<GetPromptResult>({
-			signal: promptParams.signal,
-			server,
-			client,
-			method: `prompts/get:${promptName}`,
-			request: args,
-			invoke: () =>
-				client.getPrompt(
-					{
-						name: promptName,
-						arguments: args,
-						_meta: promptParams.metadata,
-					},
-					{
-						timeout: server.serverConfig.timeout,
-						mirroredHeaders: promptParams.mirroredHeaders,
-						signal: promptParams.signal,
-					},
-				),
-			trafficStore,
-		});
+		return wrapBackendFailure(serverName, promptParams.signal, () =>
+			runLoggedRequest<GetPromptResult>({
+				signal: promptParams.signal,
+				server,
+				client,
+				method: `prompts/get:${promptName}`,
+				request: args,
+				invoke: () =>
+					client.getPrompt(
+						{
+							name: promptName,
+							arguments: args,
+							_meta: promptParams.metadata,
+						},
+						{
+							timeout: server.serverConfig.timeout,
+							mirroredHeaders: promptParams.mirroredHeaders,
+							signal: promptParams.signal,
+						},
+					),
+				trafficStore,
+			}),
+		);
 	};
 
 	const readResource = async (
@@ -193,28 +204,30 @@ const createMcpUpstreamOperations = (
 
 		await waitForRateLimit(server, resourceParams.signal);
 		resourceParams.signal?.throwIfAborted();
-		return runLoggedRequest<ReadResourceResult>({
-			signal: resourceParams.signal,
-			server,
-			client,
-			method: `resources/read:${uri}`,
-			request: {
-				uri,
-			},
-			invoke: () =>
-				client.readResource(
-					{
-						uri,
-						_meta: resourceParams.metadata,
-					},
-					{
-						timeout: server.serverConfig.timeout,
-						mirroredHeaders: resourceParams.mirroredHeaders,
-						signal: resourceParams.signal,
-					},
-				),
-			trafficStore,
-		});
+		return wrapBackendFailure(serverName, resourceParams.signal, () =>
+			runLoggedRequest<ReadResourceResult>({
+				signal: resourceParams.signal,
+				server,
+				client,
+				method: `resources/read:${uri}`,
+				request: {
+					uri,
+				},
+				invoke: () =>
+					client.readResource(
+						{
+							uri,
+							_meta: resourceParams.metadata,
+						},
+						{
+							timeout: server.serverConfig.timeout,
+							mirroredHeaders: resourceParams.mirroredHeaders,
+							signal: resourceParams.signal,
+						},
+					),
+				trafficStore,
+			}),
+		);
 	};
 
 	return {
