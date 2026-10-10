@@ -12,10 +12,12 @@ import {
 	PROTOCOL_VERSION_META,
 	protocolHeaders,
 	recordOf,
+	SERVER_INFO_META,
 	SUPPORTED_PROTOCOL_VERSIONS,
 } from '@/shared/mcp_protocol';
 import type { ToolCallResult } from '@/shared/mcp_results';
 
+import packageJson from '../../package.json' with { type: 'json' };
 import { expect, mock, test } from 'bun:test';
 
 const fixture = () => {
@@ -1238,4 +1240,48 @@ test('gateway transport errors keep their HTTP status and use Invalid Request', 
 		expect(resolved.status).toBe(status);
 		expect((await resolved.json()).error.code).toBe(-32600);
 	}
+});
+
+test('the gateway reports its package version', async () => {
+	const { route, sessions } = fixture();
+	const gateway = {
+		name: 'aawa-mcpx',
+		version: packageJson.version,
+	};
+	const initialized = await sessions.handleInitialize(
+		{
+			jsonrpc: '2.0',
+			id: 1,
+			method: 'initialize',
+			params: {
+				protocolVersion: '2025-11-25',
+				clientInfo: {
+					name: 'test',
+					version: '1',
+				},
+			},
+		},
+		undefined,
+	);
+	expect(recordOf(recordOf(initialized.payload)?.result)?.serverInfo).toEqual(
+		gateway,
+	);
+	const body = {
+		_meta: {
+			[PROTOCOL_VERSION_META]: CURRENT_PROTOCOL_VERSION,
+			[CLIENT_CAPABILITIES_META]: {},
+		},
+	};
+	const listed = await route.POST(
+		mcpPost({
+			headers: protocolHeaders('tools/list', body),
+			body: JSON.stringify({
+				jsonrpc: '2.0',
+				id: 2,
+				method: 'tools/list',
+				params: body,
+			}),
+		}),
+	);
+	expect((await listed.json()).result._meta[SERVER_INFO_META]).toEqual(gateway);
 });

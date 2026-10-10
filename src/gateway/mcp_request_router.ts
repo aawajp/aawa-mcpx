@@ -15,6 +15,7 @@ import {
 import {
 	CACHEABLE_METHODS,
 	CURRENT_PROTOCOL_VERSION,
+	GATEWAY_INFO,
 	isProtocolVersion,
 	recordOf,
 	SERVER_INFO_META,
@@ -357,10 +358,7 @@ const createMcpRequestRouter = (
 					resultType: 'complete',
 					_meta: {
 						...result.payload.result._meta,
-						[SERVER_INFO_META]: {
-							name: 'aawa-mcpx',
-							version: '1.0.0',
-						},
+						[SERVER_INFO_META]: GATEWAY_INFO,
 					},
 					...(CACHEABLE_METHODS.has(request.method)
 						? {

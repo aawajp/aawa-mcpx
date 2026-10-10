@@ -8,6 +8,7 @@ import {
 import { logger } from '@/server/logger';
 import { type ClientInfo, parseClientInfo } from '@/shared/client_info';
 import {
+	GATEWAY_INFO,
 	isProtocolVersion,
 	type ProtocolVersion,
 	recordOf,
@@ -180,10 +181,7 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 				id: request.id,
 				result: {
 					protocolVersion,
-					serverInfo: {
-						name: 'aawa-mcpx',
-						version: '1.0.0',
-					},
+					serverInfo: GATEWAY_INFO,
 					capabilities: {
 						tools: {},
 						prompts: {},

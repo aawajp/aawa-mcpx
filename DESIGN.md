@@ -334,8 +334,8 @@ context. The gateway has no client authentication ([7.1](#71-runtime-options)).
 For 2025 clients the gateway answers `completion/complete` with empty values,
 and `logging/setLevel` and `ping` with `{}`. For 2026 clients these methods and
 `initialize` return HTTP 404 / `-32601`. Results for 2025 clients drop the 2026
-`resultType`, `ttlMs`, and `cacheScope` fields. The gateway identifies itself as
-`aawa-mcpx` `1.0.0`.
+`resultType`, `ttlMs`, and `cacheScope` fields. The gateway identifies itself,
+to clients and backends, with the name and version from `package.json`.
 
 ## 4. Tool calls
 

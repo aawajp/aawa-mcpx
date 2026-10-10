@@ -21,6 +21,7 @@ import {
 	SUPPORTED_PROTOCOL_VERSIONS,
 } from '@/shared/mcp_protocol';
 
+import packageJson from '../../package.json' with { type: 'json' };
 import { expect, mock, test } from 'bun:test';
 
 for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
@@ -201,7 +202,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 										[PROTOCOL_VERSION_META]: backendVersion,
 										[CLIENT_INFO_META]: {
 											name: 'aawa-mcpx',
-											version: '1.0.0',
+											version: packageJson.version,
 										},
 										[CLIENT_CAPABILITIES_META]: {},
 									}

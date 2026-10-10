@@ -1,3 +1,5 @@
+import packageJson from '../../package.json' with { type: 'json' };
+
 const SUPPORTED_PROTOCOL_VERSIONS = [
 	'2026-07-28',
 	'2025-11-25',
@@ -11,6 +13,10 @@ const PROTOCOL_VERSION_META = 'io.modelcontextprotocol/protocolVersion';
 const CLIENT_CAPABILITIES_META = 'io.modelcontextprotocol/clientCapabilities';
 const CLIENT_INFO_META = 'io.modelcontextprotocol/clientInfo';
 const SERVER_INFO_META = 'io.modelcontextprotocol/serverInfo';
+const GATEWAY_INFO = {
+	name: packageJson.name,
+	version: packageJson.version,
+};
 const CACHEABLE_METHODS = new Set([
 	'server/discover',
 	'tools/list',
@@ -258,6 +264,7 @@ export {
 	CURRENT_PROTOCOL_VERSION,
 	decodeHeaderValue,
 	encodeHeaderValue,
+	GATEWAY_INFO,
 	isProtocolVersion,
 	PROTOCOL_VERSION_META,
 	protocolHeaders,

@@ -110,6 +110,8 @@ entry under the date its change was committed. The project uses
 - Structured content is recovered from JSON text only for tools with an output
   schema. Before, any JSON-looking text from a schema-free tool (for example
   `"42"`) was moved out of `content`.
+- The gateway reports its `package.json` version in `serverInfo` and toward
+  backends in `clientInfo`. Before, it always reported `1.0.0`.
 
 ### 2026-10-09
 

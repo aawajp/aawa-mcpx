@@ -17,6 +17,7 @@ import {
 	CLIENT_CAPABILITIES_META,
 	CLIENT_INFO_META,
 	CURRENT_PROTOCOL_VERSION,
+	GATEWAY_INFO,
 	isProtocolVersion,
 	PROTOCOL_VERSION_META,
 	type ProtocolVersion,
@@ -306,10 +307,7 @@ class ProtocolClient {
 		this.negotiationMethod = 'initialize';
 		this.details = await this.rpc('initialize', {
 			protocolVersion: this.protocolVersion,
-			clientInfo: {
-				name: 'aawa-mcpx',
-				version: '1.0.0',
-			},
+			clientInfo: GATEWAY_INFO,
 			capabilities: {},
 		});
 		const negotiated = this.details.protocolVersion;
@@ -807,10 +805,7 @@ class ProtocolClient {
 			delete metadata[key];
 		if (usesRequestMetadata) {
 			metadata[PROTOCOL_VERSION_META] = this.protocolVersion;
-			metadata[CLIENT_INFO_META] = {
-				name: 'aawa-mcpx',
-				version: '1.0.0',
-			};
+			metadata[CLIENT_INFO_META] = GATEWAY_INFO;
 			metadata[CLIENT_CAPABILITIES_META] = {};
 		}
 		const bodyParams = {
