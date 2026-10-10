@@ -238,6 +238,7 @@ const startFixtureBackend = (
 	version: string,
 	options: FixtureOptions & {
 		cancellation?: boolean;
+		unruly?: boolean;
 		handle?: FixtureHttpHandler;
 	} = {},
 ): FixtureBackend => {
@@ -248,7 +249,9 @@ const startFixtureBackend = (
 				? '--echo-request'
 				: options.cancellation
 					? '--cancellation'
-					: undefined);
+					: options.unruly
+						? '--unruly'
+						: undefined);
 		return {
 			config: {
 				type: 'stdio',
@@ -298,6 +301,13 @@ if (import.meta.main) {
 	const version = process.argv[2] ?? '2025-11-25';
 	const mode = process.argv[3];
 	const cancellationMode = mode === '--cancellation';
+	if (mode === '--unruly') {
+		// Ignore stdin EOF and SIGTERM, log to stderr, and break stdout framing.
+		process.on('SIGTERM', () => undefined);
+		setInterval(() => undefined, 1000);
+		console.error(`pid=${process.pid}`);
+		console.log('not a JSON-RPC message');
+	}
 	const options: FixtureOptions = {
 		echoRequest: mode === '--echo-request',
 		catalogPath: mode && !mode.startsWith('--') ? mode : undefined,

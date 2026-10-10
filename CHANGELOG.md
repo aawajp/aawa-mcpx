@@ -82,6 +82,11 @@ entry under the date its change was committed. The project uses
 - Backend `ping` requests are answered, and other backend requests get
   `-32601`. A backend request whose ID matched a pending gateway call no longer
   completes that call.
+- Stdio backends that ignore `SIGTERM` no longer hang disabling, reconnecting, or
+  shutting down: the gateway closes stdin, then sends `SIGTERM`, then `SIGKILL`.
+- A stdio backend that prints a non-JSON line to stdout keeps its connection;
+  the line is logged and skipped. Backend stderr is logged instead of discarded,
+  and a long stderr line no longer fails pending calls.
 
 ### 2026-10-09
 

@@ -152,6 +152,13 @@ responses; the backend's standalone `GET` event stream is not used. Backend stdi
 is supported. Backend stdio buffers and SSE events are limited to 8 MiB, and
 backend pagination to 1,000 pages.
 
+A stdio backend's stdout lines that are not JSON-RPC messages are logged and
+skipped. A stdout line over the limit, or stdout closing, is a transport failure
+and starts recovery. Stderr lines are logged at info level, prefixed with the
+backend name; longer lines are cut at the limit. Closing a stdio backend closes
+its stdin, sends `SIGTERM` if it has not exited after 1 s, and `SIGKILL` after
+another 1 s.
+
 Only a message with a `result` or `error` completes a gateway request; JSON-RPC
 IDs belong to their sender. The gateway answers a 2025 backend's `ping` with `{}`
 and every other backend request with `-32601`: over stdio on stdin, over HTTP as

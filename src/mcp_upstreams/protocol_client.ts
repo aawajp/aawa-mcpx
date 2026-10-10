@@ -44,6 +44,10 @@ type RequestOptions = {
 	signal?: AbortSignal;
 	mirroredHeaders?: Record<string, string>;
 };
+const STDIO_LINE_LIMIT = 8 * 1024 * 1024;
+// Each shutdown step waits this long for a stdio backend to exit.
+const STDIO_EXIT_WAIT_MS = 1000;
+
 class BackendRpcError extends Error {
 	constructor(
 		message: string,
@@ -200,8 +204,8 @@ class ProtocolClient {
 					stderr: 'pipe',
 				},
 			);
-			void this.readLines(this.child.stdout, false);
-			void this.readLines(this.child.stderr, true);
+			void this.readStdout(this.child.stdout);
+			void this.readStderr(this.child.stderr);
 		}
 		if (!this.selected || this.selected === CURRENT_PROTOCOL_VERSION) {
 			this.negotiationMethod = 'server/discover';
@@ -308,9 +312,12 @@ class ProtocolClient {
 		);
 	}
 
+	// Splits a byte stream into lines, decoding UTF-8 across chunks. A line
+	// over the limit fails the stream, or is passed on cut short when truncating.
 	private async readLines(
 		stream: ReadableStream<Uint8Array>,
-		stderr: boolean,
+		onLine: (line: string) => void,
+		truncate: boolean,
 	): Promise<void> {
 		const reader = stream.getReader();
 		const decoder = new TextDecoder();
@@ -322,40 +329,74 @@ class ProtocolClient {
 				buffer += decoder.decode(next.value, {
 					stream: true,
 				});
-				if (buffer.length > 8 * 1024 * 1024)
-					throw new Error('Backend message exceeds size limit');
 				let end = buffer.indexOf('\n');
 				while (end >= 0) {
-					const line = buffer.slice(0, end).trim();
+					onLine(buffer.slice(0, end).trim());
 					buffer = buffer.slice(end + 1);
-					if (line && !stderr) {
-						const message = recordOf(JSON.parse(line));
-						const id = message?.id;
-						// JSON-RPC IDs belong to their sender: only a result or error
-						// completes one of the gateway's requests.
-						if (message && 'method' in message) this.answerRequest(message);
-						else if (
-							message &&
-							(typeof id === 'string' || typeof id === 'number') &&
-							('result' in message || 'error' in message)
-						)
-							this.pending.get(id)?.resolve(message);
-					}
 					end = buffer.indexOf('\n');
 				}
-			}
-			if (!stderr && !this.closed)
-				throw new BackendTransportError(new Error('Backend stdout closed'));
-		} catch (error) {
-			if (!this.closed) {
-				this.onerror(error);
-				if (error instanceof BackendTransportError)
-					this.ontransporterror(error);
-				for (const pending of this.pending.values()) pending.reject(error);
+				if (buffer.length > STDIO_LINE_LIMIT) {
+					if (!truncate) throw new Error('Backend message exceeds size limit');
+					onLine(buffer);
+					buffer = '';
+				}
 			}
 		} finally {
 			reader.releaseLock();
 		}
+	}
+
+	private async readStdout(stream: ReadableStream<Uint8Array>): Promise<void> {
+		try {
+			await this.readLines(
+				stream,
+				(line) => {
+					if (!line) return;
+					let message: Record<string, unknown> | undefined;
+					try {
+						message = recordOf(JSON.parse(line));
+					} catch {
+						message = undefined;
+					}
+					// A server must not write anything but MCP messages to stdout. Skip
+					// such output instead of losing the connection.
+					if (!message) {
+						logger.warn(
+							`MCP upstream "${this.server.serverName}" wrote a non-JSON-RPC line to stdout`,
+						);
+						return;
+					}
+					const id = message.id;
+					// JSON-RPC IDs belong to their sender: only a result or error
+					// completes one of the gateway's requests.
+					if ('method' in message) this.answerRequest(message);
+					else if (
+						(typeof id === 'string' || typeof id === 'number') &&
+						('result' in message || 'error' in message)
+					)
+						this.pending.get(id)?.resolve(message);
+				},
+				false,
+			);
+			if (!this.closed) throw new Error('Backend stdout closed');
+		} catch (error) {
+			if (this.closed) return;
+			const failure = new BackendTransportError(error);
+			this.onerror(failure);
+			this.ontransporterror(failure);
+			for (const pending of this.pending.values()) pending.reject(failure);
+		}
+	}
+
+	// Servers may log to stderr; it never affects the connection.
+	private async readStderr(stream: ReadableStream<Uint8Array>): Promise<void> {
+		await this.readLines(
+			stream,
+			(line) => {
+				if (line) logger.info(`[${this.server.serverName}] ${line}`);
+			},
+			true,
+		).catch(() => undefined);
 	}
 
 	// The receiver of a request must respond. The gateway answers a backend's
@@ -1022,8 +1063,25 @@ class ProtocolClient {
 	async close(): Promise<void> {
 		this.closed = true;
 		for (const controller of this.controllers) controller.abort();
-		this.child?.kill();
-		if (this.child) await this.child.exited;
+		const child = this.child;
+		if (!child) return;
+		// The stdio shutdown sequence: close stdin, then SIGTERM, then SIGKILL,
+		// each with a time limit.
+		const exited = async (): Promise<boolean> =>
+			Promise.race([
+				child.exited.then(() => true),
+				Bun.sleep(STDIO_EXIT_WAIT_MS).then(() => false),
+			]);
+		try {
+			await child.stdin.end();
+		} catch {
+			// The process may already have closed its stdin.
+		}
+		if (await exited()) return;
+		child.kill('SIGTERM');
+		if (await exited()) return;
+		child.kill('SIGKILL');
+		await exited();
 	}
 }
 

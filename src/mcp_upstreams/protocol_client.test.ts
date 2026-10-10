@@ -1048,3 +1048,57 @@ for (const version of [
 				fixture.stop();
 			}
 		});
+
+test('an unruly stdio backend keeps working, logs stderr and is killed on close', async () => {
+	const info = spyOn(logger, 'info');
+	const warn = spyOn(logger, 'warn');
+	const fixture = startFixtureBackend('stdio', '2025-11-25', {
+		unruly: true,
+	});
+	const client = new ProtocolClient({
+		serverName: 'unruly',
+		serverConfig: {
+			...fixture.config,
+			enabled: true,
+			timeout: 2000,
+			trafficLimit: 1000,
+		},
+	});
+	try {
+		await client.connect();
+		expect(
+			(
+				await client.callTool({
+					name: 'echo',
+					arguments: {
+						text: 'still works',
+					},
+				})
+			).content,
+		).toEqual([
+			{
+				type: 'text',
+				text: 'still works',
+			},
+		]);
+		expect(warn.mock.calls.flat()).toContain(
+			'MCP upstream "unruly" wrote a non-JSON-RPC line to stdout',
+		);
+		const pid = Number(
+			info.mock.calls
+				.flat()
+				.find((line) => line.startsWith('[unruly] pid='))
+				?.slice('[unruly] pid='.length),
+		);
+		expect(pid).toBeGreaterThan(0);
+		// The process ignores stdin EOF and SIGTERM, so close ends with SIGKILL.
+		const started = Date.now();
+		await client.close();
+		expect(Date.now() - started).toBeLessThan(5000);
+		expect(() => process.kill(pid, 0)).toThrow();
+	} finally {
+		info.mockRestore();
+		warn.mockRestore();
+		await client.close();
+	}
+});
