@@ -427,7 +427,8 @@ fresh validators.
 objects stay unchanged across revisions; the dashboard retains provider shapes.
 `shared/mcp_output_schema.ts` and the router wrap legacy schemas and results
 consistently; embedded schema resources preserve root-relative references and
-anchors. The SDK's object-only `CallToolResult` requires a wider gateway type,
+anchors. A root `$ref` moves into `allOf`, because beside `$id` it makes Ajv
+recurse forever and draft-07 ignores it. The SDK's object-only `CallToolResult` requires a wider gateway type,
 with client restrictions applied at the response boundary.
 
 ### 4.5 Tool-call errors

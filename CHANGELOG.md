@@ -102,6 +102,9 @@ entry under the date its change was committed. The project uses
 - An unknown `MCP-Protocol-Version` header without request metadata returns HTTP
   `400` with "Unsupported MCP protocol version header". Before, any value sorting
   after `2025-11-25` (for example `zzz`) was handled as `2026-07-28`.
+- 2025 clients can list tools whose output schema has a root `$ref` (as
+  zod-to-json-schema emits). Before, the wrapped schema crashed Ajv, so clients
+  such as the TypeScript SDK failed the whole `tools/list`.
 
 ### 2026-10-09
 

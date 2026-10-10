@@ -1,3 +1,6 @@
+import Ajv from 'ajv';
+import Ajv2020 from 'ajv/dist/2020';
+
 import { createOutputSchemaValidator } from '@/mcp_upstreams/output_schema';
 import {
 	requiresOutputWrapper,
@@ -371,4 +374,65 @@ test('legacy wrappers preserve recursive refs and anchors and avoid changing obj
 		},
 	};
 	expect(wrapOutputSchema(object, 'count')).toBe(object);
+});
+
+test('legacy wrappers keep a root $ref compilable in draft-07 and 2020-12', () => {
+	// zod-to-json-schema emits a root $ref; client SDKs compile it with Ajv.
+	for (const [Validator, schema] of [
+		[
+			Ajv,
+			{
+				$schema: 'http://json-schema.org/draft-07/schema#',
+				$ref: '#/definitions/list',
+				definitions: {
+					list: {
+						type: 'array',
+						items: {
+							type: 'integer',
+						},
+					},
+				},
+			},
+		],
+		[
+			Ajv2020,
+			{
+				$ref: '#/$defs/list',
+				$defs: {
+					list: {
+						type: 'array',
+						items: {
+							type: 'integer',
+						},
+					},
+				},
+			},
+		],
+	] as const) {
+		const wrapped = wrapOutputSchema(schema, 'backend__list');
+		const validate = new Validator({
+			strict: false,
+		}).compile(wrapped as object);
+		expect(
+			validate({
+				value: [
+					1,
+				],
+			}),
+		).toBe(true);
+		expect(
+			validate({
+				value: [
+					'bad',
+				],
+			}),
+		).toBe(false);
+		expect(
+			createOutputSchemaValidator()(wrapped, {
+				value: [
+					'bad',
+				],
+			})?.reason,
+		).toBe('schema_mismatch');
+	}
 });
