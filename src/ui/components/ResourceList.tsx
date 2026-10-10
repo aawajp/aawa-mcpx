@@ -1,6 +1,9 @@
 import type { Resource } from '@/shared/ui_api';
 
-type Props = { resources: Resource[]; emptyLabel: string };
+type Props = {
+	resources: Resource[];
+	emptyLabel: string;
+};
 
 const ResourceList = ({ resources, emptyLabel }: Props) => {
 	if (!resources.length) {

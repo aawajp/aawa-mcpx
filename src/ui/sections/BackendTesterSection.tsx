@@ -1,8 +1,7 @@
 import { type SubmitEvent, useEffect, useMemo, useState } from 'react';
 
-import { t } from '@/ui/i18n';
+import { errorMessage } from '@/shared/common';
 import type { McpUpstreamStatus, Tool } from '@/shared/ui_api';
-import { JsonPreview } from '@/ui/components/JsonPreview';
 import { Button } from '@/ui/base_components/button';
 import {
 	Card,
@@ -11,7 +10,8 @@ import {
 	CardHeader,
 	CardTitle,
 } from '@/ui/base_components/card';
-import { errorMessage } from '@/shared/common';
+import { JsonPreview } from '@/ui/components/JsonPreview';
+import { t } from '@/ui/i18n';
 
 type FieldKind = 'string' | 'number' | 'integer' | 'boolean' | 'enum';
 
@@ -146,7 +146,9 @@ const BackendTesterSection = ({ backends }: Props) => {
 					sensitivity: 'base',
 				}),
 			);
-	}, [backends]);
+	}, [
+		backends,
+	]);
 
 	useEffect(() => {
 		if (sortedBackends.length === 0) {
@@ -159,17 +161,26 @@ const BackendTesterSection = ({ backends }: Props) => {
 		if (!exists) {
 			setSelectedBackend(sortedBackends[0]?.serverName ?? '');
 		}
-	}, [sortedBackends, selectedBackend]);
+	}, [
+		sortedBackends,
+		selectedBackend,
+	]);
 
 	const currentBackend =
 		sortedBackends.find((backend) => backend.serverName === selectedBackend) ??
 		null;
 	const tools = useMemo(() => {
 		const backendTools = currentBackend?.tools.tools ?? [];
-		return [...backendTools].sort((a, b) =>
-			a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
+		return [
+			...backendTools,
+		].sort((a, b) =>
+			a.name.localeCompare(b.name, undefined, {
+				sensitivity: 'base',
+			}),
 		);
-	}, [currentBackend]);
+	}, [
+		currentBackend,
+	]);
 
 	useEffect(() => {
 		if (tools.length === 0) {
@@ -180,10 +191,18 @@ const BackendTesterSection = ({ backends }: Props) => {
 		if (!exists) {
 			setSelectedTool(tools[0]?.name ?? '');
 		}
-	}, [tools, selectedTool]);
+	}, [
+		tools,
+		selectedTool,
+	]);
 
 	const tool = tools.find((item) => item.name === selectedTool) ?? null;
-	const fields = useMemo(() => getToolFields(tool), [tool]);
+	const fields = useMemo(
+		() => getToolFields(tool),
+		[
+			tool,
+		],
+	);
 
 	useEffect(() => {
 		setValues((current) => {
@@ -202,7 +221,9 @@ const BackendTesterSection = ({ backends }: Props) => {
 			});
 			return next;
 		});
-	}, [fields]);
+	}, [
+		fields,
+	]);
 
 	const updateValue = (name: string, value: string) => {
 		setValues((current) => ({
@@ -268,7 +289,9 @@ const BackendTesterSection = ({ backends }: Props) => {
 		try {
 			const response = await fetch('/api/tools/call', {
 				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
+				headers: {
+					'Content-Type': 'application/json',
+				},
 				body: JSON.stringify({
 					serverName: currentBackend.serverName,
 					toolName: tool.name,
@@ -278,7 +301,9 @@ const BackendTesterSection = ({ backends }: Props) => {
 			if (!response.ok) {
 				throw new Error(`Request failed with status ${response.status}`);
 			}
-			const payload = (await response.json()) as { result?: unknown };
+			const payload = (await response.json()) as {
+				result?: unknown;
+			};
 			setResult(payload.result ?? null);
 		} catch (err) {
 			setRunError(errorMessage(err));

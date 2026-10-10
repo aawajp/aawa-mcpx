@@ -1,12 +1,5 @@
-import { t } from '@/ui/i18n';
 import { addPrefix } from '@/shared/mcp_namespaces';
 import type { McpUpstreamStatus } from '@/shared/ui_api';
-import { JsonPreview } from '@/ui/components/JsonPreview';
-import { MetaDetails } from '@/ui/components/MetaDetails';
-import { PromptList } from '@/ui/components/PromptList';
-import { ResourceList } from '@/ui/components/ResourceList';
-import { StatusBadge } from '@/ui/components/StatusBadge';
-import { ToolList } from '@/ui/components/ToolList';
 import {
 	Card,
 	CardContent,
@@ -14,6 +7,13 @@ import {
 	CardHeader,
 	CardTitle,
 } from '@/ui/base_components/card';
+import { JsonPreview } from '@/ui/components/JsonPreview';
+import { MetaDetails } from '@/ui/components/MetaDetails';
+import { PromptList } from '@/ui/components/PromptList';
+import { ResourceList } from '@/ui/components/ResourceList';
+import { StatusBadge } from '@/ui/components/StatusBadge';
+import { ToolList } from '@/ui/components/ToolList';
+import { t } from '@/ui/i18n';
 
 const backendLabel = (backend: McpUpstreamStatus): string => {
 	switch (backend.type) {
@@ -41,7 +41,9 @@ const BackendsSection = ({
 	isToolEnabled,
 	isToolPending,
 }: Props) => {
-	const sortedBackends = [...backends].sort((a, b) =>
+	const sortedBackends = [
+		...backends,
+	].sort((a, b) =>
 		a.serverName.localeCompare(b.serverName, undefined, {
 			sensitivity: 'base',
 		}),
@@ -66,19 +68,16 @@ const BackendsSection = ({
 								<button
 									type="button"
 									onClick={() => onRefresh(backend.serverName)}
-									disabled={isRefreshing || !backend.enabled || !backend.connected}
+									disabled={
+										isRefreshing || !backend.enabled || !backend.connected
+									}
 									className="inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium hover:bg-muted transition"
 								>
 									{t('backends.refresh')}
 								</button>
 								<StatusBadge
-									ok={backend.connected}
-									labelConnected={t('status.connected')}
-									labelUnavailable={
-										backend.enabled
-											? t('status.unavailable')
-											: t('status.disabled')
-									}
+									connected={backend.connected}
+									enabled={backend.enabled}
 								/>
 								{backend.errorState === 'configuration' ? (
 									<span className="rounded border border-rose-400/35 bg-rose-500/15 px-2 py-1 text-xs font-medium text-rose-200">
@@ -96,38 +95,42 @@ const BackendsSection = ({
 							<p className="text-sm text-rose-300">{backend.error}</p>
 						) : null}
 						{backend.errorState === 'protocol' ? (
-							<p className="text-sm text-amber-300">{t('status.protocolRetryStopped')}</p>
+							<p className="text-sm text-amber-300">
+								{t('status.protocolRetryStopped')}
+							</p>
 						) : null}
-					{backend.actionRequired ? (
+						{backend.actionRequired ? (
 							<p className="text-xs font-semibold text-rose-200">
 								{t('status.actionRequired')}
 							</p>
-					) : null}
-					{!backend.enabled ? (
-						<div className="rounded-md border border-amber-300/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
-							<p>{t('backends.disabledNotice')}</p>
-							{backend.enabledTools.length > 0 ? (
-								<ul className="mt-2 flex flex-wrap gap-2">
-									{backend.enabledTools.map((toolName) => (
-										<li
-											key={toolName}
-											className="rounded border border-amber-300/30 px-2 py-1 font-mono text-xs"
-										>
-											{toolName}
-										</li>
-									))}
-								</ul>
-							) : null}
-						</div>
-					) : null}
-				</CardHeader>
+						) : null}
+						{!backend.enabled ? (
+							<div className="rounded-md border border-amber-300/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+								<p>{t('backends.disabledNotice')}</p>
+								{backend.enabledTools.length > 0 ? (
+									<ul className="mt-2 flex flex-wrap gap-2">
+										{backend.enabledTools.map((toolName) => (
+											<li
+												key={toolName}
+												className="rounded border border-amber-300/30 px-2 py-1 font-mono text-xs"
+											>
+												{toolName}
+											</li>
+										))}
+									</ul>
+								) : null}
+							</div>
+						) : null}
+					</CardHeader>
 					<CardContent className="space-y-4 pt-0">
 						<div className="grid gap-2 sm:grid-cols-2">
 							<div className="space-y-1">
 								<h3 className="text-base font-semibold">
 									{t('implementation.title')}
 								</h3>
-								<p className="text-sm">{t('protocol.title')}: {backend.protocolVersion ?? '—'}</p>
+								<p className="text-sm">
+									{t('protocol.title')}: {backend.protocolVersion ?? '—'}
+								</p>
 								{backend.implementation ? (
 									<div className="text-sm space-y-1">
 										<div className="font-semibold">
@@ -198,7 +201,10 @@ const BackendsSection = ({
 								tools={backend.tools.tools}
 								emptyLabel={t('list.empty.tools')}
 								renderAction={(tool) => {
-									const namespacedToolName = addPrefix({ serverName: backend.serverName, name: tool.name });
+									const namespacedToolName = addPrefix({
+										serverName: backend.serverName,
+										name: tool.name,
+									});
 									const enabled = isToolEnabled(namespacedToolName);
 									const pending = isToolPending(namespacedToolName);
 									return (

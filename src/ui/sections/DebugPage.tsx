@@ -1,6 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+	useCallback,
+	useEffect,
+	useEffectEvent,
+	useId,
+	useMemo,
+	useRef,
+	useState,
+} from 'react';
 
-import { t } from '@/ui/i18n';
+import { errorMessage } from '@/shared/common';
 import {
 	backendTrafficResponseType,
 	overviewResponseType,
@@ -8,7 +16,6 @@ import {
 	type TrafficRecord,
 	trafficPageType,
 } from '@/shared/ui_api';
-import { JsonPreview } from '@/ui/components/JsonPreview';
 import {
 	Card,
 	CardContent,
@@ -16,7 +23,8 @@ import {
 	CardHeader,
 	CardTitle,
 } from '@/ui/base_components/card';
-import { errorMessage } from '@/shared/common';
+import { JsonPreview } from '@/ui/components/JsonPreview';
+import { t } from '@/ui/i18n';
 
 type BackendEntry = {
 	name: string;
@@ -157,14 +165,24 @@ const filterButtonClass = (active: boolean): string => {
 	}`;
 };
 
-const TrafficErrorFilter = ({ errorsOnly, onChange }: {
+const TrafficErrorFilter = ({
+	errorsOnly,
+	onChange,
+}: {
 	errorsOnly: boolean;
 	onChange: (errorsOnly: boolean) => void;
 }) => (
 	<div className="flex items-center gap-2">
-		{[false, true].map((value) => (
-			<button key={String(value)} type="button" onClick={() => onChange(value)}
-				className={filterButtonClass(errorsOnly === value)}>
+		{[
+			false,
+			true,
+		].map((value) => (
+			<button
+				key={String(value)}
+				type="button"
+				onClick={() => onChange(value)}
+				className={filterButtonClass(errorsOnly === value)}
+			>
 				{t(value ? 'debug.errorsOnly' : 'debug.showAll')}
 			</button>
 		))}
@@ -176,6 +194,7 @@ type DebugPageProps = {
 };
 
 const DebugPage = ({ onNavigate }: DebugPageProps) => {
+	const tabsId = useId();
 	const [activeTab, setActiveTab] = useState<'client' | 'backend'>('client');
 	const [selectedBackend, setSelectedBackend] = useState('');
 	const clientRequest = useRef(0);
@@ -192,7 +211,9 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 	const loadDebugSummary = useCallback(async () => {
 		try {
 			setDebugError(null);
-			const res = await fetch('/api/overview', { cache: 'no-store' });
+			const res = await fetch('/api/overview', {
+				cache: 'no-store',
+			});
 			if (!res.ok) {
 				throw new Error(`Debug request failed with status ${res.status}`);
 			}
@@ -214,7 +235,9 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 
 	useEffect(() => {
 		void loadDebugSummary();
-	}, [loadDebugSummary]);
+	}, [
+		loadDebugSummary,
+	]);
 
 	const loadClientPage = useCallback(
 		async (page: number, errorsOnly: boolean) => {
@@ -224,7 +247,9 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 				const errorsOnlyParam = errorsOnly ? '&errorsOnly=1' : '';
 				const res = await fetch(
 					`/api/debug/client?limit=${debugLimit}&offset=${offset}${errorsOnlyParam}`,
-					{ cache: 'no-store' },
+					{
+						cache: 'no-store',
+					},
 				);
 				if (!res.ok) {
 					throw new Error(`Client debug fetch failed (${res.status})`);
@@ -260,7 +285,9 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 				const errorsOnlyParam = errorsOnly ? '&errorsOnly=1' : '';
 				const res = await fetch(
 					`/api/debug/backend?backend=${encodeURIComponent(backend)}&limit=${debugLimit}&offset=${offset}${methodParam}${errorsOnlyParam}`,
-					{ cache: 'no-store' },
+					{
+						cache: 'no-store',
+					},
 				);
 				if (!res.ok) {
 					throw new Error(
@@ -299,19 +326,48 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 			Object.values(backendEntries).sort((a, b) =>
 				a.name.localeCompare(b.name),
 			),
-		[backendEntries],
+		[
+			backendEntries,
+		],
 	);
+	const backendName = selectedBackend || backendList[0]?.name || '';
+	const reloadActiveTab = () => {
+		if (activeTab === 'client') {
+			void loadClientPage(clientPage, clientErrorsOnly);
+			return;
+		}
+		const entry = backendEntries[backendName];
+		if (entry)
+			void loadBackendPage(
+				entry.name,
+				entry.page,
+				entry.methodFilter,
+				entry.errorsOnly,
+			);
+	};
+	const reloadShownTab = useEffectEvent(reloadActiveTab);
 	useEffect(() => {
-		if (activeTab === 'client') void loadClientPage(clientPage, clientErrorsOnly);
-		return () => { clientRequest.current += 1; };
-	}, [activeTab, loadClientPage]);
+		if (activeTab !== 'client') return;
+		reloadShownTab();
+		return () => {
+			clientRequest.current += 1;
+		};
+	}, [
+		activeTab,
+	]);
 	useEffect(() => {
-		if (activeTab !== 'backend') return;
-		const name = selectedBackend || Object.keys(backendEntries).sort()[0];
-		const entry = name ? backendEntries[name] : undefined;
-		if (entry) void loadBackendPage(entry.name, entry.page, entry.methodFilter, entry.errorsOnly);
-		return () => { if (name) backendRequests.current.set(name, (backendRequests.current.get(name) ?? 0) + 1); };
-	}, [activeTab, selectedBackend, loadBackendPage, Object.keys(backendEntries).join(',')]);
+		if (activeTab !== 'backend' || !backendName) return;
+		reloadShownTab();
+		return () => {
+			backendRequests.current.set(
+				backendName,
+				(backendRequests.current.get(backendName) ?? 0) + 1,
+			);
+		};
+	}, [
+		activeTab,
+		backendName,
+	]);
 
 	return (
 		<div className="app-shell container mx-auto max-w-[1600px] p-6 space-y-6">
@@ -332,7 +388,7 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 				</button>
 				<button
 					type="button"
-						onClick={() => { if (activeTab === 'client') { void loadClientPage(clientPage, clientErrorsOnly); return; } const entry = backendEntries[selectedBackend || backendList[0]?.name || '']; if (entry) void loadBackendPage(entry.name, entry.page, entry.methodFilter, entry.errorsOnly); }}
+					onClick={reloadActiveTab}
 					className="inline-flex items-center rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted transition"
 				>
 					{t('debug.refresh')}
@@ -343,20 +399,69 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 			</div>
 
 			<div role="tablist" aria-label={t('debug.title')} className="flex gap-2">
-				{(['client', 'backend'] as const).map((tab) => <button key={tab} id={`debug-${tab}-tab`} role="tab" type="button" aria-selected={activeTab === tab} aria-controls={`debug-${tab}-panel`} tabIndex={activeTab === tab ? 0 : -1} className={filterButtonClass(activeTab === tab)} onClick={() => setActiveTab(tab)} onKeyDown={(event) => { if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) { event.preventDefault(); const next = event.key === 'Home' ? 'client' : event.key === 'End' ? 'backend' : tab === 'client' ? 'backend' : 'client'; setActiveTab(next); document.getElementById(`debug-${next}-tab`)?.focus(); } }}>{t(tab === 'client' ? 'debug.client.title' : 'debug.backend.title')}</button>)}
+				{(
+					[
+						'client',
+						'backend',
+					] as const
+				).map((tab) => (
+					<button
+						key={tab}
+						id={`${tabsId}-${tab}-tab`}
+						role="tab"
+						type="button"
+						aria-selected={activeTab === tab}
+						aria-controls={`${tabsId}-${tab}-panel`}
+						tabIndex={activeTab === tab ? 0 : -1}
+						className={filterButtonClass(activeTab === tab)}
+						onClick={() => setActiveTab(tab)}
+						onKeyDown={(event) => {
+							if (
+								[
+									'ArrowLeft',
+									'ArrowRight',
+									'Home',
+									'End',
+								].includes(event.key)
+							) {
+								event.preventDefault();
+								const next =
+									event.key === 'Home'
+										? 'client'
+										: event.key === 'End'
+											? 'backend'
+											: tab === 'client'
+												? 'backend'
+												: 'client';
+								setActiveTab(next);
+								document.getElementById(`${tabsId}-${next}-tab`)?.focus();
+							}
+						}}
+					>
+						{t(tab === 'client' ? 'debug.client.title' : 'debug.backend.title')}
+					</button>
+				))}
 			</div>
 			<div className="space-y-6">
-				<Card id="debug-client-panel" role="tabpanel" aria-labelledby="debug-client-tab" hidden={activeTab !== 'client'}>
+				<Card
+					id={`${tabsId}-client-panel`}
+					role="tabpanel"
+					aria-labelledby={`${tabsId}-client-tab`}
+					hidden={activeTab !== 'client'}
+				>
 					<CardHeader>
 						<div className="flex flex-wrap items-start justify-between gap-3">
 							<div>
 								<CardTitle>{t('debug.client.title')}</CardTitle>
 								<CardDescription>{t('debug.client.subtitle')}</CardDescription>
 							</div>
-							<TrafficErrorFilter errorsOnly={clientErrorsOnly} onChange={(errorsOnly) => {
-								setClientErrorsOnly(errorsOnly);
-								void loadClientPage(0, errorsOnly);
-							}} />
+							<TrafficErrorFilter
+								errorsOnly={clientErrorsOnly}
+								onChange={(errorsOnly) => {
+									setClientErrorsOnly(errorsOnly);
+									void loadClientPage(0, errorsOnly);
+								}}
+							/>
 						</div>
 					</CardHeader>
 					<CardContent className="space-y-3">
@@ -372,79 +477,114 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 					</CardContent>
 				</Card>
 
-				<Card id="debug-backend-panel" role="tabpanel" aria-labelledby="debug-backend-tab" hidden={activeTab !== 'backend'}>
+				<Card
+					id={`${tabsId}-backend-panel`}
+					role="tabpanel"
+					aria-labelledby={`${tabsId}-backend-tab`}
+					hidden={activeTab !== 'backend'}
+				>
 					<CardHeader>
 						<CardTitle>{t('debug.backend.title')}</CardTitle>
 						<CardDescription>{t('debug.backend.subtitle')}</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-4">
-						<label className="flex items-center gap-3">{t('debug.backend.title')}<select className="rounded border bg-background p-2" value={selectedBackend || backendList[0]?.name || ''} onChange={(event) => setSelectedBackend(event.target.value)}>{backendList.map((entry) => <option key={entry.name} value={entry.name}>{entry.name}</option>)}</select></label>
-						{backendList.filter((entry) => entry.name === (selectedBackend || backendList[0]?.name)).map((entry) => (
-							<div key={entry.name} className="rounded-lg border p-4 space-y-3">
-								<div className="space-y-1">
-									<h3 className="backend-name backend-name-strong text-lg break-all">
+						<label className="flex items-center gap-3">
+							{t('debug.backend.title')}
+							<select
+								className="rounded border bg-background p-2"
+								value={backendName}
+								onChange={(event) => setSelectedBackend(event.target.value)}
+							>
+								{backendList.map((entry) => (
+									<option key={entry.name} value={entry.name}>
 										{entry.name}
-									</h3>
-									<p className="text-xs text-muted-foreground break-all">
-										{t('debug.gatewayPrefix')} {entry.name}
-									</p>
+									</option>
+								))}
+							</select>
+						</label>
+						{backendList
+							.filter((entry) => entry.name === backendName)
+							.map((entry) => (
+								<div
+									key={entry.name}
+									className="rounded-lg border p-4 space-y-3"
+								>
+									<div className="space-y-1">
+										<h3 className="backend-name backend-name-strong text-lg break-all">
+											{entry.name}
+										</h3>
+										<p className="text-xs text-muted-foreground break-all">
+											{t('debug.gatewayPrefix')} {entry.name}
+										</p>
+									</div>
+									<div className="flex flex-wrap items-center gap-2">
+										<input
+											type="text"
+											value={entry.methodFilter}
+											onChange={(e) =>
+												setBackendEntries((current) => ({
+													...current,
+													[entry.name]: {
+														...(current[entry.name] ?? entry),
+														methodFilter: e.target.value,
+													},
+												}))
+											}
+											placeholder={t('debug.method.placeholder')}
+											className="h-8 min-w-56 flex-1 rounded border px-2 py-1 text-xs"
+										/>
+										<button
+											type="button"
+											onClick={() =>
+												void loadBackendPage(
+													entry.name,
+													0,
+													entry.methodFilter,
+													entry.errorsOnly,
+												)
+											}
+											className="inline-flex h-8 items-center rounded-md border px-3 py-1 text-xs font-medium hover:bg-muted transition"
+										>
+											{t('backends.refresh')}
+										</button>
+										<TrafficErrorFilter
+											errorsOnly={entry.errorsOnly}
+											onChange={(errorsOnly) => {
+												setBackendEntries((current) => ({
+													...current,
+													[entry.name]: {
+														...(current[entry.name] ?? entry),
+														errorsOnly,
+														page: 0,
+													},
+												}));
+												void loadBackendPage(
+													entry.name,
+													0,
+													entry.methodFilter,
+													errorsOnly,
+												);
+											}}
+										/>
+									</div>
+									<div className="space-y-3">
+										<TrafficTable records={entry.data?.records ?? []} />
+										<PaginationControls
+											page={entry.page}
+											limit={debugLimit}
+											total={entry.data?.total ?? 0}
+											onPageChange={(next) =>
+												void loadBackendPage(
+													entry.name,
+													next,
+													entry.methodFilter,
+													entry.errorsOnly,
+												)
+											}
+										/>
+									</div>
 								</div>
-								<div className="flex flex-wrap items-center gap-2">
-									<input
-										type="text"
-										value={entry.methodFilter}
-										onChange={(e) =>
-											setBackendEntries((current) => ({
-												...current,
-												[entry.name]: {
-													...(current[entry.name] ?? entry),
-													methodFilter: e.target.value,
-												},
-											}))
-										}
-										placeholder={t('debug.method.placeholder')}
-										className="h-8 min-w-56 flex-1 rounded border px-2 py-1 text-xs"
-									/>
-									<button
-										type="button"
-										onClick={() =>
-											void loadBackendPage(
-												entry.name,
-												0,
-												entry.methodFilter,
-												entry.errorsOnly,
-											)
-										}
-										className="inline-flex h-8 items-center rounded-md border px-3 py-1 text-xs font-medium hover:bg-muted transition"
-									>
-										{t('backends.refresh')}
-									</button>
-									<TrafficErrorFilter errorsOnly={entry.errorsOnly} onChange={(errorsOnly) => {
-										setBackendEntries((current) => ({
-											...current,
-											[entry.name]: { ...(current[entry.name] ?? entry), errorsOnly, page: 0 },
-										}));
-										void loadBackendPage(entry.name, 0, entry.methodFilter, errorsOnly);
-									}} />
-								</div>
-								<div className="space-y-3">
-									<TrafficTable records={entry.data?.records ?? []} />
-									<PaginationControls
-										page={entry.page}
-										limit={debugLimit}
-										total={entry.data?.total ?? 0}
-										onPageChange={(next) =>
-											void loadBackendPage(
-												entry.name,
-												next,
-												entry.methodFilter,
-												entry.errorsOnly,
-											)
-										}
-									/>
-								</div>
-							</div>
-						))}
+							))}
 					</CardContent>
 				</Card>
 			</div>

@@ -14,7 +14,11 @@
 			"*.ts",
 			"*.json",
 			"*.jsonc",
-			"src/**/*.ts"
+			"src/**/*.ts",
+			"src/**/*.tsx",
+			"src/**/*.css",
+			"src/**/*.json",
+			"src/**/*.html"
 		],
 		"ignoreUnknown": true,
 		"maxSize": 524288 // 512kB; ignore files bigger than this
@@ -38,6 +42,9 @@
 				"noUnusedVariables": "warn",
 				"noUnresolvedImports": "off", // unnecessary when using tsc
 				"useImportExtensions": "off"
+			},
+			"performance": {
+				"noJsxPropsBind": "off" // no component is memoized, so new handler identities cost nothing
 			},
 			"style": {
 				"noExportedImports": "warn"
@@ -85,6 +92,14 @@
 		},
 		"linter": {
 			"enabled": true
+		}
+	},
+	"css": {
+		"parser": {
+			"tailwindDirectives": true
+		},
+		"formatter": {
+			"quoteStyle": "single"
 		}
 	},
 	"json": {

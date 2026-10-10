@@ -2,14 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import '@/ui/styles/index.css';
 
-import { t } from '@/ui/i18n';
+import { errorMessage } from '@/shared/common';
 import { type OverviewResponse, overviewResponseType } from '@/shared/ui_api';
+import { t } from '@/ui/i18n';
 import { BackendsSection } from '@/ui/sections/BackendsSection';
 import { BackendTesterSection } from '@/ui/sections/BackendTesterSection';
 import { ClientsSection } from '@/ui/sections/ClientsSection';
 import { DebugPage } from '@/ui/sections/DebugPage';
 import { SummarySection } from '@/ui/sections/SummarySection';
-import { errorMessage } from '@/shared/common';
 
 type LoadState = 'idle' | 'loading' | 'error' | 'ready';
 type MainTab = 'tester' | 'backends' | 'clients';
@@ -36,9 +36,9 @@ export default function App() {
 		const stored = window.localStorage.getItem(MAIN_TAB_STORAGE_KEY);
 		return isMainTab(stored) ? stored : 'backends';
 	});
-	const [pendingBackends, setPendingBackends] = useState<Record<string, boolean>>(
-		{},
-	);
+	const [pendingBackends, setPendingBackends] = useState<
+		Record<string, boolean>
+	>({});
 	const [pendingTools, setPendingTools] = useState<Record<string, boolean>>({});
 	const [route, setRoute] = useState<'main' | 'debug'>(() => {
 		if (typeof window === 'undefined') return 'main';
@@ -55,11 +55,17 @@ export default function App() {
 			try {
 				const res = options?.force
 					? await fetch('/api/backends/refresh', {
-						method: 'POST',
-						headers: { 'Content-Type': 'application/json' },
-						body: JSON.stringify({ serverName: options.serverName }),
-					})
-					: await fetch('/api/overview', { method: 'GET' });
+							method: 'POST',
+							headers: {
+								'Content-Type': 'application/json',
+							},
+							body: JSON.stringify({
+								serverName: options.serverName,
+							}),
+						})
+					: await fetch('/api/overview', {
+							method: 'GET',
+						});
 				if (!res.ok) {
 					throw new Error(`Request failed with status ${res.status}`);
 				}
@@ -85,11 +91,15 @@ export default function App() {
 			try {
 				const response = await fetch('/api/backends/toggle', {
 					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
+					headers: {
+						'Content-Type': 'application/json',
+					},
 					body: JSON.stringify(params),
 				});
 				if (!response.ok) {
-					throw new Error(`Failed to update backend state (${response.status})`);
+					throw new Error(
+						`Failed to update backend state (${response.status})`,
+					);
 				}
 				await refresh();
 			} catch (err) {
@@ -102,7 +112,9 @@ export default function App() {
 				}));
 			}
 		},
-		[refresh],
+		[
+			refresh,
+		],
 	);
 
 	useEffect(() => {
@@ -110,7 +122,10 @@ export default function App() {
 			return;
 		}
 		void refresh();
-	}, [refresh, route]);
+	}, [
+		refresh,
+		route,
+	]);
 
 	const toggleTool = useCallback(
 		async (params: { name: string; enabled: boolean }) => {
@@ -121,7 +136,9 @@ export default function App() {
 			try {
 				const response = await fetch('/api/tools/toggle', {
 					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
+					headers: {
+						'Content-Type': 'application/json',
+					},
 					body: JSON.stringify(params),
 				});
 				if (!response.ok) {
@@ -168,7 +185,9 @@ export default function App() {
 			map.set(tool.name, tool.enabled);
 		}
 		return map;
-	}, [overview]);
+	}, [
+		overview,
+	]);
 
 	useEffect(() => {
 		if (route !== 'main') {
@@ -196,7 +215,9 @@ export default function App() {
 		return () => {
 			eventSource.close();
 		};
-	}, [route]);
+	}, [
+		route,
+	]);
 
 	useEffect(() => {
 		const syncRoute = () => {
@@ -214,7 +235,9 @@ export default function App() {
 		return () => {
 			window.removeEventListener('popstate', syncRoute);
 		};
-	}, [resolveRoute]);
+	}, [
+		resolveRoute,
+	]);
 
 	const navigate = useCallback((target: 'main' | 'debug') => {
 		setRoute(target);
@@ -238,7 +261,9 @@ export default function App() {
 			}
 			return `${base} hover:bg-muted`;
 		},
-		[mainTab],
+		[
+			mainTab,
+		],
 	);
 
 	return (
@@ -247,81 +272,89 @@ export default function App() {
 				<DebugPage onNavigate={navigate} />
 			) : (
 				<div className="app-shell container mx-auto max-w-6xl p-6 space-y-6">
-			<header className="space-y-2">
-				<div>
-					<h1 className="text-3xl font-bold">{t('app.title')}</h1>
-					<p className="text-muted-foreground">{t('app.subtitle')}</p>
-				</div>
-			</header>
+					<header className="space-y-2">
+						<div>
+							<h1 className="text-3xl font-bold">{t('app.title')}</h1>
+							<p className="text-muted-foreground">{t('app.subtitle')}</p>
+						</div>
+					</header>
 
-			<SummarySection
-				overview={overview}
-				onRefresh={() => void refresh({ force: true })}
-				onToggleBackend={(params) => void toggleBackend(params)}
-				isBackendPending={(serverName) =>
-					pendingBackends[serverName] === true
-				}
-				status={status}
-				isRefreshing={isRefreshing}
-				error={error}
-			/>
-			<div className="flex items-center gap-2">
-				<button
-					type="button"
-					onClick={() => selectMainTab('backends')}
-					className={tabClassName('backends')}
-					aria-pressed={mainTab === 'backends'}
-				>
-					{t('main.tab.backends')}
-				</button>
-				<button
-					type="button"
-					onClick={() => selectMainTab('clients')}
-					className={tabClassName('clients')}
-					aria-pressed={mainTab === 'clients'}
-				>
-					{t('main.tab.clients')}
-				</button>
-				<button
-					type="button"
-					onClick={() => selectMainTab('tester')}
-					className={tabClassName('tester')}
-					aria-pressed={mainTab === 'tester'}
-				>
-					{t('main.tab.tester')}
-				</button>
-				<button
-					type="button"
-					onClick={() => navigate('debug')}
-					className="inline-flex items-center rounded-md border px-3 py-2 text-sm font-medium transition hover:bg-muted"
-				>
-					{t('debug.title')}
-				</button>
-			</div>
+					<SummarySection
+						overview={overview}
+						onRefresh={() =>
+							void refresh({
+								force: true,
+							})
+						}
+						onToggleBackend={(params) => void toggleBackend(params)}
+						isBackendPending={(serverName) =>
+							pendingBackends[serverName] === true
+						}
+						status={status}
+						isRefreshing={isRefreshing}
+						error={error}
+					/>
+					<div className="flex items-center gap-2">
+						<button
+							type="button"
+							onClick={() => selectMainTab('backends')}
+							className={tabClassName('backends')}
+							aria-pressed={mainTab === 'backends'}
+						>
+							{t('main.tab.backends')}
+						</button>
+						<button
+							type="button"
+							onClick={() => selectMainTab('clients')}
+							className={tabClassName('clients')}
+							aria-pressed={mainTab === 'clients'}
+						>
+							{t('main.tab.clients')}
+						</button>
+						<button
+							type="button"
+							onClick={() => selectMainTab('tester')}
+							className={tabClassName('tester')}
+							aria-pressed={mainTab === 'tester'}
+						>
+							{t('main.tab.tester')}
+						</button>
+						<button
+							type="button"
+							onClick={() => navigate('debug')}
+							className="inline-flex items-center rounded-md border px-3 py-2 text-sm font-medium transition hover:bg-muted"
+						>
+							{t('debug.title')}
+						</button>
+					</div>
 
-			{mainTab === 'tester' ? (
-				<BackendTesterSection backends={overview?.backends ?? []} />
-			) : null}
-			{mainTab === 'clients' ? (
-				<ClientsSection clients={overview?.clients ?? []} />
-			) : null}
-			{mainTab === 'backends' ? (
-				<BackendsSection
-					backends={overview?.backends ?? []}
-					onRefresh={(serverName) => void refresh({ force: true, serverName })}
-					isRefreshing={isRefreshing}
-					onToggleTool={(params) => void toggleTool(params)}
-					isToolEnabled={(name) => enabledToolMap.get(name) === true}
-					isToolPending={(name) => pendingTools[name] === true}
-				/>
-			) : null}
+					{mainTab === 'tester' ? (
+						<BackendTesterSection backends={overview?.backends ?? []} />
+					) : null}
+					{mainTab === 'clients' ? (
+						<ClientsSection clients={overview?.clients ?? []} />
+					) : null}
+					{mainTab === 'backends' ? (
+						<BackendsSection
+							backends={overview?.backends ?? []}
+							onRefresh={(serverName) =>
+								void refresh({
+									force: true,
+									serverName,
+								})
+							}
+							isRefreshing={isRefreshing}
+							onToggleTool={(params) => void toggleTool(params)}
+							isToolEnabled={(name) => enabledToolMap.get(name) === true}
+							isToolPending={(name) => pendingTools[name] === true}
+						/>
+					) : null}
 				</div>
 			)}
 			<footer className="container mx-auto max-w-6xl px-6 pb-6 pt-2 text-center text-sm text-muted-foreground">
 				<p>
 					© {new Date().getFullYear()}{' '}
-					<a href="https://aawa.jp">Aawa Technologies</a> / Mikael
-					Nakajima
+					<a href="https://aawa.jp">Aawa Technologies</a> / Mikael Nakajima
 				</p>
 			</footer>
 		</>

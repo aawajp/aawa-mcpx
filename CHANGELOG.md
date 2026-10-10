@@ -51,6 +51,9 @@ entry under the date its change was committed. The project uses
   instead of being forwarded.
 - Legacy HTTP backends that reject discovery with HTTP `400`/`404`/`405` and an
   invalid error envelope can still initialize.
+- The Debug page's backend tab loads traffic for the backend its selector
+  shows. Before, some backend names (for example, ones differing in letter case)
+  left it empty until **Refresh** was pressed.
 
 ### 2026-10-09
 

@@ -1,14 +1,14 @@
 import type { ReactNode } from 'react';
 
-import { t } from '@/ui/i18n';
 import type { Tool } from '@/shared/ui_api';
-import { JsonPreview } from '@/ui/components/JsonPreview';
 import {
 	Card,
 	CardContent,
 	CardHeader,
 	CardTitle,
 } from '@/ui/base_components/card';
+import { JsonPreview } from '@/ui/components/JsonPreview';
+import { t } from '@/ui/i18n';
 
 type Props<T extends Tool> = {
 	tools: T[];
@@ -21,8 +21,12 @@ const ToolList = <T extends Tool>({
 	emptyLabel,
 	renderAction,
 }: Props<T>) => {
-	const sortedTools = [...tools].sort((a, b) =>
-		a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
+	const sortedTools = [
+		...tools,
+	].sort((a, b) =>
+		a.name.localeCompare(b.name, undefined, {
+			sensitivity: 'base',
+		}),
 	);
 
 	if (!tools.length) {
@@ -41,9 +45,7 @@ const ToolList = <T extends Tool>({
 							<CardTitle className="text-base font-bold text-sky-100">
 								{tool.name}
 							</CardTitle>
-							{renderAction ? (
-								renderAction(tool)
-							) : null}
+							{renderAction ? renderAction(tool) : null}
 						</div>
 					</CardHeader>
 					<CardContent className="pt-0 space-y-1.5">

@@ -1,6 +1,9 @@
 import type { Prompt } from '@/shared/ui_api';
 
-type Props = { prompts: Prompt[]; emptyLabel: string };
+type Props = {
+	prompts: Prompt[];
+	emptyLabel: string;
+};
 
 const PromptList = ({ prompts, emptyLabel }: Props) => {
 	if (!prompts.length) {

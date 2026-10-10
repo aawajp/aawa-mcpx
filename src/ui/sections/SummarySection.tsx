@@ -1,6 +1,4 @@
-import { t } from '@/ui/i18n';
 import type { OverviewResponse } from '@/shared/ui_api';
-import { StatusBadge } from '@/ui/components/StatusBadge';
 import {
 	Card,
 	CardContent,
@@ -8,6 +6,8 @@ import {
 	CardHeader,
 	CardTitle,
 } from '@/ui/base_components/card';
+import { StatusBadge } from '@/ui/components/StatusBadge';
+import { t } from '@/ui/i18n';
 
 type Props = {
 	overview: OverviewResponse | null;
@@ -29,7 +29,9 @@ const SummarySection = ({
 	error,
 }: Props) => {
 	const sortedBackends = overview?.backends
-		? [...overview.backends].sort((a, b) =>
+		? [
+				...overview.backends,
+			].sort((a, b) =>
 				a.serverName.localeCompare(b.serverName, undefined, {
 					sensitivity: 'base',
 				}),
@@ -81,46 +83,42 @@ const SummarySection = ({
 										key={backend.serverName}
 										className="flex items-start justify-between gap-2 rounded border border-muted px-3 py-2 w-full"
 									>
-								<div className="min-w-0">
-									<div className="backend-name text-base leading-tight truncate">
-										{backend.serverName}
-									</div>
-									{!backend.enabled && backend.enabledTools.length > 0 ? (
-										<div className="mt-1 text-xs text-amber-200">
-											{t('backends.inactiveTools')}: {backend.enabledTools.length}
+										<div className="min-w-0">
+											<div className="backend-name text-base leading-tight truncate">
+												{backend.serverName}
+											</div>
+											{!backend.enabled && backend.enabledTools.length > 0 ? (
+												<div className="mt-1 text-xs text-amber-200">
+													{t('backends.inactiveTools')}:{' '}
+													{backend.enabledTools.length}
+												</div>
+											) : null}
 										</div>
-									) : null}
-								</div>
-									<div className="flex shrink-0 items-center gap-2">
-										<StatusBadge
-											ok={backend.connected}
-											labelConnected={t('status.connected')}
-											labelUnavailable={
-												backend.enabled
-													? t('status.unavailable')
-													: t('status.disabled')
-											}
-										/>
-										<button
-											type="button"
-											disabled={isBackendPending(backend.serverName)}
-											onClick={() =>
-												onToggleBackend({
-													serverName: backend.serverName,
-													enabled: !backend.enabled,
-												})
-											}
-											aria-pressed={backend.enabled}
-											className="inline-flex items-center rounded-md border px-2 py-1 text-xs font-medium transition hover:bg-muted disabled:cursor-wait disabled:opacity-50"
-										>
-											{isBackendPending(backend.serverName)
-												? t('backends.updating')
-												: backend.enabled
-													? t('backends.disable')
-													: t('backends.enable')}
-										</button>
-									</div>
-								</li>
+										<div className="flex shrink-0 items-center gap-2">
+											<StatusBadge
+												connected={backend.connected}
+												enabled={backend.enabled}
+											/>
+											<button
+												type="button"
+												disabled={isBackendPending(backend.serverName)}
+												onClick={() =>
+													onToggleBackend({
+														serverName: backend.serverName,
+														enabled: !backend.enabled,
+													})
+												}
+												aria-pressed={backend.enabled}
+												className="inline-flex items-center rounded-md border px-2 py-1 text-xs font-medium transition hover:bg-muted disabled:cursor-wait disabled:opacity-50"
+											>
+												{isBackendPending(backend.serverName)
+													? t('backends.updating')
+													: backend.enabled
+														? t('backends.disable')
+														: t('backends.enable')}
+											</button>
+										</div>
+									</li>
 								))}
 							</ul>
 						) : (
@@ -138,7 +136,9 @@ const SummarySection = ({
 				</CardHeader>
 				<CardContent className="space-y-2 w-full">
 					<div className="text-2xl font-semibold">
-						{overview?.supportedProtocolVersions?.map((version) => <div key={version}>{version}</div>) ?? '—'}
+						{overview?.supportedProtocolVersions?.map((version) => (
+							<div key={version}>{version}</div>
+						)) ?? '—'}
 					</div>
 					<div className="space-y-1 text-sm">
 						<div className="font-semibold">{t('protocol.apisTitle')}</div>

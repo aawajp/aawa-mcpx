@@ -1,7 +1,4 @@
-import { t } from '@/ui/i18n';
 import type { OverviewResponse } from '@/shared/ui_api';
-import { PromptList } from '@/ui/components/PromptList';
-import { ResourceList } from '@/ui/components/ResourceList';
 import {
 	Card,
 	CardContent,
@@ -9,6 +6,9 @@ import {
 	CardHeader,
 	CardTitle,
 } from '@/ui/base_components/card';
+import { PromptList } from '@/ui/components/PromptList';
+import { ResourceList } from '@/ui/components/ResourceList';
+import { t } from '@/ui/i18n';
 
 type Props = {
 	overview: OverviewResponse | null;
