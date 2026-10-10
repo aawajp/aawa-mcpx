@@ -76,7 +76,7 @@ silences the logger during tests.
 
 Enabled backends recover automatically from lost connections and lost
 initialized HTTP sessions. Handshakes also retry after timeouts and HTTP
-`408`/`429`/`5xx`. Transport failures retire the client and schedule recovery. Failed
+`401`/`403`/`408`/`429`/`5xx`. Transport failures retire the client and schedule recovery. Failed
 tool calls are never replayed, because their side effects may have completed.
 Negotiation failures stop retries until disable/re-enable ([3.1](#31-revisions-and-negotiation)).
 
@@ -127,7 +127,9 @@ the RPC envelope is invalid (for example, `id: null`). Only the HTTP status is
 used; initialization, pinned peers, and application responses still require
 valid envelopes and matching request IDs. Dropping that status during envelope
 validation would stop negotiation before a compatible 2025 backend can initialize.
-Other discovery failures, including authentication errors, count as negotiation failures.
+Other discovery failures count as negotiation failures, except transient
+failures and HTTP `401`/`403`. A rejected credential retries with backoff and
+the dashboard shows it as an authentication error.
 A discovery result without `2026-07-28` initializes with the highest 2025
 revision it lists; one listing no supported revision is a negotiation failure.
 

@@ -131,6 +131,10 @@ entry under the date its change was committed. The project uses
 - A timeout or HTTP `408`/`429`/`5xx` on one backend request fails only that
   request. Before, it closed the backend connection, aborted other clients'
   requests, and kept the backend down for at least 5 seconds.
+- A backend that answers its handshake with HTTP `401` or `403` keeps retrying
+  with backoff, and the dashboard shows "Authentication failed". Before, it was
+  reported as a protocol negotiation failure and retries stopped until the
+  backend was disabled and re-enabled.
 
 ### 2026-10-09
 

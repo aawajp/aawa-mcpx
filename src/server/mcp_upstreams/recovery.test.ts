@@ -365,3 +365,63 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 		}
 	});
 }
+
+for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
+	test(`${version}: a rejected credential retries with backoff`, async () => {
+		let authorized = false;
+		const endpoint = Bun.serve({
+			port: 0,
+			hostname: '127.0.0.1',
+			async fetch(request) {
+				if (request.method === 'DELETE')
+					return new Response(null, {
+						status: 405,
+					});
+				const message = recordOf(await request.json()) ?? {};
+				if (
+					message.method === 'server/discover' &&
+					version !== CURRENT_PROTOCOL_VERSION
+				)
+					return Response.json(fixtureReply(message, version), {
+						status: 400,
+					});
+				if (!authorized)
+					return new Response('Unauthorized', {
+						status: 401,
+					});
+				if (!('id' in message))
+					return new Response(null, {
+						status: 202,
+					});
+				return Response.json(fixtureReply(message, version), {
+					headers:
+						message.method === 'initialize'
+							? {
+									'Mcp-Session-Id': 'fixture-session',
+								}
+							: undefined,
+				});
+			},
+		});
+		const harness = createHarness(endpoint.url.href);
+		try {
+			await harness.connections.initialize();
+			expect(harness.backend.status).toMatchObject({
+				connected: false,
+				errorState: 'authentication',
+				actionRequired: false,
+				error: 'Backend HTTP 401',
+			});
+			expect(harness.backend.reconnectTimer).toBeDefined();
+			authorized = true;
+			await harness.connections.attemptReconnect(harness.backend);
+			expect(harness.backend.status).toMatchObject({
+				connected: true,
+				protocolVersion: version,
+			});
+		} finally {
+			await harness.connections.disconnect();
+			endpoint.stop(true);
+		}
+	});
+}

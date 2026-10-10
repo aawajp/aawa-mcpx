@@ -96,7 +96,11 @@ type ToggleBackendParams = {
 	enabled: boolean;
 };
 
-type McpUpstreamErrorState = 'runtime' | 'configuration' | 'protocol';
+type McpUpstreamErrorState =
+	| 'runtime'
+	| 'configuration'
+	| 'protocol'
+	| 'authentication';
 
 type McpUpstreamStatusBase = {
 	serverName: string;

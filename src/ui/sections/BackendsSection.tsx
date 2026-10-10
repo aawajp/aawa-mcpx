@@ -89,6 +89,11 @@ const BackendsSection = ({
 										{t('status.protocolError')}
 									</span>
 								) : null}
+								{backend.errorState === 'authentication' ? (
+									<span className="rounded border border-rose-400/35 bg-rose-500/15 px-2 py-1 text-xs font-medium text-rose-200">
+										{t('status.authenticationError')}
+									</span>
+								) : null}
 							</div>
 						</div>
 						{backend.error ? (

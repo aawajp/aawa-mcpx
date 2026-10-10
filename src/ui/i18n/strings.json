@@ -50,6 +50,7 @@
 	"status.unavailable": "Unavailable",
 	"status.configurationError": "Config error",
 	"status.protocolError": "Protocol negotiation failed",
+	"status.authenticationError": "Authentication failed",
 	"status.protocolRetryStopped": "Automatic retries stopped. Disable and re-enable this backend to retry.",
 	"status.actionRequired": "Action required",
 	"clients.title": "Clients",

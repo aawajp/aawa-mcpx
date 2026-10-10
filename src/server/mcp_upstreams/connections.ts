@@ -1,6 +1,7 @@
 import { logger } from '@/server/logger';
 import { createMcpUpstreamHealthChecks } from '@/server/mcp_upstreams/health_checks';
 import {
+	isAuthenticationError,
 	ProtocolClient,
 	ProtocolNegotiationError,
 } from '@/server/mcp_upstreams/protocol_client';
@@ -407,8 +408,11 @@ const createMcpUpstreamConnections = (
 				backend,
 				connected: false,
 				error: message,
-				errorState:
-					err instanceof ProtocolNegotiationError ? 'protocol' : 'runtime',
+				errorState: protocolFailure
+					? 'protocol'
+					: isAuthenticationError(err)
+						? 'authentication'
+						: 'runtime',
 				actionRequired: protocolFailure,
 			});
 			await client.close().catch(() => undefined);

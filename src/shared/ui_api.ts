@@ -54,7 +54,7 @@ const backendStatusSharedFields = {
 	enabledTools: 'string[]',
 	connected: 'boolean',
 	'error?': 'string',
-	'errorState?': "'runtime' | 'configuration' | 'protocol'",
+	'errorState?': "'runtime' | 'configuration' | 'protocol' | 'authentication'",
 	'actionRequired?': 'boolean',
 	'implementation?': implementationInfoType,
 	'capabilities?': capabilitiesInfoType,

@@ -75,6 +75,11 @@ const isTransientBackendError = (error: unknown): boolean =>
 			error.status === 429 ||
 			(error.status ?? 0) >= 500));
 
+// An expired or wrong credential can be fixed without touching the gateway.
+const isAuthenticationError = (error: unknown): boolean =>
+	error instanceof BackendRpcError &&
+	(error.status === 401 || error.status === 403);
+
 class ProtocolNegotiationError extends Error {
 	constructor(
 		readonly context: {
@@ -144,6 +149,7 @@ class ProtocolClient {
 			if (
 				this.negotiationMethod === 'transport' ||
 				isTransientBackendError(error) ||
+				isAuthenticationError(error) ||
 				this.isSessionLostError(error)
 			)
 				throw error;
@@ -1109,6 +1115,7 @@ class ProtocolClient {
 export {
 	BackendRpcError,
 	BackendTransportError,
+	isAuthenticationError,
 	ProtocolClient,
 	ProtocolNegotiationError,
 };
