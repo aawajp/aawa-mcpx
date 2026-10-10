@@ -142,7 +142,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 							? 'Invalid backend RPC response'
 							: transport === 'sse'
 								? 'Backend stream ended without a result'
-								: 'The operation was aborted',
+								: 'Backend request timed out',
 					);
 				};
 				await expect(

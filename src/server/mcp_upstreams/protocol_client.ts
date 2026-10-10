@@ -763,9 +763,17 @@ class ProtocolClient {
 		if (this.closed) throw new Error('Backend connection closed');
 		const controller = new AbortController();
 		this.controllers.add(controller);
+		const timeoutMs = options.timeout ?? this.server.serverConfig.timeout;
+		// A named reason keeps timeouts distinct from cancellations in errors and logs.
 		const timeout = setTimeout(
-			() => controller.abort(),
-			options.timeout ?? this.server.serverConfig.timeout,
+			() =>
+				controller.abort(
+					new DOMException(
+						`Backend request timed out after ${timeoutMs} ms`,
+						'TimeoutError',
+					),
+				),
+			timeoutMs,
 		);
 		const signal = options.signal
 			? AbortSignal.any([controller.signal, options.signal])

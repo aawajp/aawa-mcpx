@@ -341,7 +341,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 						timeout: 20,
 					},
 				),
-			).rejects.toThrow();
+			).rejects.toThrow('Backend request timed out after 20 ms');
 			await expect(slow).resolves.toBeDefined();
 			expect(harness.backend.client).toBe(client);
 			expect(harness.backend.status?.connected).toBe(true);

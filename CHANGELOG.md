@@ -135,6 +135,9 @@ entry under the date its change was committed. The project uses
   with backoff, and the dashboard shows "Authentication failed". Before, it was
   reported as a protocol negotiation failure and retries stopped until the
   backend was disabled and re-enabled.
+- A backend request that times out fails with "Backend request timed out after
+  N ms" in errors and logs. Before, it read "The operation was aborted", the
+  same as a cancelled request.
 
 ### 2026-10-09
 
