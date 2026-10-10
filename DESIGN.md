@@ -1,8 +1,8 @@
 # aawa-mcpx design
 
 This document describes the current architecture and protocol design, and the
-planned design under consideration. [README.md](README.md) gives the project
-overview, setup, and operations; [CHANGELOG.md](CHANGELOG.md) records changes.
+planned design under consideration. [README.md](/README.md) gives the project
+overview, setup, and operations; [CHANGELOG.md](/CHANGELOG.md) records changes.
 
 ## Contents
 
@@ -55,22 +55,21 @@ SDK supplies types only; the gateway implements dispatch and transports itself.
 
 | Layer | Modules and responsibilities |
 | --- | --- |
-| `index.ts` | Entrypoint: load configuration, start upstreams and the server, handle shutdown. |
-| `config/` | Load, validate, and persist configuration. |
-| `gateway/` | `server.ts`: `Bun.serve`/route wiring; `mcp_http_route.ts`: HTTP handling; `mcp_request_router.ts`: JSON-RPC dispatch/version adaptation. |
+| `server/` | `index.ts`: entrypoint (load configuration, start upstreams and the server, handle shutdown); `traffic_store.ts`: SQLite traffic storage; `logger.ts`: console logging. |
+| `server/config/` | Load, validate, and persist configuration. |
+| `server/gateway/` | `server.ts`: `Bun.serve`/route wiring; `mcp_http_route.ts`: HTTP handling; `mcp_request_router.ts`: JSON-RPC dispatch/version adaptation. |
 | | `json_rpc.ts`: incoming envelope parsing; `mcp_session.ts`: public initialization/sessions; `client_activity.ts`: dashboard history; `mcp_handlers.ts`: upstream operations; `mcp_namespaces.ts`: applies namespaces and `[serverName]` description prefixes to catalogs; `ui_routes.ts`: UI APIs/events. |
-| `mcp_upstreams/` | `manager.ts`: stable gateway API/service wiring; `connections.ts`: per-backend state record, connection/recovery lifecycle; `health_checks.ts`: probes; `catalog.ts`: caches/exposure state. |
+| `server/mcp_upstreams/` | `manager.ts`: stable gateway API/service wiring; `connections.ts`: per-backend state record, connection/recovery lifecycle; `health_checks.ts`: probes; `catalog.ts`: caches/exposure state. |
 | | `method_calls.ts`: calls/argument validation; `protocol_client.ts`: JSON-RPC, revision selection, HTTP/SSE and stdio; `tool_result.ts`: structured recovery/duplicate removal; `input_schema.ts`/`output_schema.ts`: provider schema policies; `json_schema.ts`: shared compiler; `logged_request.ts`: traffic logging around calls; `types.d.ts`: manager contracts. |
-| `server/` | `traffic_store.ts`: SQLite traffic storage; `logger.ts`: console logging. |
 | `shared/` | `mcp_protocol.ts`: revision registry, header encoding, `x-mcp-header` rules; `mcp_metadata.ts`: request-metadata validators; `mcp_namespaces.ts`: namespace and resource-URI codec; `mcp_schemas.ts`: MCP validators; `mcp_results.ts`: result types; `mcp_output_schema.ts`: legacy wrappers. |
 | | `ui_api.ts`: dashboard contracts; `client_info.ts`: client identity; `cancellation.ts`: abort helpers; `common.ts`: cross-runtime helpers. |
-| `ui/` | `main.tsx`: entrypoint from `../index.html`; `App.tsx`: state/routing; `base_components/`: low-level components; `components/`: app components; `sections/`: pages; `i18n/` and `styles/`: assets. |
+| `ui/` | `index.html`: dashboard page; `main.tsx`: entrypoint it loads; `App.tsx`: state/routing; `base_components/`: low-level components; `components/`: app components; `sections/`: pages; `i18n/` and `styles/`: assets. |
 
 The compact footer links `© [current year] Aawa Technologies / Mikael Nakajima`
 to [Aawa Technologies](https://aawa.jp). Test fixtures live next to the tests:
-`mcp_upstreams/protocol_fixture.ts` runs a fake backend over HTTP or stdio,
-`gateway/route_fixture.ts` wires the public route, and
-`shared/mcp_schema_fixtures.ts` holds sample MCP values. `test_preload.ts`
+`server/mcp_upstreams/protocol_fixture.ts` runs a fake backend over HTTP or stdio,
+`server/gateway/route_fixture.ts` wires the public route, and
+`shared/mcp_schema_fixtures.ts` holds sample MCP values. `server/test_preload.ts`
 silences the logger during tests.
 
 ### 2.2 Backend connections and recovery

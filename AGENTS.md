@@ -67,34 +67,24 @@ to the owning doc instead.
 When code and docs disagree, trust the code for current behavior, then fix the
 doc in the same change.
 
-## Scope control
-
-- Keep changes scoped to the user request.
-- Do not move files only for theoretical neatness; prefer names and structure
-  that make ownership clearer.
-
 ## Commands
 
 - Run `bun lint` after code changes.
 - Do not run `npm`, `npx`, `yarn`, `pnpm`, `node`, or ad hoc TypeScript/Biome
   commands when a package script exists.
-- Use `rg`, `fd`, `eza`, and `tre` for inspection.
 
 ## Editing conventions
 
-- Use existing path aliases such as `@/...` for TypeScript and TSX imports.
-- Keep HTML and CSS paths relative where alias imports are not supported.
-- Prefer grouped exports at the bottom of modules when consistent with the file.
-- Do not introduce `any`; use concrete types or `unknown`.
+- Import code through the `@/` alias, even from the same folder. Relative
+  paths are only for non-code files such as JSON, CSS, and HTML; `bun lint`
+  enforces this and the `src/ui`, `src/shared`, `src/server` import boundaries.
 - Use ArkType by default. Reserve the existing Ajv peers for arbitrary provider
   JSON Schema, which ArkType cannot import.
 - Compile input schemas on catalog fetch, reuse validators on calls, and avoid
   repeated validation of the same request or catalog data within that lifecycle.
-- Keep public/exported function parameters and return types explicit.
 - Tests never read or write local private files such as `.env`, `mcp.json`, or
   `db/`. Pass file paths explicitly and use temporary folders under the OS temp
   directory; never change the working directory.
-- Use sentence case for markdown headings.
 
 ## Boundary checks
 
@@ -103,22 +93,11 @@ discovery fallback for legacy backends that reject the probe with HTTP
 `400`/`404`/`405` and an invalid RPC envelope (such as `id: null`). Use only the HTTP
 status for this fallback; keep initialization, pinned peers, and application
 responses strictly validated. Run the negotiation regressions in
-`src/mcp_upstreams/protocol_client.test.ts` and the envelope regressions in
-`src/mcp_upstreams/protocol_validation.test.ts`.
+`src/server/mcp_upstreams/protocol_client.test.ts` and the envelope
+regressions in `src/server/mcp_upstreams/protocol_validation.test.ts`.
 
 Before finishing structural or naming changes, check:
 
-- `src/ui` does not import from `src/gateway`, `src/mcp_upstreams`,
-  `src/server`, or `src/config`.
-- Server-side modules do not import React UI implementation modules.
-- Shared code remains safe for both browser and server runtimes.
 - File and directory names are current in `README.md`, `DESIGN.md`,
   `AGENTS.md`, and config files.
 - `CHANGELOG.md` has an entry for every user-visible change.
-
-Useful checks:
-
-```bash
-rg "@/gateway|@/mcp_upstreams|@/server|@/config" src/ui
-bun lint
-```

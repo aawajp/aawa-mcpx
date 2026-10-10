@@ -38,4 +38,4 @@ EXPOSE 4567
 
 ENV PORT=4567
 
-CMD ["src/index.ts"]
+CMD ["src/server/index.ts"]

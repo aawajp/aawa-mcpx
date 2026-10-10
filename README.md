@@ -12,8 +12,8 @@ clients, and traffic, and lets you choose which tools clients see.
 - Traffic log in SQLite for debugging.
 
 Interactive features (sampling, elicitation, subscriptions, tasks) are not
-supported. [DESIGN.md](DESIGN.md) describes the architecture, protocol
-behavior, and planned design; [CHANGELOG.md](CHANGELOG.md) lists changes.
+supported. [DESIGN.md](/DESIGN.md) describes the architecture, protocol
+behavior, and planned design; [CHANGELOG.md](/CHANGELOG.md) lists changes.
 
 > [!WARNING]
 > The gateway has no client authentication and listens on all interfaces. Its
@@ -155,7 +155,7 @@ Point your MCP client to `http://localhost:<PORT>/mcp`:
 Tools and prompts appear as `serverName__itemName`. Resources appear as
 `aawa-mcpx://resource/<namespace>/<encoded-original-uri>`, and resource templates
 as `aawa-mcpx://template/<namespace>/<original-template>`. Names that would be
-ambiguous are escaped; see [namespaces](DESIGN.md#38-namespaces-and-resource-routing).
+ambiguous are escaped; see [namespaces](/DESIGN.md#38-namespaces-and-resource-routing).
 
 ## Dashboard
 
@@ -198,10 +198,10 @@ Toggles persist to `mcp.json`. Traffic is stored in `db/traffic.db` and cleared 
 | `bun lint` | Type check, then run Biome with automatic fixes |
 | `./scripts/checksum` | SHA-256 checksum of the Docker build context; writes `checksum.txt` and `files.txt` (needs `rg`) |
 
-[AGENTS.md](AGENTS.md) has instructions for AI coding agents.
+[AGENTS.md](/AGENTS.md) has instructions for AI coding agents.
 
 ## License
 
 Licensed under the Apache License 2.0. Copyright © 2026 Mikael Nakajima
-([Aawa Technologies](https://aawa.jp)). See [LICENSE](LICENSE) for the full
+([Aawa Technologies](https://aawa.jp)). See [LICENSE](/LICENSE) for the full
 license text.

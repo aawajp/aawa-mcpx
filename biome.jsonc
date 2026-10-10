@@ -51,6 +51,108 @@
 			}
 		}
 	},
+	"overrides": [
+		{
+			"includes": [
+				"**"
+			],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"patterns": [
+									{
+										"group": [
+											"./**",
+											"../**",
+											"!**/*.{json,jsonc,css,html,svg,png,jpg,jpeg,webp,gif,ico,txt,md,sql,csv,toml,yaml,yml}"
+										],
+										"message": "Use the @/ alias for code imports; relative paths are only for non-code files such as JSON, CSS and HTML."
+									}
+								]
+							}
+						}
+					}
+				}
+			}
+		},
+		{
+			"includes": [
+				"src/ui/**"
+			],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"paths": {
+									"bun:sqlite": "UI code must not access the database."
+								},
+								"patterns": [
+									{
+										"group": [
+											"./**",
+											"../**",
+											"!**/*.{json,jsonc,css,html,svg,png,jpg,jpeg,webp,gif,ico,txt,md,sql,csv,toml,yaml,yml}"
+										],
+										"message": "Use the @/ alias for code imports; relative paths are only for non-code files such as JSON, CSS and HTML."
+									},
+									{
+										"group": [
+											"@/server/**",
+											"node:*"
+										],
+										"message": "UI code may import only @/shared and @/ui."
+									}
+								]
+							}
+						}
+					}
+				}
+			}
+		},
+		{
+			"includes": [
+				"src/shared/**"
+			],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"paths": {
+									"bun:sqlite": "shared/ must not access the database.",
+									"react": "shared/ must not depend on React.",
+									"react-dom": "shared/ must not depend on React."
+								},
+								"patterns": [
+									{
+										"group": [
+											"./**",
+											"../**",
+											"!**/*.{json,jsonc,css,html,svg,png,jpg,jpeg,webp,gif,ico,txt,md,sql,csv,toml,yaml,yml}"
+										],
+										"message": "Use the @/ alias for code imports; relative paths are only for non-code files such as JSON, CSS and HTML."
+									},
+									{
+										"group": [
+											"@/ui/**",
+											"@/server/**"
+										],
+										"message": "shared/ must not import from other layers."
+									}
+								]
+							}
+						}
+					}
+				}
+			}
+		}
+	],
 	"assist": {
 		"enabled": true,
 		"actions": {

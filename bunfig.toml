@@ -36,4 +36,4 @@ env = "BUN_PUBLIC_*"
 
 [test]
 	# silence the logger during tests
-	preload = ["./src/test_preload.ts"]
+	preload = ["./src/server/test_preload.ts"]
