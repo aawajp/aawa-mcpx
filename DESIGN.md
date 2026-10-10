@@ -59,7 +59,7 @@ SDK supplies types only; the gateway implements dispatch and transports itself.
 | `config/` | Load, validate, and persist configuration. |
 | `gateway/` | `server.ts`: `Bun.serve`/route wiring; `mcp_http_route.ts`: HTTP handling; `mcp_request_router.ts`: JSON-RPC dispatch/version adaptation. |
 | | `json_rpc.ts`: incoming envelope parsing; `mcp_session.ts`: public initialization/sessions; `client_activity.ts`: dashboard history; `mcp_handlers.ts`: upstream operations; `mcp_namespaces.ts`: applies namespaces and `[serverName]` description prefixes to catalogs; `ui_routes.ts`: UI APIs/events. |
-| `mcp_upstreams/` | `manager.ts`: stable gateway API/service wiring; `connections.ts`: connection/recovery lifecycle; `health_checks.ts`: probes; `catalog.ts`: caches/exposure state. |
+| `mcp_upstreams/` | `manager.ts`: stable gateway API/service wiring; `connections.ts`: per-backend state record, connection/recovery lifecycle; `health_checks.ts`: probes; `catalog.ts`: caches/exposure state. |
 | | `method_calls.ts`: calls/argument validation; `protocol_client.ts`: JSON-RPC, revision selection, HTTP/SSE and stdio; `tool_result.ts`: structured recovery/duplicate removal; `input_schema.ts`/`output_schema.ts`: provider schema policies; `json_schema.ts`: shared compiler; `logged_request.ts`: traffic logging around calls; `types.d.ts`: manager contracts. |
 | `server/` | `traffic_store.ts`: SQLite traffic storage; `logger.ts`: console logging. |
 | `shared/` | `mcp_protocol.ts`: revision registry, header encoding, `x-mcp-header` rules; `mcp_metadata.ts`: request-metadata validators; `mcp_namespaces.ts`: namespace and resource-URI codec; `mcp_schemas.ts`: MCP validators; `mcp_results.ts`: result types; `mcp_output_schema.ts`: legacy wrappers. |

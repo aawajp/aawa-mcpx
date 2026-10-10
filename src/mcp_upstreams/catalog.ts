@@ -12,10 +12,9 @@ import { createInputSchemaCompiler } from '@/mcp_upstreams/input_schema';
 import type { CompiledSchema } from '@/mcp_upstreams/json_schema';
 import type {
 	Client,
-	McpUpstreamClientsMap,
+	McpUpstreamBackend,
 	McpUpstreamPromptsMap,
 	McpUpstreamResourcesMap,
-	McpUpstreamServer,
 	McpUpstreamToolsMap,
 	OnValidationError,
 	ToggleToolParams,
@@ -31,22 +30,20 @@ import {
 } from '@/shared/mcp_schemas';
 
 type CreateMcpUpstreamCatalogParams = {
-	attemptReconnect: (server: McpUpstreamServer) => Promise<void>;
-	clients: McpUpstreamClientsMap;
+	attemptReconnect: (backend: McpUpstreamBackend) => Promise<void>;
+	backends: Map<string, McpUpstreamBackend>;
 	config: McpConfig;
-	configErrorBackends: Set<string>;
-	getServer: (serverName: string) => McpUpstreamServer | undefined;
 	markMcpUpstreamConfigurationError: (
-		server: McpUpstreamServer,
+		backend: McpUpstreamBackend,
 		error: string,
 	) => void;
 	onValidationError: OnValidationError;
-	promptsCache: McpUpstreamPromptsMap;
-	resourcesCache: McpUpstreamResourcesMap;
-	setMcpUpstreamStatusError: (server: McpUpstreamServer, error: string) => void;
-	toolsCache: McpUpstreamToolsMap;
+	setMcpUpstreamStatusError: (
+		backend: McpUpstreamBackend,
+		error: string,
+	) => void;
 	trafficStore?: TrafficStore;
-	waitForRateLimit: (server: McpUpstreamServer) => Promise<void>;
+	waitForRateLimit: (backend: McpUpstreamBackend) => Promise<void>;
 };
 
 const emptyToolsResult = (): ListToolsResult => ({
@@ -87,32 +84,17 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 	const inputValidators = new WeakMap<Tool, CompiledSchema>();
 	const {
 		attemptReconnect,
-		clients,
+		backends,
 		config,
-		configErrorBackends,
-		getServer,
 		markMcpUpstreamConfigurationError,
 		onValidationError,
-		promptsCache,
-		resourcesCache,
 		setMcpUpstreamStatusError,
-		toolsCache,
 		trafficStore,
 		waitForRateLimit,
 	} = params;
 
-	const isCurrentCatalogClient = (catalogParams: {
-		server: McpUpstreamServer;
-		client: Client;
-	}): boolean => {
-		return (
-			catalogParams.server.serverConfig.enabled &&
-			clients.get(catalogParams.server.serverName) === catalogParams.client
-		);
-	};
-
 	const initializeToolState = async (catalogParams: {
-		server: McpUpstreamServer;
+		server: McpUpstreamBackend;
 		tools: Tool[];
 	}): Promise<void> => {
 		const toolNames = getToolNames(catalogParams.tools);
@@ -152,11 +134,11 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 	// Tools, prompts and resources share one fetch flow. Tools also compile their
 	// schemas, persist exposure state, and keep their cache on runtime errors.
 	const fetchCatalog = async <T>(
-		server: McpUpstreamServer,
+		server: McpUpstreamBackend,
 		options: {
 			method: string;
 			empty: () => T;
-			cache: Map<string, T>;
+			save: (result: T) => void;
 			fetch: (client: Client) => Promise<T>;
 			validate: (result: T) => unknown;
 			keepCacheOnError?: boolean;
@@ -169,18 +151,15 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 		},
 	): Promise<T> => {
 		const serverName = server.serverName;
-		const client = clients.get(serverName);
+		const client = server.client;
 		if (!client) return options.empty();
+		// A backend may be disabled or reconnected while a request is in flight.
 		const isCurrent = (): boolean =>
-			isCurrentCatalogClient({
-				server,
-				client,
-			});
+			server.serverConfig.enabled && server.client === client;
 		try {
 			await waitForRateLimit(server);
 			if (!isCurrent()) return options.empty();
 			const result = await options.fetch(client);
-			// A backend may be disabled or reconnected while the request is in flight.
 			if (!isCurrent()) return options.empty();
 			const parsed = options.validate(result);
 			if (parsed instanceof type.errors)
@@ -189,7 +168,7 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 					method: options.method,
 					error: parsed,
 				});
-			options.cache.set(serverName, result);
+			options.save(result);
 			await options.prepare?.(result, client);
 			if (!isCurrent()) return options.empty();
 			if (options.reject?.(result, client)) return result;
@@ -206,13 +185,13 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 			if (!isCurrent()) return options.empty();
 			const empty = options.empty();
 			if (isMethodNotFoundError(error)) {
-				options.cache.set(serverName, empty);
+				options.save(empty);
 				logger.info(
 					`MCP upstream "${serverName}" does not support ${options.method}`,
 				);
 				return empty;
 			}
-			if (!options.keepCacheOnError) options.cache.set(serverName, empty);
+			if (!options.keepCacheOnError) options.save(empty);
 			logger.error(
 				`Failed to fetch ${options.method} for MCP upstream "${serverName}": ${errorMessage(error)}`,
 			);
@@ -233,7 +212,7 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 	// Validate/compile once for each fetched catalog. Reads and calls only look up
 	// the stored result; bad schemas never disable healthy siblings.
 	const compileTools = (
-		server: McpUpstreamServer,
+		server: McpUpstreamBackend,
 		client: Client,
 		tools: Tool[],
 	): void => {
@@ -277,7 +256,7 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 
 	// enabledTools may only name tools this backend has listed.
 	const rejectUnknownEnabledTools = (
-		server: McpUpstreamServer,
+		server: McpUpstreamBackend,
 		client: Client,
 		tools: Tool[],
 	): boolean => {
@@ -287,7 +266,7 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 			new Set(enabledTools.filter((name) => !toolNames.includes(name))),
 		);
 		if (unknown.length === 0) {
-			configErrorBackends.delete(server.serverName);
+			server.configError = false;
 			return false;
 		}
 		const error = `Configuration error: enabledTools has unknown tools: ${unknown.join(', ')}`;
@@ -311,11 +290,13 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 		return true;
 	};
 
-	const fetchTools = (server: McpUpstreamServer): Promise<ListToolsResult> =>
+	const fetchTools = (server: McpUpstreamBackend): Promise<ListToolsResult> =>
 		fetchCatalog(server, {
 			method: 'tools/list',
 			empty: emptyToolsResult,
-			cache: toolsCache,
+			save: (result) => {
+				server.tools = result;
+			},
 			fetch: (client) =>
 				client.listTools(
 					{},
@@ -343,12 +324,14 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 				}),
 		});
 	const fetchPrompts = (
-		server: McpUpstreamServer,
+		server: McpUpstreamBackend,
 	): Promise<ListPromptsResult> =>
 		fetchCatalog(server, {
 			method: 'prompts/list',
 			empty: emptyPromptsResult,
-			cache: promptsCache,
+			save: (result) => {
+				server.prompts = result;
+			},
 			fetch: (client) =>
 				client.listPrompts(
 					{},
@@ -364,12 +347,14 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 				}),
 		});
 	const fetchResources = (
-		server: McpUpstreamServer,
+		server: McpUpstreamBackend,
 	): Promise<ListResourcesResult> =>
 		fetchCatalog(server, {
 			method: 'resources/list',
 			empty: emptyResourcesResult,
-			cache: resourcesCache,
+			save: (result) => {
+				server.resources = result;
+			},
 			fetch: (client) =>
 				client.listResources(
 					{},
@@ -385,58 +370,57 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 				}),
 		});
 
-	const listAllTools = (): McpUpstreamToolsMap => {
-		return new Map(toolsCache);
-	};
-
-	const listEnabledTools = (): McpUpstreamToolsMap => {
-		const result: McpUpstreamToolsMap = new Map();
-		for (const [serverName, toolsResult] of toolsCache) {
-			if (configErrorBackends.has(serverName)) {
-				result.set(serverName, {
-					...toolsResult,
-					tools: [],
-				});
-				continue;
-			}
-			const enabledSet = new Set(
-				getEnabledTools({
-					serverName,
-				}),
-			);
-			const filteredTools = toolsResult.tools.filter((tool) => {
-				const compiled = inputValidators.get(tool);
-				return (
-					enabledSet.has(tool.name) &&
-					compiled !== undefined &&
-					'validate' in compiled
-				);
-			});
-			result.set(serverName, {
-				...toolsResult,
-				tools: filteredTools,
-			});
+	// Backends that have fetched the given catalog, in configuration order.
+	const collect = <T>(
+		select: (backend: McpUpstreamBackend) => T | undefined,
+	): Map<string, T> => {
+		const result = new Map<string, T>();
+		for (const backend of backends.values()) {
+			const value = select(backend);
+			if (value) result.set(backend.serverName, value);
 		}
 		return result;
 	};
 
-	const listAllPrompts = (): McpUpstreamPromptsMap => {
-		return new Map(promptsCache);
-	};
+	const listAllTools = (): McpUpstreamToolsMap =>
+		collect((backend) => backend.tools);
 
-	const listAllResources = (): McpUpstreamResourcesMap => {
-		return new Map(resourcesCache);
-	};
+	const listEnabledTools = (): McpUpstreamToolsMap =>
+		collect((backend) => {
+			if (!backend.tools) return undefined;
+			if (backend.configError)
+				return {
+					...backend.tools,
+					tools: [],
+				};
+			const enabledSet = new Set(getEnabledTools(backend));
+			return {
+				...backend.tools,
+				tools: backend.tools.tools.filter((tool) => {
+					const compiled = inputValidators.get(tool);
+					return (
+						enabledSet.has(tool.name) &&
+						compiled !== undefined &&
+						'validate' in compiled
+					);
+				}),
+			};
+		});
+
+	const listAllPrompts = (): McpUpstreamPromptsMap =>
+		collect((backend) => backend.prompts);
+
+	const listAllResources = (): McpUpstreamResourcesMap =>
+		collect((backend) => backend.resources);
 
 	const getEnabledTools = (catalogParams: { serverName: string }): string[] => {
-		const server = getServer(catalogParams.serverName);
-		const tools = toolsCache.get(catalogParams.serverName)?.tools ?? [];
-		if (!server) {
+		const backend = backends.get(catalogParams.serverName);
+		if (!backend) {
 			return [];
 		}
 		return filterEnabledTools(
-			getToolNames(tools),
-			server.serverConfig.enabledTools,
+			getToolNames(backend.tools?.tools ?? []),
+			backend.serverConfig.enabledTools,
 		);
 	};
 
@@ -444,22 +428,22 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 		serverName: string;
 		toolName: string;
 	}): CompiledSchema | undefined => {
-		const tool = toolsCache
+		const tool = backends
 			.get(catalogParams.serverName)
-			?.tools.find((tool) => tool.name === catalogParams.toolName);
+			?.tools?.tools.find((tool) => tool.name === catalogParams.toolName);
 		return tool ? inputValidators.get(tool) : undefined;
 	};
 
 	const toggleTool = async (
 		catalogParams: ToggleToolParams,
 	): Promise<string[]> => {
-		const server = getServer(catalogParams.serverName);
+		const server = backends.get(catalogParams.serverName);
 		if (!server) {
 			throw new Error(
 				`MCP upstream "${catalogParams.serverName}" is not available`,
 			);
 		}
-		const tools = toolsCache.get(catalogParams.serverName)?.tools ?? [];
+		const tools = server.tools?.tools ?? [];
 		const toolNames = getToolNames(tools);
 		if (!toolNames.includes(catalogParams.toolName)) {
 			throw new Error(
@@ -494,8 +478,10 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 			});
 			// nextEnabled only names listed tools, so this clears any
 			// configuration error about unknown enabledTools.
-			if (configErrorBackends.delete(server.serverName))
+			if (server.configError) {
+				server.configError = false;
 				await attemptReconnect(server);
+			}
 			return nextEnabled;
 		} catch (err) {
 			server.serverConfig.enabledTools = previousEnabled;

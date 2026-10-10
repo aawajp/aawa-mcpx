@@ -1,14 +1,13 @@
-import { createMcpUpstreamConnections } from '@/mcp_upstreams/connections';
+import {
+	createMcpUpstreamBackend,
+	createMcpUpstreamConnections,
+} from '@/mcp_upstreams/connections';
 import {
 	BackendTransportError,
 	ProtocolClient,
 } from '@/mcp_upstreams/protocol_client';
 import { fixtureReply } from '@/mcp_upstreams/protocol_fixture';
-import type {
-	McpUpstreamClientsMap,
-	McpUpstreamServer,
-	McpUpstreamStatus,
-} from '@/mcp_upstreams/types';
+import type { McpUpstreamBackend } from '@/mcp_upstreams/types';
 import {
 	CURRENT_PROTOCOL_VERSION,
 	recordOf,
@@ -19,10 +18,10 @@ import { expect, jest, spyOn, test } from 'bun:test';
 
 const createHarness = (
 	url = 'http://127.0.0.1/mcp',
-	refreshCatalog: (server: McpUpstreamServer) => Promise<void> = async () =>
+	refreshCatalog: (backend: McpUpstreamBackend) => Promise<void> = async () =>
 		undefined,
 ) => {
-	const server: McpUpstreamServer = {
+	const backend = createMcpUpstreamBackend({
 		serverName: 'recovery',
 		serverConfig: {
 			type: 'http',
@@ -31,33 +30,18 @@ const createHarness = (
 			timeout: 1000,
 			trafficLimit: 1000,
 		},
-	};
-	const clients: McpUpstreamClientsMap = new Map();
-	const statuses = new Map<string, McpUpstreamStatus>();
-	const reconnectTimers = new Map<string, Timer>();
+	});
 	const connections = createMcpUpstreamConnections({
-		clients,
-		statuses,
-		reconnectTimers,
-		servers: new Map([
+		backends: new Map([
 			[
-				server.serverName,
-				server,
+				backend.serverName,
+				backend,
 			],
 		]),
-		configErrorBackends: new Set(),
-		healthCheckFailures: new Map(),
-		promptsCache: new Map(),
-		resourcesCache: new Map(),
-		toolsCache: new Map(),
-		requestQueues: new Map(),
 		refreshCatalog,
 	});
 	return {
-		server,
-		clients,
-		statuses,
-		reconnectTimers,
+		backend,
 		connections,
 	};
 };
@@ -72,7 +56,7 @@ test('reconnects back off with jitter, cap traffic, and reset after recovery', a
 	try {
 		await harness.connections.initialize();
 		for (let attempt = 0; attempt < 5; attempt += 1)
-			await harness.connections.attemptReconnect(harness.server);
+			await harness.connections.attemptReconnect(harness.backend);
 		expect(timers.mock.calls.map((call) => call[1])).toEqual([
 			7500,
 			15000,
@@ -81,8 +65,8 @@ test('reconnects back off with jitter, cap traffic, and reset after recovery', a
 			45000,
 			45000,
 		]);
-		expect(harness.reconnectTimers.size).toBe(1);
-		expect(harness.statuses.get('recovery')).toMatchObject({
+		expect(harness.backend.reconnectTimer).toBeDefined();
+		expect(harness.backend.status).toMatchObject({
 			connected: false,
 			errorState: 'runtime',
 			actionRequired: false,
@@ -90,16 +74,14 @@ test('reconnects back off with jitter, cap traffic, and reset after recovery', a
 		connect.mockImplementation(async function (this: ProtocolClient) {
 			this.protocolVersion = CURRENT_PROTOCOL_VERSION;
 		});
-		await harness.connections.attemptReconnect(harness.server);
-		expect(harness.reconnectTimers.size).toBe(0);
-		expect(harness.statuses.get('recovery')?.connected).toBe(true);
-		harness.clients
-			.get('recovery')
-			?.ontransporterror(new Error('Connection reset'));
+		await harness.connections.attemptReconnect(harness.backend);
+		expect(harness.backend.reconnectTimer).toBeUndefined();
+		expect(harness.backend.status?.connected).toBe(true);
+		harness.backend.client?.ontransporterror(new Error('Connection reset'));
 		expect(timers.mock.calls.at(-1)?.[1]).toBe(7500);
-		await harness.connections.setBackendEnabled(harness.server, false);
-		expect(harness.reconnectTimers.size).toBe(0);
-		await harness.connections.attemptReconnect(harness.server);
+		await harness.connections.setBackendEnabled(harness.backend, false);
+		expect(harness.backend.reconnectTimer).toBeUndefined();
+		await harness.connections.attemptReconnect(harness.backend);
 		expect(connect).toHaveBeenCalledTimes(7);
 	} finally {
 		await harness.connections.disconnect();
@@ -124,8 +106,8 @@ test('concurrent reconnects share one handshake and catalog refresh', async () =
 			release = resolve;
 		});
 		connect.mockImplementation(async () => pending);
-		const first = harness.connections.attemptReconnect(harness.server);
-		const second = harness.connections.attemptReconnect(harness.server);
+		const first = harness.connections.attemptReconnect(harness.backend);
+		const second = harness.connections.attemptReconnect(harness.backend);
 		await Bun.sleep(0);
 		expect(connect).toHaveBeenCalledTimes(2);
 		release();
@@ -134,7 +116,7 @@ test('concurrent reconnects share one handshake and catalog refresh', async () =
 			second,
 		]);
 		expect(refreshes).toBe(1);
-		expect(harness.reconnectTimers.size).toBe(0);
+		expect(harness.backend.reconnectTimer).toBeUndefined();
 	} finally {
 		release();
 		await harness.connections.disconnect();
@@ -154,14 +136,14 @@ test('shutdown during a reconnect cannot recreate a client or retry timer', asyn
 			release = resolve;
 		});
 		connect.mockImplementation(async () => pending);
-		const reconnect = harness.connections.attemptReconnect(harness.server);
+		const reconnect = harness.connections.attemptReconnect(harness.backend);
 		await Bun.sleep(0);
 		await harness.connections.disconnect();
 		release();
 		await reconnect;
-		expect(harness.clients.size).toBe(0);
-		expect(harness.reconnectTimers.size).toBe(0);
-		await harness.connections.attemptReconnect(harness.server);
+		expect(harness.backend.client).toBeUndefined();
+		expect(harness.backend.reconnectTimer).toBeUndefined();
+		await harness.connections.attemptReconnect(harness.backend);
 		expect(connect).toHaveBeenCalledTimes(2);
 	} finally {
 		release();
@@ -194,7 +176,7 @@ test('a backend reconnects automatically when the outage ends', async () => {
 	jest.useFakeTimers();
 	try {
 		await harness.connections.initialize();
-		expect(harness.statuses.get('recovery')).toMatchObject({
+		expect(harness.backend.status).toMatchObject({
 			connected: false,
 			actionRequired: false,
 		});
@@ -202,14 +184,14 @@ test('a backend reconnects automatically when the outage ends', async () => {
 		jest.advanceTimersByTime(5000);
 		for (
 			let turn = 0;
-			turn < 1000 && !harness.statuses.get('recovery')?.connected;
+			turn < 1000 && !harness.backend.status?.connected;
 			turn += 1
 		)
 			await new Promise((resolve) => setImmediate(resolve));
-		expect(harness.statuses.get('recovery')?.connected).toBe(true);
+		expect(harness.backend.status?.connected).toBe(true);
 		expect(discoveries).toBe(2);
 		expect(refreshes).toBe(1);
-		expect(harness.reconnectTimers.size).toBe(0);
+		expect(harness.backend.reconnectTimer).toBeUndefined();
 	} finally {
 		jest.useRealTimers();
 		await harness.connections.disconnect();
@@ -259,7 +241,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 		});
 		try {
 			await harness.connections.initialize();
-			const client = harness.clients.get('recovery');
+			const client = harness.backend.client;
 			if (!client) throw new Error('Missing client');
 			failed = true;
 			await expect(
@@ -268,18 +250,18 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 					arguments: {},
 				}),
 			).rejects.toThrow();
-			expect(harness.statuses.get('recovery')?.connected).toBe(false);
-			expect(harness.reconnectTimers.size).toBe(1);
+			expect(harness.backend.status?.connected).toBe(false);
+			expect(harness.backend.reconnectTimer).toBeDefined();
 			failed = false;
-			await harness.connections.attemptReconnect(harness.server);
-			expect(harness.statuses.get('recovery')).toMatchObject({
+			await harness.connections.attemptReconnect(harness.backend);
+			expect(harness.backend.status).toMatchObject({
 				connected: true,
 				protocolVersion: version,
 			});
 			expect(refreshes).toBe(2);
 			expect(toolCalls).toBe(1);
 			client.ontransporterror(new Error('Late error from old client'));
-			expect(harness.statuses.get('recovery')?.connected).toBe(true);
+			expect(harness.backend.status?.connected).toBe(true);
 		} finally {
 			await harness.connections.disconnect();
 			endpoint.stop(true);

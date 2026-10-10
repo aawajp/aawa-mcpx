@@ -1,5 +1,6 @@
 import { createHandlers } from '@/gateway/mcp_handlers';
 import { createMcpRequestRouter } from '@/gateway/mcp_request_router';
+import { createMcpUpstreamBackend } from '@/mcp_upstreams/connections';
 import { createInputSchemaCompiler } from '@/mcp_upstreams/input_schema';
 import { createMcpUpstreamOperations } from '@/mcp_upstreams/method_calls';
 import { ProtocolClient } from '@/mcp_upstreams/protocol_client';
@@ -48,12 +49,6 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 			if ('issue' in compiled) throw new Error(compiled.issue.detail);
 			const validate = mock(compiled.validate);
 			const operations = createMcpUpstreamOperations({
-				clients: new Map([
-					[
-						'backend',
-						client,
-					],
-				]),
 				getEnabledTools: () => [
 					'echo',
 				],
@@ -61,7 +56,10 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 					validate,
 				}),
 				getOutputSchema: () => undefined,
-				getServer: () => server,
+				getBackend: () => ({
+					...createMcpUpstreamBackend(server),
+					client,
+				}),
 				onValidationError: () => undefined,
 				waitForRateLimit: async () => undefined,
 			});

@@ -8,6 +8,7 @@ import { createHandlers } from '@/gateway/mcp_handlers';
 import { createMcpRequestRouter } from '@/gateway/mcp_request_router';
 import { createMcpSessionManager } from '@/gateway/mcp_session';
 import { createUiRoutes } from '@/gateway/ui_routes';
+import { createMcpUpstreamBackend } from '@/mcp_upstreams/connections';
 import { createInputSchemaCompiler } from '@/mcp_upstreams/input_schema';
 import { createMcpUpstreamManager } from '@/mcp_upstreams/manager';
 import { createMcpUpstreamOperations } from '@/mcp_upstreams/method_calls';
@@ -52,13 +53,10 @@ test('the shared call path validates arguments exactly once before backend work'
 		protocolVersion: CURRENT_PROTOCOL_VERSION,
 	} as unknown as ProtocolClient;
 	const operations = createMcpUpstreamOperations({
-		clients: new Map([
-			[
-				'fixture',
-				client,
-			],
-		]),
-		getServer: () => server,
+		getBackend: () => ({
+			...createMcpUpstreamBackend(server),
+			client,
+		}),
 		getEnabledTools: () => [
 			'echo',
 		],

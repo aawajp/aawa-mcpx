@@ -1,13 +1,12 @@
 import { mcpConfigType } from '@/config/schema';
-import { createMcpUpstreamConnections } from '@/mcp_upstreams/connections';
+import {
+	createMcpUpstreamBackend,
+	createMcpUpstreamConnections,
+} from '@/mcp_upstreams/connections';
 import {
 	ProtocolClient,
 	ProtocolNegotiationError,
 } from '@/mcp_upstreams/protocol_client';
-import type {
-	McpUpstreamRequestQueue,
-	McpUpstreamStatus,
-} from '@/mcp_upstreams/types';
 
 import { expect, spyOn, test } from 'bun:test';
 
@@ -24,41 +23,31 @@ test('cancellation frees a rate-limit wait without reserving a dispatch time', a
 	});
 	const serverConfig = config.mcpServers.mock;
 	if (!serverConfig) throw new Error('Missing fixture');
-	const server = {
+	const backend = createMcpUpstreamBackend({
 		serverName: 'mock',
 		serverConfig,
-	};
-	const requestQueues = new Map<string, McpUpstreamRequestQueue>();
+	});
 	const connections = createMcpUpstreamConnections({
-		clients: new Map(),
-		configErrorBackends: new Set(),
-		healthCheckFailures: new Map(),
-		promptsCache: new Map(),
-		reconnectTimers: new Map(),
-		requestQueues,
-		resourcesCache: new Map(),
-		servers: new Map([
+		backends: new Map([
 			[
 				'mock',
-				server,
+				backend,
 			],
 		]),
-		statuses: new Map(),
-		toolsCache: new Map(),
 		refreshCatalog: async () => undefined,
 	});
-	await connections.waitForRateLimit(server);
-	const lastDispatch = requestQueues.get('mock')?.lastRequestTime;
+	await connections.waitForRateLimit(backend);
+	const lastDispatch = backend.lastRequestTime;
 	const controller = new AbortController();
-	const waiting = connections.waitForRateLimit(server, controller.signal);
+	const waiting = connections.waitForRateLimit(backend, controller.signal);
 	const rejection = waiting.catch((error: unknown) => error);
 	controller.abort();
 	expect(await rejection).toBe(controller.signal.reason);
-	expect(requestQueues.get('mock')?.lastRequestTime).toBe(lastDispatch);
+	expect(backend.lastRequestTime).toBe(lastDispatch);
 	await expect(
-		connections.waitForRateLimit(server, controller.signal),
+		connections.waitForRateLimit(backend, controller.signal),
 	).rejects.toThrow();
-	expect(requestQueues.get('mock')?.lastRequestTime).toBe(lastDispatch);
+	expect(backend.lastRequestTime).toBe(lastDispatch);
 });
 
 test('protocol failure stops reconnects until explicitly re-enabled', async () => {
@@ -73,12 +62,10 @@ test('protocol failure stops reconnects until explicitly re-enabled', async () =
 	});
 	const serverConfig = config.mcpServers.mock;
 	if (!serverConfig) throw new Error('Missing fixture');
-	const server = {
+	const backend = createMcpUpstreamBackend({
 		serverName: 'mock',
 		serverConfig,
-	};
-	const statuses = new Map<string, McpUpstreamStatus>();
-	const reconnectTimers = new Map<string, Timer>();
+	});
 	const connect = spyOn(ProtocolClient.prototype, 'connect').mockRejectedValue(
 		new ProtocolNegotiationError(
 			{
@@ -91,40 +78,31 @@ test('protocol failure stops reconnects until explicitly re-enabled', async () =
 		),
 	);
 	const connections = createMcpUpstreamConnections({
-		clients: new Map(),
-		configErrorBackends: new Set(),
-		healthCheckFailures: new Map(),
-		promptsCache: new Map(),
-		reconnectTimers,
-		requestQueues: new Map(),
-		resourcesCache: new Map(),
-		servers: new Map([
+		backends: new Map([
 			[
 				'mock',
-				server,
+				backend,
 			],
 		]),
-		statuses,
-		toolsCache: new Map(),
 		refreshCatalog: async () => undefined,
 	});
 	try {
 		await connections.initialize();
-		expect(statuses.get('mock')).toMatchObject({
+		expect(backend.status).toMatchObject({
 			connected: false,
 			errorState: 'protocol',
 			actionRequired: true,
 		});
-		expect(statuses.get('mock')?.error).toContain(
+		expect(backend.status?.error).toContain(
 			'server/discover (attempted 2026-07-28, HTTP 404, RPC -32601)',
 		);
-		expect(reconnectTimers.size).toBe(0);
-		await connections.attemptReconnect(server);
+		expect(backend.reconnectTimer).toBeUndefined();
+		await connections.attemptReconnect(backend);
 		expect(connect).toHaveBeenCalledTimes(1);
-		await connections.setBackendEnabled(server, false);
-		await connections.setBackendEnabled(server, true);
+		await connections.setBackendEnabled(backend, false);
+		await connections.setBackendEnabled(backend, true);
 		expect(connect).toHaveBeenCalledTimes(2);
-		expect(reconnectTimers.size).toBe(0);
+		expect(backend.reconnectTimer).toBeUndefined();
 	} finally {
 		await connections.disconnect();
 		connect.mockRestore();

@@ -10,8 +10,7 @@ import { createToolResultNormalizer } from '@/mcp_upstreams/tool_result';
 import type {
 	CallToolParams,
 	GetPromptParams,
-	McpUpstreamClientsMap,
-	McpUpstreamServer,
+	McpUpstreamBackend,
 	OnValidationError,
 	ReadResourceParams,
 } from '@/mcp_upstreams/types';
@@ -25,7 +24,6 @@ import {
 } from '@/shared/mcp_schemas';
 
 type CreateMcpUpstreamOperationsParams = {
-	clients: McpUpstreamClientsMap;
 	getEnabledTools: (params: { serverName: string }) => string[];
 	getOutputSchema: (params: {
 		serverName: string;
@@ -35,11 +33,11 @@ type CreateMcpUpstreamOperationsParams = {
 		serverName: string;
 		toolName: string;
 	}) => CompiledSchema | undefined;
-	getServer: (serverName: string) => McpUpstreamServer | undefined;
+	getBackend: (serverName: string) => McpUpstreamBackend | undefined;
 	onValidationError: OnValidationError;
 	trafficStore?: TrafficStore;
 	waitForRateLimit: (
-		server: McpUpstreamServer,
+		backend: McpUpstreamBackend,
 		signal?: AbortSignal,
 	) => Promise<void>;
 };
@@ -48,9 +46,8 @@ const createMcpUpstreamOperations = (
 	params: CreateMcpUpstreamOperationsParams,
 ) => {
 	const {
-		clients,
 		getEnabledTools,
-		getServer,
+		getBackend,
 		onValidationError,
 		trafficStore,
 		waitForRateLimit,
@@ -62,8 +59,8 @@ const createMcpUpstreamOperations = (
 	): Promise<ToolCallResult> => {
 		const { serverName, toolName, args } = callParams;
 		callParams.signal?.throwIfAborted();
-		const server = getServer(serverName);
-		const client = clients.get(serverName);
+		const server = getBackend(serverName);
+		const client = server?.client;
 		if (!server?.serverConfig.enabled)
 			throw new BackendRpcError(
 				`MCP upstream "${serverName}" is unknown or disabled`,
@@ -167,8 +164,8 @@ const createMcpUpstreamOperations = (
 	): Promise<GetPromptResult> => {
 		const { serverName, promptName, args } = promptParams;
 		promptParams.signal?.throwIfAborted();
-		const server = getServer(serverName);
-		const client = clients.get(serverName);
+		const server = getBackend(serverName);
+		const client = server?.client;
 		if (!server?.serverConfig.enabled)
 			throw new BackendRpcError(
 				`MCP upstream "${serverName}" is unknown or disabled`,
@@ -215,8 +212,8 @@ const createMcpUpstreamOperations = (
 	): Promise<ReadResourceResult> => {
 		const { serverName, uri } = resourceParams;
 		resourceParams.signal?.throwIfAborted();
-		const server = getServer(serverName);
-		const client = clients.get(serverName);
+		const server = getBackend(serverName);
+		const client = server?.client;
 		if (!server?.serverConfig.enabled)
 			throw new BackendRpcError(
 				`MCP upstream "${serverName}" is unknown or disabled`,

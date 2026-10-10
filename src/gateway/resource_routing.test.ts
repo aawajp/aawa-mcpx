@@ -1,5 +1,6 @@
 import { createHandlers } from '@/gateway/mcp_handlers';
 import { createMcpRequestRouter } from '@/gateway/mcp_request_router';
+import { createMcpUpstreamBackend } from '@/mcp_upstreams/connections';
 import { createInputSchemaCompiler } from '@/mcp_upstreams/input_schema';
 import { createMcpUpstreamOperations } from '@/mcp_upstreams/method_calls';
 import { ProtocolClient } from '@/mcp_upstreams/protocol_client';
@@ -84,15 +85,18 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 			const compiled = createInputSchemaCompiler()(inputSchema);
 			const rateLimit = mock(async () => undefined);
 			const operations = createMcpUpstreamOperations({
-				clients,
 				getEnabledTools: () => [
 					'echo',
 				],
 				getInputValidator: () => compiled,
 				getOutputSchema: () => undefined,
-				getServer: (name) => {
+				getBackend: (name) => {
 					const existing = servers.get(name);
-					if (existing) return existing;
+					if (existing)
+						return {
+							...createMcpUpstreamBackend(existing),
+							client: clients.get(name),
+						};
 					const base = servers.get('fixture');
 					if (
 						!base ||
@@ -102,14 +106,13 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 						].includes(name)
 					)
 						return undefined;
-					return {
-						...base,
+					return createMcpUpstreamBackend({
 						serverName: name,
 						serverConfig: {
 							...base.serverConfig,
 							enabled: name !== 'disabled',
 						},
-					};
+					});
 				},
 				onValidationError: () => undefined,
 				waitForRateLimit: rateLimit,

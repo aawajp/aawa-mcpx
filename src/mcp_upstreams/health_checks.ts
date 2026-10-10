@@ -2,8 +2,7 @@ import { type } from 'arktype';
 
 import type {
 	Client,
-	McpUpstreamClientsMap,
-	McpUpstreamServer,
+	McpUpstreamBackend,
 	OnValidationError,
 } from '@/mcp_upstreams/types';
 import { logger } from '@/server/logger';
@@ -16,43 +15,33 @@ const HEALTH_CHECK_FAILURE_THRESHOLD = 2;
 const HEALTH_CHECK_IDLE_MS = 60_000;
 
 type CreateMcpUpstreamHealthChecksParams = {
-	clients: McpUpstreamClientsMap;
-	getServer: (serverName: string) => McpUpstreamServer | undefined;
-	healthCheckFailures: Map<string, number>;
-	healthCheckReadyBackends: Set<string>;
-	markMcpUpstreamDown: (server: McpUpstreamServer, error: string) => void;
+	backends: Map<string, McpUpstreamBackend>;
+	markMcpUpstreamDown: (backend: McpUpstreamBackend, error: string) => void;
 	onValidationError: OnValidationError;
-	waitForRateLimit: (server: McpUpstreamServer) => Promise<void>;
+	waitForRateLimit: (backend: McpUpstreamBackend) => Promise<void>;
 };
 
 const createMcpUpstreamHealthChecks = (
 	params: CreateMcpUpstreamHealthChecksParams,
 ) => {
-	const {
-		clients,
-		getServer,
-		healthCheckFailures,
-		healthCheckReadyBackends,
-		markMcpUpstreamDown,
-		onValidationError,
-		waitForRateLimit,
-	} = params;
+	const { backends, markMcpUpstreamDown, onValidationError, waitForRateLimit } =
+		params;
 	let healthCheckTimer: Timer | null = null;
 	let healthCheckRunning = false;
 
 	const isCurrentHealthTarget = (
-		server: McpUpstreamServer,
+		backend: McpUpstreamBackend,
 		client: Client,
 	): boolean => {
 		return (
-			server.serverConfig.enabled &&
-			healthCheckReadyBackends.has(server.serverName) &&
-			clients.get(server.serverName) === client
+			backend.serverConfig.enabled &&
+			backend.healthCheckReady &&
+			backend.client === client
 		);
 	};
 
 	const checkMcpUpstreamHealth = async (
-		server: McpUpstreamServer,
+		backend: McpUpstreamBackend,
 		client: Client,
 	): Promise<
 		| {
@@ -66,33 +55,33 @@ const createMcpUpstreamHealthChecks = (
 				state: 'stale';
 		  }
 	> => {
-		if (!isCurrentHealthTarget(server, client))
+		if (!isCurrentHealthTarget(backend, client))
 			return {
 				state: 'stale',
 			};
 
 		const start = Date.now();
 		const timeout = Math.min(
-			server.serverConfig.timeout,
+			backend.serverConfig.timeout,
 			HEALTH_CHECK_TIMEOUT_MS,
 		);
 		try {
-			await waitForRateLimit(server);
-			if (!isCurrentHealthTarget(server, client))
+			await waitForRateLimit(backend);
+			if (!isCurrentHealthTarget(backend, client))
 				return {
 					state: 'stale',
 				};
 			const result = await client.ping({
 				timeout,
 			});
-			if (!isCurrentHealthTarget(server, client))
+			if (!isCurrentHealthTarget(backend, client))
 				return {
 					state: 'stale',
 				};
 			const parsed = pingResultType(result);
 			if (parsed instanceof type.errors) {
 				onValidationError({
-					server,
+					server: backend,
 					method: 'ping',
 					error: parsed,
 				});
@@ -101,7 +90,7 @@ const createMcpUpstreamHealthChecks = (
 				state: 'healthy',
 			};
 		} catch (err) {
-			if (!isCurrentHealthTarget(server, client))
+			if (!isCurrentHealthTarget(backend, client))
 				return {
 					state: 'stale',
 				};
@@ -118,47 +107,49 @@ const createMcpUpstreamHealthChecks = (
 	};
 
 	const runHealthChecks = async (): Promise<void> => {
-		const readyServerNames = Array.from(healthCheckReadyBackends);
+		const readyBackends = Array.from(backends.values()).filter(
+			(backend) => backend.healthCheckReady,
+		);
 		await Promise.all(
-			readyServerNames.map(async (serverName) => {
-				const server = getServer(serverName);
-				const client = clients.get(serverName);
-				if (!server || !client) return;
+			readyBackends.map(async (backend) => {
+				const serverName = backend.serverName;
+				const client = backend.client;
+				if (!client) return;
 				// Any successful RPC proves reachability; busy backends need no ping.
 				if (
 					Date.now() - client.lastSuccessfulRequestAt <
 					HEALTH_CHECK_IDLE_MS
 				) {
-					healthCheckFailures.delete(serverName);
+					backend.healthCheckFailures = 0;
 					return;
 				}
 
-				const result = await checkMcpUpstreamHealth(server, client);
+				const result = await checkMcpUpstreamHealth(backend, client);
 				if (
-					!isCurrentHealthTarget(server, client) ||
+					!isCurrentHealthTarget(backend, client) ||
 					result.state === 'stale'
 				) {
 					return;
 				}
 				if (result.state === 'healthy') {
-					const previousFailures = healthCheckFailures.get(serverName) ?? 0;
+					const previousFailures = backend.healthCheckFailures;
 					if (previousFailures > 0) {
 						logger.info(
 							`MCP upstream "${serverName}" health check recovered after ${previousFailures} failed check(s)`,
 						);
-						healthCheckFailures.delete(serverName);
+						backend.healthCheckFailures = 0;
 					}
 					return;
 				}
 
-				const failures = (healthCheckFailures.get(serverName) ?? 0) + 1;
-				healthCheckFailures.set(serverName, failures);
+				const failures = backend.healthCheckFailures + 1;
+				backend.healthCheckFailures = failures;
 
 				if (failures >= HEALTH_CHECK_FAILURE_THRESHOLD) {
 					logger.error(
 						`MCP upstream "${serverName}" failed ${failures} consecutive health check(s); marking down: ${result.error}`,
 					);
-					markMcpUpstreamDown(server, `Health check failed: ${result.error}`);
+					markMcpUpstreamDown(backend, `Health check failed: ${result.error}`);
 					return;
 				}
 				logger.warn(

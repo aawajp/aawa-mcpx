@@ -4,42 +4,40 @@ import {
 	ProtocolNegotiationError,
 } from '@/mcp_upstreams/protocol_client';
 import type {
-	McpUpstreamClientsMap,
+	McpUpstreamBackend,
 	McpUpstreamErrorState,
-	McpUpstreamPromptsMap,
-	McpUpstreamRequestQueue,
-	McpUpstreamResourcesMap,
 	McpUpstreamServer,
 	McpUpstreamStatus,
-	McpUpstreamToolsMap,
 	OnValidationError,
 } from '@/mcp_upstreams/types';
 import { logger } from '@/server/logger';
 import type { TrafficStore } from '@/server/traffic_store';
 import { errorMessage } from '@/shared/common';
-import {
-	type ProtocolVersion,
-	SUPPORTED_PROTOCOL_VERSIONS,
-} from '@/shared/mcp_protocol';
+import { SUPPORTED_PROTOCOL_VERSIONS } from '@/shared/mcp_protocol';
 
 const RECONNECT_INITIAL_DELAY_MS = 5000;
 const RECONNECT_MAX_DELAY_MS = 60_000;
 const MIN_INTERVAL_MS = 1000;
 
 type CreateMcpUpstreamConnectionsParams = {
-	clients: McpUpstreamClientsMap;
-	configErrorBackends: Set<string>;
-	healthCheckFailures: Map<string, number>;
-	promptsCache: McpUpstreamPromptsMap;
-	reconnectTimers: Map<string, Timer>;
-	requestQueues: Map<string, McpUpstreamRequestQueue>;
-	resourcesCache: McpUpstreamResourcesMap;
-	servers: Map<string, McpUpstreamServer>;
-	statuses: Map<string, McpUpstreamStatus>;
-	toolsCache: McpUpstreamToolsMap;
+	backends: Map<string, McpUpstreamBackend>;
 	trafficStore?: TrafficStore;
-	refreshCatalog: (server: McpUpstreamServer) => Promise<void>;
+	refreshCatalog: (backend: McpUpstreamBackend) => Promise<void>;
 };
+
+const createMcpUpstreamBackend = (
+	server: McpUpstreamServer,
+): McpUpstreamBackend => ({
+	...server,
+	epoch: 0,
+	configError: false,
+	protocolError: false,
+	reconnectAttempts: 0,
+	healthCheckReady: false,
+	healthCheckFailures: 0,
+	lastRequestTime: 0,
+	catalogExpiresAt: 0,
+});
 
 const transportFields = (
 	config: McpUpstreamServer['serverConfig'],
@@ -67,79 +65,35 @@ const transportFields = (
 const createMcpUpstreamConnections = (
 	params: CreateMcpUpstreamConnectionsParams,
 ) => {
-	const {
-		clients,
-		configErrorBackends,
-		healthCheckFailures,
-		promptsCache,
-		reconnectTimers,
-		requestQueues,
-		resourcesCache,
-		servers,
-		statuses,
-		toolsCache,
-		trafficStore,
-		refreshCatalog,
-	} = params;
-	const healthCheckReadyBackends = new Set<string>();
-	const connectionEpochs = new Map<string, number>();
-	const protocolVersions = new Map<string, ProtocolVersion>();
-	const protocolErrorBackends = new Set<string>();
-	const reconnectAttempts = new Map<string, number>();
-	const reconnects = new Map<
-		string,
-		{
-			epoch: number;
-			promise: Promise<void>;
-		}
-	>();
-	const connectingClients = new Map<string, ProtocolClient>();
-	const connectionAttempts = new Map<
-		string,
-		{
-			epoch: number;
-			promise: Promise<boolean>;
-		}
-	>();
+	const { backends, trafficStore, refreshCatalog } = params;
 	let stopped = false;
-	const isConnectionBlocked = (name: string): boolean =>
-		configErrorBackends.has(name) || protocolErrorBackends.has(name);
-
-	const advanceConnectionEpoch = (serverName: string): void => {
-		connectionEpochs.set(
-			serverName,
-			(connectionEpochs.get(serverName) ?? 0) + 1,
-		);
-	};
+	const isConnectionBlocked = (backend: McpUpstreamBackend): boolean =>
+		backend.configError || backend.protocolError;
 
 	const isCurrentConnectionAttempt = (
-		server: McpUpstreamServer,
+		backend: McpUpstreamBackend,
 		epoch: number,
 	): boolean => {
-		return (
-			!stopped &&
-			server.serverConfig.enabled &&
-			(connectionEpochs.get(server.serverName) ?? 0) === epoch
-		);
+		return !stopped && backend.serverConfig.enabled && backend.epoch === epoch;
 	};
 
 	const setMcpUpstreamStatus = (statusParams: {
-		server: McpUpstreamServer;
+		backend: McpUpstreamBackend;
 		connected: boolean;
 		error?: string;
 		errorState?: McpUpstreamErrorState;
 		actionRequired?: boolean;
 		preserveDetails?: boolean;
 	}): void => {
-		const serverName = statusParams.server.serverName;
-		const existing = statuses.get(serverName);
+		const backend = statusParams.backend;
+		const existing = backend.status;
 		const preserveDetails = statusParams.preserveDetails ?? true;
-		const next: McpUpstreamStatus = {
-			serverName,
-			protocolVersion: protocolVersions.get(serverName),
-			...transportFields(statusParams.server.serverConfig),
-			enabled: statusParams.server.serverConfig.enabled,
-			enabledTools: statusParams.server.serverConfig.enabledTools ?? [],
+		backend.status = {
+			serverName: backend.serverName,
+			protocolVersion: backend.protocolVersion,
+			...transportFields(backend.serverConfig),
+			enabled: backend.serverConfig.enabled,
+			enabledTools: backend.serverConfig.enabledTools ?? [],
 			connected: statusParams.connected,
 			error: statusParams.error,
 			errorState: statusParams.errorState,
@@ -148,57 +102,40 @@ const createMcpUpstreamConnections = (
 			capabilities: preserveDetails ? existing?.capabilities : undefined,
 			instructions: preserveDetails ? existing?.instructions : undefined,
 		};
-		statuses.set(serverName, next);
 	};
 
-	const getServer = (serverName: string): McpUpstreamServer | undefined => {
-		return servers.get(serverName);
+	const getBackend = (serverName: string): McpUpstreamBackend | undefined => {
+		return backends.get(serverName);
 	};
 
 	const closeMcpUpstreamConnection = async (
-		server: McpUpstreamServer,
+		backend: McpUpstreamBackend,
 		logErrors = false,
 	): Promise<void> => {
-		const serverName = server.serverName;
-		healthCheckReadyBackends.delete(serverName);
-		const client = clients.get(serverName);
+		backend.healthCheckReady = false;
+		const client = backend.client;
 		if (!client) return;
 		client.onerror = () => undefined;
 		client.ontransporterror = () => undefined;
-		clients.delete(serverName);
+		backend.client = undefined;
 		// ProtocolClient owns its transport; closing the client releases both.
 		await client.close().catch((error: unknown) => {
 			if (logErrors)
 				logger.error(
-					`Error closing MCP upstream client for "${serverName}": ${errorMessage(error)}`,
+					`Error closing MCP upstream client for "${backend.serverName}": ${errorMessage(error)}`,
 				);
 		});
 	};
 
-	const getOrCreateQueue = (
-		server: McpUpstreamServer,
-	): McpUpstreamRequestQueue => {
-		const serverName = server.serverName;
-		let queue = requestQueues.get(serverName);
-		if (!queue) {
-			queue = {
-				lastRequestTime: 0,
-			};
-			requestQueues.set(serverName, queue);
-		}
-		return queue;
-	};
-
 	const waitForRateLimit = async (
-		server: McpUpstreamServer,
+		backend: McpUpstreamBackend,
 		signal?: AbortSignal,
 	): Promise<void> => {
 		signal?.throwIfAborted();
-		const queue = getOrCreateQueue(server);
 		const now = Date.now();
-		const trafficLimit = server.serverConfig.trafficLimit;
+		const trafficLimit = backend.serverConfig.trafficLimit;
 		const minInterval = MIN_INTERVAL_MS / trafficLimit;
-		const timeSinceLastRequest = now - queue.lastRequestTime;
+		const timeSinceLastRequest = now - backend.lastRequestTime;
 
 		if (timeSinceLastRequest < minInterval) {
 			const waitTime = minInterval - timeSinceLastRequest;
@@ -219,7 +156,7 @@ const createMcpUpstreamConnections = (
 		}
 
 		signal?.throwIfAborted();
-		queue.lastRequestTime = Date.now();
+		backend.lastRequestTime = Date.now();
 	};
 
 	const onValidationError: OnValidationError = (validationParams): void => {
@@ -242,14 +179,14 @@ const createMcpUpstreamConnections = (
 	};
 
 	const setMcpUpstreamStatusError = (
-		server: McpUpstreamServer,
+		backend: McpUpstreamBackend,
 		error: string,
 	): void => {
-		if (!server.serverConfig.enabled) return;
-		const status = statuses.get(server.serverName);
+		if (!backend.serverConfig.enabled) return;
+		const status = backend.status;
 		if (!status) {
 			setMcpUpstreamStatus({
-				server,
+				backend,
 				connected: true,
 				error,
 				errorState: 'runtime',
@@ -257,38 +194,41 @@ const createMcpUpstreamConnections = (
 			});
 			return;
 		}
-		statuses.set(server.serverName, {
+		backend.status = {
 			...status,
 			error,
 			errorState: 'runtime',
 			actionRequired: false,
-		});
+		};
 	};
 
-	const scheduleReconnect = (server: McpUpstreamServer): void => {
-		const serverName = server.serverName;
-		if (stopped) return;
-		if (!server.serverConfig.enabled) return;
-		if (isConnectionBlocked(serverName)) return;
-		if (reconnectTimers.has(serverName)) return;
+	const clearReconnectTimer = (backend: McpUpstreamBackend): void => {
+		clearTimeout(backend.reconnectTimer);
+		backend.reconnectTimer = undefined;
+	};
 
-		const attempt = reconnectAttempts.get(serverName) ?? 0;
+	const scheduleReconnect = (backend: McpUpstreamBackend): void => {
+		if (stopped) return;
+		if (!backend.serverConfig.enabled) return;
+		if (isConnectionBlocked(backend)) return;
+		if (backend.reconnectTimer) return;
+
+		const attempt = backend.reconnectAttempts;
 		const ceiling = Math.min(
 			RECONNECT_MAX_DELAY_MS,
 			RECONNECT_INITIAL_DELAY_MS * 2 ** Math.min(attempt + 1, 4),
 		);
 		const delay = Math.round(ceiling / 2 + (Math.random() * ceiling) / 2);
-		reconnectAttempts.set(serverName, attempt + 1);
-		const timer = setTimeout(() => {
-			reconnectTimers.delete(serverName);
-			void attemptReconnect(server);
+		backend.reconnectAttempts = attempt + 1;
+		backend.reconnectTimer = setTimeout(() => {
+			backend.reconnectTimer = undefined;
+			void attemptReconnect(backend);
 		}, delay);
-		reconnectTimers.set(serverName, timer);
 		logger.info(
 			JSON.stringify({
 				message: 'Scheduled MCP upstream recovery',
 				context: {
-					backend: serverName,
+					backend: backend.serverName,
 					attempt: attempt + 1,
 					retryAfterMs: delay,
 				},
@@ -297,88 +237,81 @@ const createMcpUpstreamConnections = (
 	};
 
 	const markMcpUpstreamDown = (
-		server: McpUpstreamServer,
+		backend: McpUpstreamBackend,
 		error: string,
 	): void => {
-		const serverName = server.serverName;
 		if (stopped) return;
-		if (!server.serverConfig.enabled) return;
-		if (isConnectionBlocked(serverName)) return;
+		if (!backend.serverConfig.enabled) return;
+		if (isConnectionBlocked(backend)) return;
 
-		const existingStatus = statuses.get(serverName);
-		const alreadyDown =
-			existingStatus && !existingStatus.connected && !clients.has(serverName);
-		if (alreadyDown) {
+		const existingStatus = backend.status;
+		if (existingStatus && !existingStatus.connected && !backend.client) {
 			if (existingStatus.error !== error) {
-				statuses.set(serverName, {
+				backend.status = {
 					...existingStatus,
 					error,
-				});
+				};
 			}
-			scheduleReconnect(server);
+			scheduleReconnect(backend);
 			return;
 		}
 
-		healthCheckFailures.delete(serverName);
-		healthCheckReadyBackends.delete(serverName);
-		void closeMcpUpstreamConnection(server, true);
+		backend.healthCheckFailures = 0;
+		backend.healthCheckReady = false;
+		void closeMcpUpstreamConnection(backend, true);
 		setMcpUpstreamStatus({
-			server,
+			backend,
 			connected: false,
 			error,
 			errorState: 'runtime',
 			actionRequired: false,
 		});
-		logger.warn(`MCP upstream "${serverName}" marked as down: ${error}`);
-		scheduleReconnect(server);
+		logger.warn(
+			`MCP upstream "${backend.serverName}" marked as down: ${error}`,
+		);
+		scheduleReconnect(backend);
 	};
 
 	const markMcpUpstreamConfigurationError = (
-		server: McpUpstreamServer,
+		backend: McpUpstreamBackend,
 		error: string,
 	): void => {
-		const serverName = server.serverName;
-		if (!server.serverConfig.enabled) return;
-		configErrorBackends.add(serverName);
-		healthCheckFailures.delete(serverName);
-		healthCheckReadyBackends.delete(serverName);
+		if (!backend.serverConfig.enabled) return;
+		backend.configError = true;
+		backend.healthCheckFailures = 0;
+		backend.healthCheckReady = false;
+		clearReconnectTimer(backend);
 
-		const timer = reconnectTimers.get(serverName);
-		if (timer) {
-			clearTimeout(timer);
-			reconnectTimers.delete(serverName);
-		}
-
-		void closeMcpUpstreamConnection(server);
+		void closeMcpUpstreamConnection(backend);
 		setMcpUpstreamStatus({
-			server,
+			backend,
 			connected: false,
 			error,
 			errorState: 'configuration',
 			actionRequired: true,
 		});
 		logger.warn(
-			`MCP upstream "${serverName}" requires configuration fix: ${error}`,
+			`MCP upstream "${backend.serverName}" requires configuration fix: ${error}`,
 		);
 	};
 
 	const openMcpUpstreamConnection = async (
-		server: McpUpstreamServer,
+		backend: McpUpstreamBackend,
 	): Promise<boolean> => {
-		const serverName = server.serverName;
+		const serverName = backend.serverName;
 		if (stopped) return false;
-		if (!server.serverConfig.enabled) return false;
-		if (isConnectionBlocked(serverName)) return false;
-		const connectionEpoch = connectionEpochs.get(serverName) ?? 0;
+		if (!backend.serverConfig.enabled) return false;
+		if (isConnectionBlocked(backend)) return false;
+		const connectionEpoch = backend.epoch;
 
-		const serverConfig = server.serverConfig;
-		await closeMcpUpstreamConnection(server);
-		if (!isCurrentConnectionAttempt(server, connectionEpoch)) return false;
-		const client = new ProtocolClient(server, protocolVersions.get(serverName));
-		connectingClients.set(serverName, client);
+		const serverConfig = backend.serverConfig;
+		await closeMcpUpstreamConnection(backend);
+		if (!isCurrentConnectionAttempt(backend, connectionEpoch)) return false;
+		const client = new ProtocolClient(backend, backend.protocolVersion);
+		backend.connectingClient = client;
 		client.ontransporterror = (error: unknown): void => {
-			if (clients.get(serverName) !== client) return;
-			markMcpUpstreamDown(server, errorMessage(error));
+			if (backend.client !== client) return;
+			markMcpUpstreamDown(backend, errorMessage(error));
 		};
 
 		client.onerror = (err: unknown) => {
@@ -395,19 +328,19 @@ const createMcpUpstreamConnections = (
 
 		try {
 			await client.connect();
-			if (!isCurrentConnectionAttempt(server, connectionEpoch)) {
+			if (!isCurrentConnectionAttempt(backend, connectionEpoch)) {
 				client.onerror = () => undefined;
 				await client.close().catch(() => undefined);
 				return false;
 			}
-			clients.set(serverName, client);
+			backend.client = client;
 			if (client.protocolVersion)
-				protocolVersions.set(serverName, client.protocolVersion);
-			healthCheckFailures.delete(serverName);
+				backend.protocolVersion = client.protocolVersion;
+			backend.healthCheckFailures = 0;
 
 			const status: McpUpstreamStatus = {
 				serverName,
-				protocolVersion: protocolVersions.get(serverName),
+				protocolVersion: backend.protocolVersion,
 				...transportFields(serverConfig),
 				enabled: serverConfig.enabled,
 				enabledTools: serverConfig.enabledTools ?? [],
@@ -419,7 +352,7 @@ const createMcpUpstreamConnections = (
 				instructions: client.getInstructions(),
 				error: undefined,
 			};
-			statuses.set(serverName, status);
+			backend.status = status;
 			const identifier =
 				serverConfig.type === 'stdio' ? serverConfig.command : serverConfig.url;
 			trafficStore?.upsertBackendInfo({
@@ -432,7 +365,7 @@ const createMcpUpstreamConnections = (
 			logger.info(`Connected to MCP upstream "${serverName}"`);
 			return true;
 		} catch (err) {
-			if (!isCurrentConnectionAttempt(server, connectionEpoch)) {
+			if (!isCurrentConnectionAttempt(backend, connectionEpoch)) {
 				client.onerror = () => undefined;
 				await client.close().catch(() => undefined);
 				return false;
@@ -441,8 +374,8 @@ const createMcpUpstreamConnections = (
 			const protocolFailure = err instanceof ProtocolNegotiationError;
 			if (protocolFailure) {
 				// A failed negotiation needs operator attention, not a reconnect loop.
-				protocolErrorBackends.add(serverName);
-				clearReconnectTimer(serverName);
+				backend.protocolError = true;
+				clearReconnectTimer(backend);
 			}
 			logger.error(
 				JSON.stringify({
@@ -465,7 +398,7 @@ const createMcpUpstreamConnections = (
 				}),
 			);
 			setMcpUpstreamStatus({
-				server,
+				backend,
 				connected: false,
 				error: message,
 				errorState:
@@ -475,129 +408,125 @@ const createMcpUpstreamConnections = (
 			await client.close().catch(() => undefined);
 			return false;
 		} finally {
-			if (connectingClients.get(serverName) === client)
-				connectingClients.delete(serverName);
+			if (backend.connectingClient === client)
+				backend.connectingClient = undefined;
 		}
 	};
 
 	const connectToMcpUpstream = async (
-		server: McpUpstreamServer,
+		backend: McpUpstreamBackend,
 	): Promise<boolean> => {
-		const serverName = server.serverName;
-		const epoch = connectionEpochs.get(serverName) ?? 0;
-		const pending = connectionAttempts.get(serverName);
+		const epoch = backend.epoch;
+		const pending = backend.connectionAttempt;
 		if (pending?.epoch === epoch) return pending.promise;
-		const promise = openMcpUpstreamConnection(server);
-		connectionAttempts.set(serverName, {
+		const promise = openMcpUpstreamConnection(backend);
+		backend.connectionAttempt = {
 			epoch,
 			promise,
-		});
+		};
 		try {
 			return await promise;
 		} finally {
-			if (connectionAttempts.get(serverName)?.promise === promise)
-				connectionAttempts.delete(serverName);
+			if (backend.connectionAttempt?.promise === promise)
+				backend.connectionAttempt = undefined;
 		}
 	};
 
-	const attemptReconnect = async (server: McpUpstreamServer): Promise<void> => {
+	// Connect, load the catalog, then hand the backend to health checks.
+	// Returns false when the backend is down, blocked or changed meanwhile.
+	const bringUp = async (backend: McpUpstreamBackend): Promise<boolean> => {
+		const epoch = backend.epoch;
+		const connected = await connectToMcpUpstream(backend);
+		if (!isCurrentConnectionAttempt(backend, epoch)) return false;
+		if (!connected) {
+			scheduleReconnect(backend);
+			return false;
+		}
+		const client = backend.client;
+		await refreshCatalog(backend);
+		if (
+			!isCurrentConnectionAttempt(backend, epoch) ||
+			isConnectionBlocked(backend) ||
+			!client ||
+			backend.client !== client
+		)
+			return false;
+		backend.healthCheckReady = true;
+		backend.reconnectAttempts = 0;
+		return true;
+	};
+
+	const attemptReconnect = async (
+		backend: McpUpstreamBackend,
+	): Promise<void> => {
 		if (stopped) return;
-		if (!server.serverConfig.enabled) return;
-		if (isConnectionBlocked(server.serverName)) return;
-		const serverName = server.serverName;
-		const epoch = connectionEpochs.get(serverName) ?? 0;
-		const pending = reconnects.get(serverName);
+		if (!backend.serverConfig.enabled) return;
+		if (isConnectionBlocked(backend)) return;
+		const epoch = backend.epoch;
+		const pending = backend.reconnect;
 		if (pending?.epoch === epoch) return pending.promise;
-		if (clients.has(serverName)) return;
-		clearReconnectTimer(serverName);
+		if (backend.client) return;
+		clearReconnectTimer(backend);
 		const recover = async (): Promise<void> => {
 			try {
-				const success = await connectToMcpUpstream(server);
-				if (!isCurrentConnectionAttempt(server, epoch)) return;
-				if (!success) {
-					scheduleReconnect(server);
-					return;
-				}
-				const client = clients.get(serverName);
-				await refreshCatalog(server);
-				if (
-					!isCurrentConnectionAttempt(server, epoch) ||
-					isConnectionBlocked(serverName)
-				)
-					return;
-				if (!client || clients.get(serverName) !== client) return;
-				healthCheckReadyBackends.add(serverName);
-				reconnectAttempts.delete(serverName);
+				if (!(await bringUp(backend))) return;
 				logger.info(
 					JSON.stringify({
 						message: 'MCP upstream recovered',
 						context: {
-							backend: serverName,
+							backend: backend.serverName,
 						},
 					}),
 				);
 			} catch (error) {
-				if (!isCurrentConnectionAttempt(server, epoch)) return;
-				markMcpUpstreamDown(server, errorMessage(error));
+				if (!isCurrentConnectionAttempt(backend, epoch)) return;
+				markMcpUpstreamDown(backend, errorMessage(error));
 			}
 		};
 		const promise = recover();
-		reconnects.set(serverName, {
+		backend.reconnect = {
 			epoch,
 			promise,
-		});
+		};
 		try {
 			await promise;
 		} finally {
-			if (reconnects.get(serverName)?.promise === promise)
-				reconnects.delete(serverName);
-			if (isCurrentConnectionAttempt(server, epoch) && !clients.has(serverName))
-				scheduleReconnect(server);
+			if (backend.reconnect?.promise === promise) backend.reconnect = undefined;
+			if (isCurrentConnectionAttempt(backend, epoch) && !backend.client)
+				scheduleReconnect(backend);
 		}
 	};
 
 	const healthChecks = createMcpUpstreamHealthChecks({
-		clients,
-		getServer,
-		healthCheckFailures,
-		healthCheckReadyBackends,
+		backends,
 		markMcpUpstreamDown,
 		onValidationError,
 		waitForRateLimit,
 	});
 
-	const clearReconnectTimer = (serverName: string): void => {
-		const timer = reconnectTimers.get(serverName);
-		if (!timer) return;
-		clearTimeout(timer);
-		reconnectTimers.delete(serverName);
-	};
-
 	const setBackendEnabled = async (
-		server: McpUpstreamServer,
+		backend: McpUpstreamBackend,
 		enabled: boolean,
 	): Promise<void> => {
-		const serverName = server.serverName;
-		advanceConnectionEpoch(serverName);
-		clearReconnectTimer(serverName);
-		reconnectAttempts.delete(serverName);
-		const connectingClient = connectingClients.get(serverName);
-		if (connectingClient) await connectingClient.close().catch(() => undefined);
-		server.serverConfig.enabled = enabled;
-		protocolErrorBackends.delete(serverName);
+		const serverName = backend.serverName;
+		backend.epoch += 1;
+		clearReconnectTimer(backend);
+		backend.reconnectAttempts = 0;
+		await backend.connectingClient?.close().catch(() => undefined);
+		backend.serverConfig.enabled = enabled;
+		backend.protocolError = false;
+		backend.configError = false;
 
 		if (!enabled) {
-			healthCheckReadyBackends.delete(serverName);
-			clearReconnectTimer(serverName);
-			configErrorBackends.delete(serverName);
-			healthCheckFailures.delete(serverName);
-			requestQueues.delete(serverName);
-			toolsCache.delete(serverName);
-			promptsCache.delete(serverName);
-			resourcesCache.delete(serverName);
-			await closeMcpUpstreamConnection(server, true);
+			backend.healthCheckReady = false;
+			backend.healthCheckFailures = 0;
+			backend.lastRequestTime = 0;
+			backend.tools = undefined;
+			backend.prompts = undefined;
+			backend.resources = undefined;
+			await closeMcpUpstreamConnection(backend, true);
 			setMcpUpstreamStatus({
-				server,
+				backend,
 				connected: false,
 				actionRequired: false,
 				preserveDetails: false,
@@ -606,100 +535,61 @@ const createMcpUpstreamConnections = (
 			return;
 		}
 
-		configErrorBackends.delete(serverName);
 		setMcpUpstreamStatus({
-			server,
+			backend,
 			connected: false,
 			actionRequired: false,
 		});
-		const connected = await connectToMcpUpstream(server);
-		if (!connected) {
-			scheduleReconnect(server);
-			return;
-		}
-		await refreshCatalog(server);
-		if (configErrorBackends.has(serverName)) return;
-		if (!server.serverConfig.enabled || !clients.has(serverName)) return;
-		healthCheckReadyBackends.add(serverName);
-		logger.info(`Enabled MCP upstream "${serverName}"`);
+		if (await bringUp(backend))
+			logger.info(`Enabled MCP upstream "${serverName}"`);
 	};
 
 	const initialize = async (): Promise<void> => {
 		stopped = false;
-		const configuredServers = Array.from(servers.values()).filter((server) => {
-			if (server.serverConfig.enabled) return true;
+		const enabledBackends = Array.from(backends.values()).filter((backend) => {
+			if (backend.serverConfig.enabled) return true;
 			setMcpUpstreamStatus({
-				server,
+				backend,
 				connected: false,
 				actionRequired: false,
 			});
 			return false;
 		});
-		const connectionResults = await Promise.allSettled(
-			configuredServers.map((server) => connectToMcpUpstream(server)),
-		);
-
-		connectionResults.forEach((result, index) => {
-			const server = configuredServers[index];
-			if (!server) return;
-			if (result.status === 'rejected') {
-				logger.warn(
-					`MCP upstream "${server.serverName}" connection failed: ${result.reason}`,
-				);
-				return;
-			}
-			if (result.status === 'fulfilled' && !result.value) {
-				scheduleReconnect(server);
-			}
+		const results = await Promise.allSettled(enabledBackends.map(bringUp));
+		results.forEach((result, index) => {
+			if (result.status === 'fulfilled') return;
+			logger.warn(
+				`MCP upstream "${enabledBackends[index]?.serverName}" connection failed: ${result.reason}`,
+			);
 		});
-
-		await Promise.allSettled(
-			Array.from(clients.keys()).map(async (serverName) => {
-				const server = getServer(serverName);
-				if (!server) return;
-				await refreshCatalog(server);
-				if (configErrorBackends.has(serverName)) return;
-				if (!server.serverConfig.enabled || !clients.has(serverName)) return;
-				healthCheckReadyBackends.add(serverName);
-			}),
-		);
 		if (!stopped) healthChecks.startHealthChecks();
 	};
 
 	const disconnect = async (): Promise<void> => {
 		stopped = true;
 		healthChecks.stopHealthChecks();
-		healthCheckReadyBackends.clear();
-		healthCheckFailures.clear();
-		for (const serverName of servers.keys()) {
-			advanceConnectionEpoch(serverName);
+		for (const backend of backends.values()) {
+			backend.healthCheckReady = false;
+			backend.healthCheckFailures = 0;
+			backend.epoch += 1;
+			clearReconnectTimer(backend);
+			backend.reconnectAttempts = 0;
+			backend.lastRequestTime = 0;
 		}
-
-		for (const [, timer] of reconnectTimers) {
-			clearTimeout(timer);
-		}
-		reconnectTimers.clear();
-		reconnectAttempts.clear();
 		await Promise.all(
-			Array.from(connectingClients.values(), (client) =>
-				client.close().catch(() => undefined),
-			),
+			Array.from(backends.values(), async (backend) => {
+				await backend.connectingClient?.close().catch(() => undefined);
+				backend.connectingClient = undefined;
+			}),
 		);
-		connectingClients.clear();
 
-		requestQueues.clear();
-
-		for (const serverName of clients.keys()) {
-			const server = servers.get(serverName);
-			if (server) await closeMcpUpstreamConnection(server, true);
-		}
-
-		toolsCache.clear();
-		promptsCache.clear();
-		resourcesCache.clear();
-		for (const server of servers.values()) {
+		for (const backend of backends.values()) {
+			await closeMcpUpstreamConnection(backend, true);
+			backend.tools = undefined;
+			backend.prompts = undefined;
+			backend.resources = undefined;
 			setMcpUpstreamStatus({
-				server,
+				backend,
 				connected: false,
 				error: 'Disconnected',
 				errorState: 'runtime',
@@ -709,20 +599,22 @@ const createMcpUpstreamConnections = (
 	};
 
 	const getStatuses = (): McpUpstreamStatus[] =>
-		Array.from(statuses.values()).map((status) => {
-			const server = servers.get(status.serverName);
-			if (!server) return status;
-			return {
-				...status,
-				enabled: server.serverConfig.enabled,
-				enabledTools: server.serverConfig.enabledTools ?? [],
-			};
-		});
+		Array.from(backends.values()).flatMap((backend) =>
+			backend.status
+				? [
+						{
+							...backend.status,
+							enabled: backend.serverConfig.enabled,
+							enabledTools: backend.serverConfig.enabledTools ?? [],
+						},
+					]
+				: [],
+		);
 
 	return {
 		attemptReconnect,
 		disconnect,
-		getServer,
+		getBackend,
 		getStatuses,
 		initialize,
 		markMcpUpstreamConfigurationError,
@@ -733,4 +625,4 @@ const createMcpUpstreamConnections = (
 	};
 };
 
-export { createMcpUpstreamConnections };
+export { createMcpUpstreamBackend, createMcpUpstreamConnections };

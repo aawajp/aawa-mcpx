@@ -49,10 +49,6 @@ type CreateMcpUpstreamManagerParams = {
 type ServerCapabilitiesInfo = ReturnType<Client['getServerCapabilities']>;
 type ImplementationInfo = ReturnType<Client['getServerVersion']>;
 
-type GetClientParams = {
-	serverName: string;
-};
-
 type CallToolParams = {
 	serverName: string;
 	toolName: string;
@@ -124,34 +120,53 @@ type McpUpstreamServer = {
 	serverConfig: McpServerConfig;
 };
 
-type McpUpstreamToolsMap = Map<
-	string,
-	{
-		tools: Tool[];
-		nextCursor?: string;
-		_meta?: Record<string, unknown>;
-	}
->;
-type McpUpstreamPromptsMap = Map<
-	string,
-	{
-		prompts: Prompt[];
-		nextCursor?: string;
-		_meta?: Record<string, unknown>;
-	}
->;
-type McpUpstreamResourcesMap = Map<
-	string,
-	{
-		resources: Resource[];
-		nextCursor?: string;
-		_meta?: Record<string, unknown>;
-	}
->;
-type McpUpstreamClientsMap = Map<string, Client>;
+type McpUpstreamTools = {
+	tools: Tool[];
+	nextCursor?: string;
+	_meta?: Record<string, unknown>;
+};
+type McpUpstreamPrompts = {
+	prompts: Prompt[];
+	nextCursor?: string;
+	_meta?: Record<string, unknown>;
+};
+type McpUpstreamResources = {
+	resources: Resource[];
+	nextCursor?: string;
+	_meta?: Record<string, unknown>;
+};
+type McpUpstreamToolsMap = Map<string, McpUpstreamTools>;
+type McpUpstreamPromptsMap = Map<string, McpUpstreamPrompts>;
+type McpUpstreamResourcesMap = Map<string, McpUpstreamResources>;
 
-type McpUpstreamRequestQueue = {
+type PendingAttempt<T> = {
+	epoch: number;
+	promise: Promise<T>;
+};
+
+// Everything the gateway tracks for one configured backend. Async work started
+// for an older epoch (before a toggle or disconnect) must not change it.
+type McpUpstreamBackend = McpUpstreamServer & {
+	epoch: number;
+	client?: Client;
+	connectingClient?: ProtocolClient;
+	connectionAttempt?: PendingAttempt<boolean>;
+	protocolVersion?: ProtocolVersion;
+	status?: McpUpstreamStatus;
+	// Either error stops reconnects until the operator acts.
+	configError: boolean;
+	protocolError: boolean;
+	reconnect?: PendingAttempt<void>;
+	reconnectTimer?: Timer;
+	reconnectAttempts: number;
+	healthCheckReady: boolean;
+	healthCheckFailures: number;
 	lastRequestTime: number;
+	tools?: McpUpstreamTools;
+	prompts?: McpUpstreamPrompts;
+	resources?: McpUpstreamResources;
+	catalogExpiresAt: number;
+	catalogRefresh?: Promise<void>;
 };
 
 type McpUpstreamManager = {
@@ -176,16 +191,17 @@ export type {
 	CallToolParams,
 	Client,
 	CreateMcpUpstreamManagerParams,
-	GetClientParams,
 	GetPromptParams,
-	McpUpstreamClientsMap,
+	McpUpstreamBackend,
 	McpUpstreamErrorState,
 	McpUpstreamManager,
+	McpUpstreamPrompts,
 	McpUpstreamPromptsMap,
-	McpUpstreamRequestQueue,
+	McpUpstreamResources,
 	McpUpstreamResourcesMap,
 	McpUpstreamServer,
 	McpUpstreamStatus,
+	McpUpstreamTools,
 	McpUpstreamToolsMap,
 	OnValidationError,
 	ReadResourceParams,

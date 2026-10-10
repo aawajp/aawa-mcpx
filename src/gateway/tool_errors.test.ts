@@ -1,4 +1,5 @@
 import { createRouteFixture } from '@/gateway/route_fixture';
+import { createMcpUpstreamBackend } from '@/mcp_upstreams/connections';
 import { createInputSchemaCompiler } from '@/mcp_upstreams/input_schema';
 import { createMcpUpstreamOperations } from '@/mcp_upstreams/method_calls';
 import {
@@ -64,21 +65,18 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 			const log = spyOn(logger, 'error').mockImplementation(() => undefined);
 			const rateLimit = mock(async () => undefined);
 			const operations = createMcpUpstreamOperations({
-				clients: new Map([
-					[
-						'fixture',
-						client,
-					],
-				]),
-				getServer: (name) =>
+				getBackend: (name) =>
 					name === 'missing'
 						? undefined
 						: {
-								...server,
-								serverConfig: {
-									...server.serverConfig,
-									enabled: name !== 'disabled',
-								},
+								...createMcpUpstreamBackend({
+									...server,
+									serverConfig: {
+										...server.serverConfig,
+										enabled: name !== 'disabled',
+									},
+								}),
+								client: name === 'fixture' ? client : undefined,
 							},
 				getEnabledTools: () => [
 					'echo',

@@ -1,4 +1,5 @@
 import { createRouteFixture } from '@/gateway/route_fixture';
+import { createMcpUpstreamBackend } from '@/mcp_upstreams/connections';
 import { createInputSchemaCompiler } from '@/mcp_upstreams/input_schema';
 import { createMcpUpstreamOperations } from '@/mcp_upstreams/method_calls';
 import { ProtocolClient } from '@/mcp_upstreams/protocol_client';
@@ -187,13 +188,10 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 			});
 			if ('issue' in compiled) throw new Error(compiled.issue.detail);
 			const operations = createMcpUpstreamOperations({
-				clients: new Map([
-					[
-						'backend',
-						client,
-					],
-				]),
-				getServer: () => server,
+				getBackend: () => ({
+					...createMcpUpstreamBackend(server),
+					client,
+				}),
 				getEnabledTools: () => [
 					'echo',
 				],

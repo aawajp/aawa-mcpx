@@ -1,18 +1,12 @@
 import type { McpConfig } from '@/config/schema';
 import { createMcpUpstreamCatalog } from '@/mcp_upstreams/catalog';
+import { createMcpUpstreamBackend } from '@/mcp_upstreams/connections';
 import type { ProtocolClient as Client } from '@/mcp_upstreams/protocol_client';
-import type {
-	McpUpstreamClientsMap,
-	McpUpstreamPromptsMap,
-	McpUpstreamResourcesMap,
-	McpUpstreamServer,
-	McpUpstreamToolsMap,
-} from '@/mcp_upstreams/types';
 
 import { expect, test } from 'bun:test';
 
 test('catalog responses invalidated by backend disable are discarded', async () => {
-	const server: McpUpstreamServer = {
+	const server = createMcpUpstreamBackend({
 		serverName: 'catalog-race',
 		serverConfig: {
 			type: 'http',
@@ -24,7 +18,7 @@ test('catalog responses invalidated by backend disable are discarded', async () 
 				'alpha',
 			],
 		},
-	};
+	});
 	let startedRequests = 0;
 	let signalAllStarted = (): void => undefined;
 	let releaseRequests = (): void => undefined;
@@ -66,38 +60,30 @@ test('catalog responses invalidated by backend disable are discarded', async () 
 			};
 		},
 	} as unknown as Client;
-	const clients: McpUpstreamClientsMap = new Map([
-		[
-			'catalog-race',
-			client,
-		],
-	]);
+	server.client = client;
 	const config: McpConfig = {
 		mcpServers: {
 			[server.serverName]: server.serverConfig,
 		},
 	};
-	const toolsCache: McpUpstreamToolsMap = new Map();
-	const promptsCache: McpUpstreamPromptsMap = new Map();
-	const resourcesCache: McpUpstreamResourcesMap = new Map();
 	let configurationErrors = 0;
 	let statusErrors = 0;
 	const catalog = createMcpUpstreamCatalog({
 		attemptReconnect: async () => undefined,
-		clients,
+		backends: new Map([
+			[
+				server.serverName,
+				server,
+			],
+		]),
 		config,
-		configErrorBackends: new Set(),
-		getServer: () => server,
 		markMcpUpstreamConfigurationError: () => {
 			configurationErrors += 1;
 		},
 		onValidationError: () => undefined,
-		promptsCache,
-		resourcesCache,
 		setMcpUpstreamStatusError: () => {
 			statusErrors += 1;
 		},
-		toolsCache,
 		waitForRateLimit: async () => undefined,
 	});
 
@@ -108,13 +94,13 @@ test('catalog responses invalidated by backend disable are discarded', async () 
 	]);
 	await allStarted;
 	server.serverConfig.enabled = false;
-	clients.delete(server.serverName);
+	server.client = undefined;
 	releaseRequests();
 	await refresh;
 
-	expect(toolsCache.size).toBe(0);
-	expect(promptsCache.size).toBe(0);
-	expect(resourcesCache.size).toBe(0);
+	expect(server.tools).toBeUndefined();
+	expect(server.prompts).toBeUndefined();
+	expect(server.resources).toBeUndefined();
 	expect(configurationErrors).toBe(0);
 	expect(statusErrors).toBe(0);
 });
