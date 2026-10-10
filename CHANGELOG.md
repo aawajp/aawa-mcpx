@@ -122,6 +122,10 @@ entry under the date its change was committed. The project uses
   and keeps its own content: only `enabled`, `enabledTools`, and
   `availableTools` change. Before, it was rewritten after every tool fetch with
   defaults such as `timeout` and `trafficLimit` added.
+- A tool with invalid `x-mcp-header` annotations on a `2026-07-28` HTTP backend
+  keeps its place in `enabledTools`. Before, it was dropped from the backend's
+  catalog, pruned from `enabledTools`, and stayed off after the backend fixed
+  the annotation.
 
 ### 2026-10-09
 

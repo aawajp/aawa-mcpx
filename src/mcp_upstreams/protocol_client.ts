@@ -987,32 +987,11 @@ class ProtocolClient {
 			params,
 			options,
 		)) as ListToolsResult;
+		// Tools with invalid header annotations stay listed, so exposure state
+		// keeps them. Calls fail when their headers are built.
 		this.tools.clear();
-		result.tools = result.tools.filter((tool) => {
-			try {
-				if (
-					this.server.serverConfig.type === 'http' &&
-					this.protocolVersion === CURRENT_PROTOCOL_VERSION
-				)
-					toolHeaderParameters(tool.inputSchema);
-				this.tools.set(tool.name, tool.inputSchema);
-				return true;
-			} catch (error) {
-				logger.warn(
-					JSON.stringify({
-						message:
-							'Tool header annotations are invalid; excluding tool from HTTP backend catalog',
-						context: {
-							backend: this.server.serverName,
-							tool: tool.name,
-							protocolVersion: this.protocolVersion,
-						},
-						error: errorMessage(error),
-					}),
-				);
-				return false;
-			}
-		});
+		for (const tool of result.tools)
+			this.tools.set(tool.name, tool.inputSchema);
 		return result;
 	}
 	async listPrompts(

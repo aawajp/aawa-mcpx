@@ -235,10 +235,10 @@ advertises only features it implements.
 
 Tool `x-mcp-header` rules compile once per catalog schema, and failures are cached
 the same way. Stale catalogs refresh before public header checks. A tool with invalid
-annotations is hidden from 2026 HTTP clients, with a warning. When the backend
-itself is a 2026 HTTP backend, the tool is dropped from its catalog entirely, so
-it disappears for every client and is pruned from `enabledTools`. Legacy and
-stdio connections do not apply that annotation contract.
+annotations is hidden from 2026 HTTP clients, with a warning, but stays in the
+catalog and in `enabledTools`. When the backend itself is a 2026 HTTP backend,
+calls to that tool fail before reaching it, because its headers cannot be built.
+Legacy and stdio connections do not apply that annotation contract.
 Mirrors use strict UTF-8 Base64 decoding where required and compare integers
 numerically (`42.0` matches `42`). Recognized headers for absent/null arguments
 are rejected.

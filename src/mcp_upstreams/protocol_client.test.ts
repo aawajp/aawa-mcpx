@@ -116,16 +116,10 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 		};
 		try {
 			const tools = (await client.listTools()).tools;
-			expect(tools.map((tool) => tool.name)).toEqual(
-				version === CURRENT_PROTOCOL_VERSION
-					? [
-							'echo',
-						]
-					: [
-							'echo',
-							'bad',
-						],
-			);
+			expect(tools.map((tool) => tool.name)).toEqual([
+				'echo',
+				'bad',
+			]);
 			await client.callTool(
 				{
 					name: 'echo',
@@ -234,15 +228,19 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 					expect(calls[1]?.headers.has(`Mcp-Param-${name}`)).toBe(false);
 				expect(calls[2]?.headers.get('Mcp-Param-Updated')).toBe('new');
 				expect(calls[2]?.headers.has('Mcp-Param-Text')).toBe(false);
-				expect(warning).toHaveBeenCalledTimes(2);
-				expect(JSON.parse(warning.mock.calls[0]?.[0] ?? '{}')).toMatchObject({
-					context: {
-						backend: 'headers',
-						tool: 'bad',
-						protocolVersion: version,
-					},
-				});
-			} else expect(warning).not.toHaveBeenCalled();
+				await expect(
+					client.callTool({
+						name: 'bad',
+						arguments: {
+							value: 1,
+						},
+					}),
+				).rejects.toThrow('Invalid x-mcp-header annotation');
+				expect(
+					received.filter(({ message }) => message.method === 'tools/call'),
+				).toHaveLength(3);
+			}
+			expect(warning).not.toHaveBeenCalled();
 			expect(onerror).not.toHaveBeenCalled();
 		} finally {
 			warning.mockRestore();

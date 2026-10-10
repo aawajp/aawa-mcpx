@@ -12,6 +12,7 @@ import { namespaceTool } from '@/gateway/mcp_namespaces';
 import { createMcpRequestRouter } from '@/gateway/mcp_request_router';
 import { createMcpSessionManager } from '@/gateway/mcp_session';
 import { createUiRoutes } from '@/gateway/ui_routes';
+import indexHtml from '@/index.html';
 import type { McpUpstreamManager } from '@/mcp_upstreams/types';
 import { logger } from '@/server/logger';
 import type { TrafficStore } from '@/server/traffic_store';
@@ -20,8 +21,6 @@ import {
 	CURRENT_PROTOCOL_VERSION,
 	SUPPORTED_PROTOCOL_VERSIONS,
 } from '@/shared/mcp_protocol';
-
-import indexHtml from '../index.html';
 
 const MCP_PROTOCOL_VERSION_HEADER = 'mcp-protocol-version';
 

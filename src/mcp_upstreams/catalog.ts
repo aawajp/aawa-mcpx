@@ -215,16 +215,16 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 		tools: Tool[],
 	): void => {
 		for (const tool of tools) {
-			// The public modern HTTP hop also needs rules for legacy/stdio
-			// providers. Cache successes and failures once per fetched schema;
-			// these annotations do not invalidate either 2025 contract.
+			// Both modern HTTP hops need these rules. Cache successes and failures
+			// once per fetched schema; the tool stays in the catalog, and these
+			// annotations do not invalidate either 2025 contract.
 			try {
 				toolHeaderParameters(tool.inputSchema);
 			} catch (error) {
 				logger.warn(
 					JSON.stringify({
 						message:
-							'Tool header annotations are invalid; tool unavailable to modern HTTP clients',
+							'Tool header annotations are invalid; tool unavailable over modern HTTP',
 						context: {
 							backend: server.serverName,
 							tool: tool.name,
