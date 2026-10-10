@@ -87,6 +87,10 @@ entry under the date its change was committed. The project uses
 - A stdio backend that prints a non-JSON line to stdout keeps its connection;
   the line is logged and skipped. Backend stderr is logged instead of discarded,
   and a long stderr line no longer fails pending calls.
+- Closing a 2025 HTTP backend ends its session with `DELETE`.
+- A backend whose discovery result lists only 2025 revisions is initialized with
+  the highest of them instead of failing.
+- Backend SSE streams with bare CR line endings are read correctly.
 
 ### 2026-10-09
 

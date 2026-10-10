@@ -127,6 +127,8 @@ used; initialization, pinned peers, and application responses still require
 valid envelopes and matching request IDs. Dropping that status during envelope
 validation would stop negotiation before a compatible 2025 backend can initialize.
 Other discovery failures, including authentication errors, count as negotiation failures.
+A discovery result without `2026-07-28` initializes with the highest 2025
+revision it lists; one listing no supported revision is a negotiation failure.
 
 Negotiation failures stop automatic retries. The dashboard shows the failed
 method, attempted revision, and available HTTP/JSON-RPC codes. Disable and
@@ -164,6 +166,7 @@ IDs belong to their sender. The gateway answers a 2025 backend's `ping` with `{}
 and every other backend request with `-32601`: over stdio on stdin, over HTTP as
 a `POST` in the backend's session. `2026-07-28` defines no backend requests, so
 stdio gets `-32601` and HTTP gets no answer. Backend notifications are ignored.
+Backend SSE lines may end in CRLF, LF, or CR.
 
 The gateway requests only the lists (tools, prompts, resources, resource
 templates) that a backend advertises in its capabilities. Each 2026 backend list
@@ -188,7 +191,7 @@ revisions; public HTTP tests cover modern metadata and both 2025 session paths.
 | --- | --- | --- |
 | Context | Initialization retains revision/client information. | Per-request version/client metadata; no initialization session. |
 | Public HTTP | Issue/require `Mcp-Session-Id`; session map resolves revision/identity. | No session ID issued or used. |
-| Backend HTTP | Retain/send an ID only if issued; backends without IDs work. | Remove outgoing session headers; ignore returned IDs. |
+| Backend HTTP | Retain/send an ID only if issued; backends without IDs work. Closing sends `DELETE` with the ID; HTTP 405 is accepted. | Remove outgoing session headers; ignore returned IDs. |
 | Backend stdio | Connection retains initialized context; no HTTP headers. | Per-request context; no HTTP headers. |
 | DELETE | Remove session (HTTP 202); missing ID: HTTP 400; unknown/removed ID: HTTP 404. | HTTP 405 with `Allow: POST`. |
 

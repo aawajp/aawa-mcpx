@@ -160,6 +160,10 @@ test('a backend reconnects automatically when the outage ends', async () => {
 		port: 0,
 		hostname: '127.0.0.1',
 		async fetch(request) {
+			if (request.method === 'DELETE')
+				return new Response(null, {
+					status: 405,
+				});
 			const message = recordOf(await request.json()) ?? {};
 			discoveries += 1;
 			if (!online)
@@ -209,6 +213,10 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 			port: 0,
 			hostname: '127.0.0.1',
 			async fetch(request) {
+				if (request.method === 'DELETE')
+					return new Response(null, {
+						status: 405,
+					});
 				const message = recordOf(await request.json()) ?? {};
 				if (message.method === 'tools/call') {
 					toolCalls += 1;

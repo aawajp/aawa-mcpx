@@ -273,6 +273,11 @@ const startFixtureBackend = (
 		port: 0,
 		hostname: '127.0.0.1',
 		async fetch(request) {
+			// Clients end 2025 sessions with DELETE, which has no body.
+			if (request.method === 'DELETE')
+				return new Response(null, {
+					status: 405,
+				});
 			const message = recordOf(await request.json()) ?? {};
 			const reply =
 				'id' in message

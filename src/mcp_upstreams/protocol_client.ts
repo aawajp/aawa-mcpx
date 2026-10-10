@@ -207,6 +207,8 @@ class ProtocolClient {
 			void this.readStdout(this.child.stdout);
 			void this.readStderr(this.child.stderr);
 		}
+		// A 2025 revision a discovering peer offers instead of 2026-07-28.
+		let offeredVersion: ProtocolVersion | undefined;
 		if (!this.selected || this.selected === CURRENT_PROTOCOL_VERSION) {
 			this.negotiationMethod = 'server/discover';
 			// Probe with read-only 2026-07-28 discovery before attempting initialize.
@@ -214,13 +216,29 @@ class ProtocolClient {
 			try {
 				this.protocolVersion = CURRENT_PROTOCOL_VERSION;
 				this.details = await this.rpc('server/discover');
-				if (
-					!Array.isArray(this.details.supportedVersions) ||
-					!this.details.supportedVersions.includes(CURRENT_PROTOCOL_VERSION) ||
-					!recordOf(this.details.capabilities)
-				)
+				const versions = this.details.supportedVersions;
+				if (!Array.isArray(versions))
 					throw new Error('Invalid MCP 2026-07-28 discovery result');
-				return;
+				if (versions.includes(CURRENT_PROTOCOL_VERSION)) {
+					if (!recordOf(this.details.capabilities))
+						throw new Error('Invalid MCP 2026-07-28 discovery result');
+					return;
+				}
+				// A peer without 2026-07-28 may still offer a 2025 revision; a
+				// retained 2026-07-28 selection cannot change until restart.
+				offeredVersion = this.selected
+					? undefined
+					: SUPPORTED_PROTOCOL_VERSIONS.find(
+							(version) =>
+								requiresInitialization(version) && versions.includes(version),
+						);
+				if (!offeredVersion)
+					throw new Error(
+						`Backend offers no supported protocol version: ${versions.join(', ')}`,
+					);
+				logger.info(
+					`MCP upstream "${this.server.serverName}" offers ${offeredVersion}; initializing with it`,
+				);
 			} catch (error) {
 				// A retained selection is immutable until gateway restart. Header,
 				// capability, and version errors identify a 2026-07-28-aware peer;
@@ -280,7 +298,9 @@ class ProtocolClient {
 			}
 		}
 		this.protocolVersion =
-			this.selected ?? SUPPORTED_PROTOCOL_VERSIONS.find(requiresInitialization);
+			this.selected ??
+			offeredVersion ??
+			SUPPORTED_PROTOCOL_VERSIONS.find(requiresInitialization);
 		if (!this.protocolVersion)
 			throw new Error('No supported protocol version uses initialization');
 		this.negotiationMethod = 'initialize';
@@ -608,13 +628,19 @@ class ProtocolClient {
 			.pipeThrough(new TextDecoderStream())
 			.getReader();
 		let buffer = '';
+		// SSE lines end in \r\n, \n or \r. A chunk can end between \r and \n,
+		// so a trailing \r waits for the next chunk.
+		let carriageReturn = false;
 		try {
 			for (;;) {
 				const next = await reader.read().catch((error: unknown) => {
 					throw new BackendTransportError(error);
 				});
-				if (next.done) break;
-				buffer = (buffer + next.value).replaceAll('\r\n', '\n');
+				let text: string =
+					(carriageReturn ? '\r' : '') + (next.done ? '' : next.value);
+				carriageReturn = !next.done && text.endsWith('\r');
+				if (carriageReturn) text = text.slice(0, -1);
+				buffer += text.replace(/\r\n?/g, '\n');
 				if (buffer.length > 8 * 1024 * 1024)
 					throw new Error('Backend event exceeds size limit');
 				let end = buffer.indexOf('\n\n');
@@ -641,6 +667,7 @@ class ProtocolClient {
 					}
 					end = buffer.indexOf('\n\n');
 				}
+				if (next.done) break;
 			}
 			throw new BackendTransportError(
 				new Error('Backend stream ended without a result'),
@@ -1063,6 +1090,18 @@ class ProtocolClient {
 	async close(): Promise<void> {
 		this.closed = true;
 		for (const controller of this.controllers) controller.abort();
+		const config = this.server.serverConfig;
+		if (config.type === 'http' && this.sessionId) {
+			// End the 2025 backend session. A server may refuse with HTTP 405.
+			await fetch(config.url, {
+				method: 'DELETE',
+				headers: this.httpHeaders(config.headers, {}),
+				signal: AbortSignal.timeout(config.timeout),
+			})
+				.then((response) => response.body?.cancel())
+				.catch(() => undefined);
+			this.sessionId = undefined;
+		}
 		const child = this.child;
 		if (!child) return;
 		// The stdio shutdown sequence: close stdin, then SIGTERM, then SIGKILL,

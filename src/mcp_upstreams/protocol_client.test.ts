@@ -35,6 +35,10 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 			port: 0,
 			hostname: '127.0.0.1',
 			async fetch(request) {
+				if (request.method === 'DELETE')
+					return new Response(null, {
+						status: 405,
+					});
 				const message = recordOf(await request.json()) ?? {};
 				received.push({
 					message,
@@ -332,6 +336,10 @@ test('a session lost between initialize and initialized remains retryable', asyn
 		port: 0,
 		hostname: '127.0.0.1',
 		async fetch(request) {
+			if (request.method === 'DELETE')
+				return new Response(null, {
+					status: 405,
+				});
 			const message = recordOf(await request.json()) ?? {};
 			if (message.method === 'notifications/initialized')
 				return new Response('Session lost', {
@@ -380,6 +388,10 @@ for (const method of [
 				port: 0,
 				hostname: '127.0.0.1',
 				async fetch(request) {
+					if (request.method === 'DELETE')
+						return new Response(null, {
+							status: 405,
+						});
 					const message = recordOf(await request.json()) ?? {};
 					if (message.method === method) {
 						if (failure === 'timeout')
@@ -451,6 +463,10 @@ for (const version of [
 					port: 0,
 					hostname: '127.0.0.1',
 					async fetch(request) {
+						if (request.method === 'DELETE')
+							return new Response(null, {
+								status: 405,
+							});
 						const message = recordOf(await request.json()) ?? {};
 						methods.push(String(message.method));
 						if (message.method === 'server/discover')
@@ -520,6 +536,10 @@ for (const status of [
 			port: 0,
 			hostname: '127.0.0.1',
 			async fetch(request) {
+				if (request.method === 'DELETE')
+					return new Response(null, {
+						status: 405,
+					});
 				const message = recordOf(await request.json()) ?? {};
 				methods.push(String(message.method));
 				return Response.json(
@@ -577,6 +597,10 @@ for (const code of [
 			port: 0,
 			hostname: '127.0.0.1',
 			async fetch(request) {
+				if (request.method === 'DELETE')
+					return new Response(null, {
+						status: 405,
+					});
 				const message = recordOf(await request.json()) ?? {};
 				methods.push(String(message.method));
 				return Response.json(
@@ -887,6 +911,10 @@ test('old-only backends are rejected before initialized', async () => {
 	const server = Bun.serve({
 		port: 0,
 		async fetch(request) {
+			if (request.method === 'DELETE')
+				return new Response(null, {
+					status: 405,
+				});
 			const message = recordOf(await request.json()) ?? {};
 			methods.push(String(message.method));
 			return Response.json(fixtureReply(message, '2025-03-26'), {
@@ -1100,5 +1128,179 @@ test('an unruly stdio backend keeps working, logs stderr and is killed on close'
 		info.mockRestore();
 		warn.mockRestore();
 		await client.close();
+	}
+});
+
+test('closing a 2025 HTTP backend ends its session with DELETE', async () => {
+	const deletes: Headers[] = [];
+	const endpoint = Bun.serve({
+		port: 0,
+		hostname: '127.0.0.1',
+		async fetch(request) {
+			if (request.method === 'DELETE') {
+				deletes.push(request.headers);
+				return new Response(null);
+			}
+			const message = recordOf(await request.json()) ?? {};
+			if (!('id' in message))
+				return new Response(null, {
+					status: 202,
+				});
+			return Response.json(fixtureReply(message, '2025-11-25'), {
+				headers: {
+					'Mcp-Session-Id': 'session-1',
+				},
+			});
+		},
+	});
+	const client = new ProtocolClient(
+		{
+			serverName: 'session',
+			serverConfig: {
+				type: 'http',
+				url: endpoint.url.href,
+				enabled: true,
+				timeout: 1000,
+				trafficLimit: 1000,
+			},
+		},
+		'2025-11-25',
+	);
+	try {
+		await client.connect();
+		await client.close();
+		expect(deletes).toHaveLength(1);
+		expect(deletes[0]?.get('Mcp-Session-Id')).toBe('session-1');
+		expect(deletes[0]?.get('MCP-Protocol-Version')).toBe('2025-11-25');
+		await client.close();
+		expect(deletes).toHaveLength(1);
+	} finally {
+		endpoint.stop(true);
+	}
+});
+
+test('discovery without 2026-07-28 initializes with an offered 2025 revision', async () => {
+	let offered = [
+		'2025-06-18',
+	];
+	const fixture = startFixtureBackend('http', '2025-06-18', {
+		handle: (message) =>
+			message.method === 'server/discover'
+				? Response.json({
+						jsonrpc: '2.0',
+						id: message.id,
+						result: {
+							supportedVersions: offered,
+							capabilities: {},
+							resultType: 'complete',
+							ttlMs: 0,
+							cacheScope: 'private',
+						},
+					})
+				: undefined,
+	});
+	const connect = async (): Promise<ProtocolClient> => {
+		const client = new ProtocolClient({
+			serverName: 'offered',
+			serverConfig: {
+				...fixture.config,
+				enabled: true,
+				timeout: 1000,
+				trafficLimit: 1000,
+			},
+		});
+		try {
+			await client.connect();
+			return client;
+		} catch (error) {
+			await client.close();
+			throw error;
+		}
+	};
+	try {
+		const client = await connect();
+		expect(client.protocolVersion).toBe('2025-06-18');
+		await client.close();
+		offered = [
+			'2024-11-05',
+		];
+		await expect(connect()).rejects.toThrow(
+			'Backend offers no supported protocol version: 2024-11-05',
+		);
+	} finally {
+		fixture.stop();
+	}
+});
+
+test('SSE responses accept CR, LF and CRLF line endings across chunks', async () => {
+	const bodies = [
+		// Bare CR endings, with the event split inside its JSON.
+		(event: string) => [
+			`data: ${event.slice(0, 10)}`,
+			`${event.slice(10)}\r`,
+			'\r',
+		],
+		// CRLF split between CR and LF, after a comment line.
+		(event: string) => [
+			': keepalive\r\ndata: ',
+			`${event}\r`,
+			'\n\r\n',
+		],
+	];
+	let call = 0;
+	const fixture = startFixtureBackend('http', CURRENT_PROTOCOL_VERSION, {
+		handle: (message, reply) => {
+			if (message.method !== 'tools/call' || !reply) return undefined;
+			const chunks = bodies[call++]?.(JSON.stringify(reply)) ?? [];
+			return new Response(
+				new ReadableStream({
+					start(controller) {
+						for (const chunk of chunks)
+							controller.enqueue(new TextEncoder().encode(chunk));
+						controller.close();
+					},
+				}),
+				{
+					headers: {
+						'content-type': 'text/event-stream',
+					},
+				},
+			);
+		},
+	});
+	const client = new ProtocolClient({
+		serverName: 'sse',
+		serverConfig: {
+			...fixture.config,
+			enabled: true,
+			timeout: 1000,
+			trafficLimit: 1000,
+		},
+	});
+	try {
+		await client.connect();
+		await client.listTools();
+		for (const text of [
+			'cr',
+			'crlf',
+		])
+			expect(
+				(
+					await client.callTool({
+						name: 'echo',
+						arguments: {
+							text,
+						},
+					})
+				).content,
+			).toEqual([
+				{
+					type: 'text',
+					text,
+				},
+			]);
+	} finally {
+		await client.close();
+		fixture.stop();
 	}
 });
