@@ -179,8 +179,9 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 										: {}),
 								},
 							},
-							undefined,
-							clientVersion,
+							{
+								protocolVersion: clientVersion,
+							},
 						);
 						const result = recordOf(recordOf(response.payload)?.result);
 						const received = recordOf(
@@ -211,8 +212,9 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 								method,
 								params: fields,
 							},
-							undefined,
-							clientVersion,
+							{
+								protocolVersion: clientVersion,
+							},
 						);
 						const plainResult = recordOf(recordOf(plain.payload)?.result);
 						const plainMetadata = recordOf(
@@ -272,8 +274,9 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 						...extra,
 					},
 				},
-				undefined,
-				version,
+				{
+					protocolVersion: version,
+				},
 			);
 		const invalidOptions: Record<string, unknown>[] = [
 			{

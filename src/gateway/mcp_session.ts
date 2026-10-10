@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
 import {
-	type IncomingJsonRpcNotification,
 	type IncomingJsonRpcRequest,
 	type RouteResult,
 	rpcError,
@@ -244,27 +243,6 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 		return null;
 	};
 
-	const routeNotification = (
-		notification: IncomingJsonRpcNotification,
-		sessionId: string | undefined,
-	): RouteResult => {
-		const invalid = requireSession(sessionId, undefined, notification.method);
-		if (invalid) return invalid;
-		return {
-			payload: null,
-			sessionId,
-		};
-	};
-
-	const routeResponse = (sessionId: string | undefined): RouteResult => {
-		const invalid = requireSession(sessionId, undefined, 'response');
-		if (invalid) return invalid;
-		return {
-			payload: null,
-			sessionId,
-		};
-	};
-
 	const close = (sessionId: string | undefined): CloseSessionResult => {
 		const session = sessionId ? sessions.get(sessionId) : undefined;
 		if (!sessionId) {
@@ -305,8 +283,6 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 			sessionId ? sessions.get(sessionId)?.protocolVersion : undefined,
 		handleInitialize,
 		requireSession,
-		routeNotification,
-		routeResponse,
 		validateProtocolHeader,
 	};
 };

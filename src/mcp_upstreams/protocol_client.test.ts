@@ -810,8 +810,10 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 								},
 							},
 						},
-						initial?.sessionId,
-						externalVersion,
+						{
+							sessionId: initial?.sessionId,
+							protocolVersion: externalVersion,
+						},
 					);
 					expect(
 						response.payload &&
@@ -864,8 +866,10 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 									},
 								},
 							},
-							initial?.sessionId,
-							externalVersion,
+							{
+								sessionId: initial?.sessionId,
+								protocolVersion: externalVersion,
+							},
 						);
 						const result =
 							forwarded.payload && 'result' in forwarded.payload

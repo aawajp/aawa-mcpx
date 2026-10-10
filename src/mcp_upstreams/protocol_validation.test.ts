@@ -268,8 +268,10 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 								name: 'fixture__echo',
 							},
 						},
-						initial?.sessionId,
-						externalVersion,
+						{
+							sessionId: initial?.sessionId,
+							protocolVersion: externalVersion,
+						},
 					);
 					expect(
 						response.payload &&

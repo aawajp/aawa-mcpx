@@ -34,10 +34,10 @@ const until = async (
 
 const gateway = (
 	manager: McpUpstreamManager,
-	beforeRequest?: () => Promise<void>,
+	refreshCatalogs?: () => Promise<void>,
 ) => {
 	const { route } = createRouteFixture(manager, {
-		beforeRequest,
+		refreshCatalogs,
 	});
 	const send = (
 		version: ProtocolVersion,

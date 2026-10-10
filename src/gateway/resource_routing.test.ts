@@ -207,8 +207,9 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 								method,
 								params,
 							},
-							undefined,
-							clientVersion,
+							{
+								protocolVersion: clientVersion,
+							},
 						);
 					const resultOf = async (
 						method: string,

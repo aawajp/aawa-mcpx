@@ -141,7 +141,6 @@ const startServer = async (
 	};
 
 	const routeRequest = createMcpRequestRouter({
-		beforeRequest: mcpUpstreamManager.refreshStaleCatalogs,
 		handlers,
 		requireSession: mcpSessions.requireSession,
 		handleInitialize: mcpSessions.handleInitialize,

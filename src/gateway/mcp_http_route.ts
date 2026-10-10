@@ -11,6 +11,7 @@ import {
 	type RouteResult,
 	rpcError,
 } from '@/gateway/json_rpc';
+import type { RouteRequest } from '@/gateway/mcp_request_router';
 import type { createMcpSessionManager } from '@/gateway/mcp_session';
 import type { CatalogRequest } from '@/mcp_upstreams/types';
 import { logger } from '@/server/logger';
@@ -35,13 +36,17 @@ type ClientTrafficEntry = Parameters<TrafficStore['logClientTraffic']>[0] & {
 
 type McpSessionManager = ReturnType<typeof createMcpSessionManager>;
 
-type RouteRequest = (
-	request: IncomingJsonRpcRequest,
-	sessionId: string | undefined,
-	protocolVersion?: string,
-	mirroredHeaders?: Record<string, string>,
-	signal?: AbortSignal,
-) => Promise<RouteResult>;
+// Methods that read the backend catalogs, so they wait for initialization and
+// refresh stale lists first.
+const CATALOG_METHODS = new Set([
+	'tools/list',
+	'tools/call',
+	'prompts/list',
+	'prompts/get',
+	'resources/list',
+	'resources/templates/list',
+	'resources/read',
+]);
 
 const cancelledParamsType = type({
 	requestId: 'string | number.integer',
@@ -255,6 +260,21 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 		string,
 		Map<string | number, AbortController>
 	>();
+	const refreshCatalogs = async (
+		message: IncomingJsonRpcRequest,
+		signal?: AbortSignal,
+	): Promise<void> => {
+		if (!CATALOG_METHODS.has(message.method)) return;
+		await withCancellation(
+			Promise.resolve(
+				params.refreshCatalogs?.({
+					method: message.method,
+					params: message.params,
+				}),
+			),
+			signal,
+		);
+	};
 	const routeCancellableRequest = async (
 		message: IncomingJsonRpcRequest,
 		sessionId: string | undefined,
@@ -289,14 +309,16 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 		}
 		try {
 			signal?.throwIfAborted();
+			// The 2026-07-28 path refreshed before checking mirrored headers.
+			if (version !== CURRENT_PROTOCOL_VERSION)
+				await refreshCatalogs(message, signal);
 			return await withCancellation(
-				routeRequest(
-					message,
+				routeRequest(message, {
 					sessionId,
-					version,
-					mirrors,
-					message.method === 'initialize' ? undefined : signal,
-				),
+					protocolVersion: version,
+					mirroredHeaders: mirrors,
+					signal: message.method === 'initialize' ? undefined : signal,
+				}),
 				signal,
 			);
 		} catch (error) {
@@ -304,7 +326,6 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 			// Cancellation has no JSON-RPC error code/result.
 			return {
 				payload: null,
-				sessionId,
 			};
 		} finally {
 			if (tracksId) {
@@ -478,17 +499,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 						return fail(-32020, 'Malformed Mcp-Name');
 					}
 				}
-				if (
-					[
-						'tools/list',
-						'tools/call',
-						'prompts/list',
-						'prompts/get',
-						'resources/list',
-						'resources/templates/list',
-						'resources/read',
-					].includes(message.method)
-				) {
+				if (CATALOG_METHODS.has(message.method)) {
 					// Refresh only catalog-dependent methods, once, before using header
 					// rules. Discovery and unsupported methods need no backend work.
 					try {
@@ -502,15 +513,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 							request.signal,
 						);
 						if (unavailable) return unavailable;
-						await withCancellation(
-							Promise.resolve(
-								params.refreshCatalogs?.({
-									method: message.method,
-									params: message.params,
-								}),
-							),
-							request.signal,
-						);
+						await refreshCatalogs(message, request.signal);
 					} catch (error) {
 						if (request.signal.aborted) return createCancelledResponse();
 						logger.error(
@@ -593,39 +596,40 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 				if (protocolError) {
 					logResponseError({
 						method: notification.method,
-						sessionId: protocolError.sessionId ?? sessionId,
+						sessionId: sessionId,
 						requestParams: notification.params,
 						payload: protocolError.payload,
 						status: protocolError.status,
 					});
 					return createJsonResponse(
 						protocolError.payload as OutgoingJsonRpcResponse,
-						protocolError.sessionId ?? sessionId,
+						sessionId,
 						protocolError.status,
 					);
 				}
-				const routeResult = mcpSessions.routeNotification(
-					notification,
+				const invalid = mcpSessions.requireSession(
 					sessionId,
+					undefined,
+					notification.method,
 				);
-				if (routeResult.payload) {
+				if (invalid) {
 					logResponseError({
 						method: notification.method,
-						sessionId: routeResult.sessionId ?? sessionId,
+						sessionId,
 						requestParams: notification.params,
-						payload: routeResult.payload,
-						status: routeResult.status,
+						payload: invalid.payload,
+						status: invalid.status,
 					});
 					logClientTraffic({
-						sessionId: routeResult.sessionId ?? sessionId,
+						sessionId,
 						method: notification.method,
 						request: notification,
-						response: routeResult.payload,
+						response: invalid.payload,
 					});
 					return createJsonResponse(
-						routeResult.payload,
-						routeResult.sessionId ?? sessionId,
-						routeResult.status,
+						invalid.payload as OutgoingJsonRpcResponse,
+						sessionId,
+						invalid.status,
 					);
 				}
 				if (
@@ -648,12 +652,12 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 					),
 				);
 				logClientTraffic({
-					sessionId: routeResult.sessionId ?? sessionId,
+					sessionId,
 					method: notification.method,
 					request: notification,
 					response: null,
 				});
-				return createNotificationResponse(routeResult.sessionId ?? sessionId);
+				return createNotificationResponse(sessionId);
 			}
 
 			if (isIncomingJsonRpcResponse(message)) {
@@ -666,46 +670,50 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 				if (protocolError) {
 					logResponseError({
 						method: 'response',
-						sessionId: protocolError.sessionId ?? sessionId,
+						sessionId: sessionId,
 						requestParams: undefined,
 						payload: protocolError.payload,
 						status: protocolError.status,
 					});
 					return createJsonResponse(
 						protocolError.payload as OutgoingJsonRpcResponse,
-						protocolError.sessionId ?? sessionId,
+						sessionId,
 						protocolError.status,
 					);
 				}
-				const routeResult = mcpSessions.routeResponse(sessionId);
-				if (routeResult.payload) {
+				const invalid = mcpSessions.requireSession(
+					sessionId,
+					undefined,
+					'response',
+				);
+				if (invalid) {
 					logResponseError({
 						method: 'response',
-						sessionId: routeResult.sessionId ?? sessionId,
+						sessionId,
 						requestParams: undefined,
-						payload: routeResult.payload,
-						status: routeResult.status,
+						payload: invalid.payload,
+						status: invalid.status,
 					});
 					logClientTraffic({
-						sessionId: routeResult.sessionId ?? sessionId,
+						sessionId,
 						method: 'response',
 						request: message,
-						response: routeResult.payload,
+						response: invalid.payload,
 					});
 					return createJsonResponse(
-						routeResult.payload,
-						routeResult.sessionId ?? sessionId,
-						routeResult.status,
+						invalid.payload as OutgoingJsonRpcResponse,
+						sessionId,
+						invalid.status,
 					);
 				}
 				logger.info(buildInboundMessageLog('response', sessionId));
 				logClientTraffic({
-					sessionId: routeResult.sessionId ?? sessionId,
+					sessionId,
 					method: 'response',
 					request: message,
 					response: null,
 				});
-				return createNotificationResponse(routeResult.sessionId ?? sessionId);
+				return createNotificationResponse(sessionId);
 			}
 
 			const jsonRpcRequest = message;
@@ -726,14 +734,14 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 				if (protocolError) {
 					logResponseError({
 						method: jsonRpcRequest.method,
-						sessionId: protocolError.sessionId ?? sessionId,
+						sessionId: sessionId,
 						requestParams: jsonRpcRequest.params,
 						payload: protocolError.payload,
 						status: protocolError.status,
 					});
 					return createJsonResponse(
 						protocolError.payload as OutgoingJsonRpcResponse,
-						protocolError.sessionId ?? sessionId,
+						sessionId,
 						protocolError.status,
 					);
 				}
@@ -745,7 +753,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 					mcpSessions.getProtocolVersion(sessionId),
 				);
 				if (!routeResult.payload) return createCancelledResponse();
-				const logSessionId = routeResult.sessionId ?? sessionId;
+				const responseSessionId = routeResult.sessionId ?? sessionId;
 				if (
 					!routeResult.status &&
 					!isJsonRpcErrorResponse(routeResult.payload)
@@ -753,25 +761,25 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 					logger.info(
 						buildInboundMessageLog(
 							jsonRpcRequest.method,
-							logSessionId,
+							responseSessionId,
 							jsonRpcRequest.params,
 						),
 					);
 				}
 				const response = createJsonResponse(
 					routeResult.payload as OutgoingJsonRpcResponse,
-					routeResult.sessionId ?? sessionId,
+					responseSessionId,
 					routeResult.status,
 				);
 				logResponseError({
 					method: jsonRpcRequest.method,
-					sessionId: logSessionId,
+					sessionId: responseSessionId,
 					requestParams: jsonRpcRequest.params,
 					payload: routeResult.payload,
 					status: routeResult.status,
 				});
 				logClientTraffic({
-					sessionId: routeResult.sessionId ?? sessionId,
+					sessionId: responseSessionId,
 					method: jsonRpcRequest.method,
 					request: jsonRpcRequest,
 					response: routeResult.payload,

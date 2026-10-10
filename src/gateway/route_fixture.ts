@@ -15,12 +15,11 @@ import { mock } from 'bun:test';
 const createRouteFixture = (
 	manager: McpUpstreamManager,
 	options: {
-		beforeRequest?: (request: CatalogRequest) => Promise<void>;
+		refreshCatalogs?: (request: CatalogRequest) => Promise<void>;
 		// Check x-mcp-header mirrors against the listed tool schemas.
 		checkToolHeaders?: boolean;
 	} = {},
 ) => {
-	const { beforeRequest } = options;
 	const sessions = createMcpSessionManager({
 		protocolHeaderName: 'MCP-Protocol-Version',
 		supportedProtocolVersions: SUPPORTED_PROTOCOL_VERSIONS,
@@ -30,7 +29,6 @@ const createRouteFixture = (
 	});
 	const routeRequest = mock(
 		createMcpRequestRouter({
-			beforeRequest,
 			handlers,
 			requireSession: sessions.requireSession,
 			handleInitialize: sessions.handleInitialize,
@@ -43,7 +41,7 @@ const createRouteFixture = (
 						.listTools(CURRENT_PROTOCOL_VERSION)
 						.tools.find((tool) => tool.name === name)?.inputSchema
 			: undefined,
-		refreshCatalogs: beforeRequest,
+		refreshCatalogs: options.refreshCatalogs,
 		mcpSessions: sessions,
 		routeRequest,
 		trafficStore: {

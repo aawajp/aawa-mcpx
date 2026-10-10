@@ -7,8 +7,6 @@ import {
 } from '@/gateway/json_rpc';
 import type { createHandlers } from '@/gateway/mcp_handlers';
 import { BackendRpcError } from '@/mcp_upstreams/protocol_client';
-import type { CatalogRequest } from '@/mcp_upstreams/types';
-import { withCancellation } from '@/shared/cancellation';
 import { legacyRequestMetadataType } from '@/shared/mcp_metadata';
 import {
 	requiresOutputWrapper,
@@ -43,8 +41,19 @@ type RequireSession = (
 	method: string,
 ) => RouteResult | null;
 
+type RouteOptions = {
+	sessionId?: string;
+	protocolVersion?: string;
+	mirroredHeaders?: Record<string, string>;
+	signal?: AbortSignal;
+};
+
+type RouteRequest = (
+	request: IncomingJsonRpcRequest,
+	options?: RouteOptions,
+) => Promise<RouteResult>;
+
 type CreateMcpRequestRouterParams = {
-	beforeRequest?: (request: CatalogRequest) => Promise<void>;
 	handlers: GatewayHandlers;
 	requireSession: RequireSession;
 	handleInitialize: (
@@ -95,23 +104,19 @@ const modernErrorStatus = (code: number): number | undefined => {
 
 const createMcpRequestRouter = (
 	params: CreateMcpRequestRouterParams,
-): ((
-	request: IncomingJsonRpcRequest,
-	sessionId: string | undefined,
-	protocolVersion?: string,
-	mirroredHeaders?: Record<string, string>,
-	signal?: AbortSignal,
-) => Promise<RouteResult>) => {
+): RouteRequest => {
 	const { handlers, handleInitialize } = params;
 
 	const route = async (
 		request: IncomingJsonRpcRequest,
-		sessionId: string | undefined,
-		protocolVersion?: string,
-		mirroredHeaders?: Record<string, string>,
-		signal?: AbortSignal,
+		options: RouteOptions,
 	): Promise<RouteResult> => {
+		const { sessionId, protocolVersion, mirroredHeaders, signal } = options;
 		signal?.throwIfAborted();
+		const clientVersion =
+			protocolVersion !== undefined && isProtocolVersion(protocolVersion)
+				? protocolVersion
+				: undefined;
 		const usesRequestMetadata = protocolVersion === CURRENT_PROTOCOL_VERSION;
 		const requireSession: RequireSession = usesRequestMetadata
 			? () => null
@@ -183,21 +188,13 @@ const createMcpRequestRouter = (
 				id: request.id,
 				result,
 			},
-			sessionId,
 		});
 		const unsupported = (message: string): RouteResult => ({
 			payload: rpcError(request.id, -32601, message),
-			sessionId,
 		});
 		switch (request.method) {
 			case 'tools/list':
-				return success(
-					handlers.listTools(
-						protocolVersion !== undefined && isProtocolVersion(protocolVersion)
-							? protocolVersion
-							: undefined,
-					),
-				);
+				return success(handlers.listTools(clientVersion));
 			case 'prompts/list':
 				return success(handlers.listPrompts());
 			case 'resources/list':
@@ -216,10 +213,7 @@ const createMcpRequestRouter = (
 					metadata: recordOf(callParams._meta),
 					mirroredHeaders,
 					signal,
-					clientProtocolVersion:
-						protocolVersion !== undefined && isProtocolVersion(protocolVersion)
-							? protocolVersion
-							: undefined,
+					clientProtocolVersion: clientVersion,
 				};
 				return success(
 					await (request.method === 'tools/call'
@@ -262,47 +256,16 @@ const createMcpRequestRouter = (
 				return unsupported(`Method not found: ${request.method}`);
 		}
 	};
-	return async (
-		request,
-		sessionId,
-		protocolVersion,
-		mirroredHeaders,
-		signal,
-	) => {
-		signal?.throwIfAborted();
-		// The 2026-07-28 HTTP path already refreshes before mirrored-header
-		// validation. Refreshing again here would fetch zero-TTL catalogs twice.
-		if (
-			protocolVersion !== CURRENT_PROTOCOL_VERSION &&
-			[
-				'tools/list',
-				'tools/call',
-				'prompts/list',
-				'prompts/get',
-				'resources/list',
-				'resources/templates/list',
-				'resources/read',
-			].includes(request.method)
-		)
-			await withCancellation(
-				params.beforeRequest?.(request) ?? Promise.resolve(),
-				signal,
-			);
+	return async (request, options = {}) => {
+		const { protocolVersion, signal } = options;
 		let result: RouteResult;
 		try {
-			result = await route(
-				request,
-				sessionId,
-				protocolVersion,
-				mirroredHeaders,
-				signal,
-			);
+			result = await route(request, options);
 			signal?.throwIfAborted();
 		} catch (error) {
 			if (!(error instanceof BackendRpcError)) throw error;
 			result = {
 				payload: rpcError(request.id, error.code, error.message, error.data),
-				sessionId,
 			};
 		}
 		if (!result.payload) return result;
@@ -389,7 +352,6 @@ const createMcpRequestRouter = (
 		}
 		return {
 			...result,
-			sessionId: undefined,
 			// These are gateway cache hints, not a promise copied from one backend.
 			payload: {
 				...result.payload,
@@ -415,4 +377,5 @@ const createMcpRequestRouter = (
 	};
 };
 
+export type { RouteRequest };
 export { createMcpRequestRouter };

@@ -277,8 +277,10 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 											}),
 								},
 							},
-							initial?.sessionId,
-							clientVersion,
+							{
+								sessionId: initial?.sessionId,
+								protocolVersion: clientVersion,
+							},
 						);
 					const catalog = await route(
 						{
@@ -286,8 +288,10 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 							id: 'list',
 							method: 'tools/list',
 						},
-						initial?.sessionId,
-						clientVersion,
+						{
+							sessionId: initial?.sessionId,
+							protocolVersion: clientVersion,
+						},
 					);
 					expect(
 						recordOf(recordOf(catalog.payload)?.result)?.tools,
