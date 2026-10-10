@@ -470,7 +470,8 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 			).toBeUndefined();
 		}
 
-		// Schema-free results wrap only non-objects for either 2025 revision.
+		// Schema-free results wrap only non-objects for either 2025 revision, and
+		// JSON text without structuredContent stays text.
 		outputSchema = undefined;
 		const schemaFreeCatalog = await (await send('tools/list')).json();
 		expect(schemaFreeCatalog.result.tools[0].outputSchema).toBeUndefined();
@@ -499,6 +500,11 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 						})
 					).json()
 				).result;
+				if (recover) {
+					expect(result.content).toEqual(backendResult.content);
+					expect(result).not.toHaveProperty('structuredContent');
+					continue;
+				}
 				expect(result.content).toEqual([]);
 				expect(result.structuredContent).toEqual(
 					version === CURRENT_PROTOCOL_VERSION || recordOf(structuredContent)

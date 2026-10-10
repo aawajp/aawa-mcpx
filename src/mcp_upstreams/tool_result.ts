@@ -65,7 +65,8 @@ const createToolResultNormalizer = (): ((
 				}),
 			);
 		let normalized = result;
-		if (result.structuredContent === undefined) {
+		// Only a declared output schema says that JSON text is structured output.
+		if (result.structuredContent === undefined && schema !== undefined) {
 			const candidates: unknown[] = [];
 			const parsedBlocks: unknown[] = [];
 			for (const block of result.content) {
@@ -86,9 +87,8 @@ const createToolResultNormalizer = (): ((
 			}
 			let matches = candidates;
 			if (
-				schema !== undefined &&
-				(candidates.length > 1 ||
-					(recordOf(schema)?.type === 'array' && parsedBlocks.length > 0))
+				candidates.length > 1 ||
+				(recordOf(schema)?.type === 'array' && parsedBlocks.length > 0)
 			) {
 				matches = candidates.filter(
 					(candidate) => validate(schema, candidate) === undefined,
@@ -108,13 +108,12 @@ const createToolResultNormalizer = (): ((
 					...result,
 					structuredContent: matches[0],
 				};
-				if (schema !== undefined)
-					warn(
-						'structured_content_recovered',
-						'Missing structuredContent recovered from JSON text in content',
-					);
+				warn(
+					'structured_content_recovered',
+					'Missing structuredContent recovered from JSON text in content',
+				);
 			}
-			if (matches.length !== 1 && schema !== undefined) {
+			if (matches.length !== 1) {
 				warn(
 					'missing_structured_content',
 					candidates.length

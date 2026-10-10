@@ -107,6 +107,9 @@ entry under the date its change was committed. The project uses
   such as the TypeScript SDK failed the whole `tools/list`.
 - Resources whose URIs contain spaces or non-ASCII characters can be read. Before,
   they were listed but every read was rejected as an invalid URI.
+- Structured content is recovered from JSON text only for tools with an output
+  schema. Before, any JSON-looking text from a schema-free tool (for example
+  `"42"`) was moved out of `content`.
 
 ### 2026-10-09
 

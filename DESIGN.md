@@ -346,7 +346,7 @@ The shared MCP/dashboard call path:
 1. Validate arguments once against the cached input validator ([4.2](#42-input-schemas-and-arguments)).
 2. Capture the cached output schema before dispatch; record the original backend response.
 3. Validate the result envelope and content blocks ([4.3](#43-tool-results)).
-4. Recover missing structured output when JSON content is unambiguous.
+4. Recover missing structured output when the tool has an output schema and JSON content is unambiguous.
 5. Validate successful output, warning without changing data ([4.4](#44-output-schemas)).
 6. Remove only JSON text equal to the entire structured value; preserve independent content and metadata.
 7. Adapt MCP catalogs/results to the client revision; dashboard shapes stay original.
@@ -396,14 +396,13 @@ Provider `outputSchema` definitions appear in catalogs and the dashboard. Ajv an
 `ajv-formats` validate successful results and compile input schemas using JSON
 Schema 2020-12 by default, or declared draft-07/2019-09.
 
-Missing `structuredContent` is recovered from complete JSON text blocks up to
-2 Mi UTF-16 code units each, whether or not the tool advertises an output schema:
-use a single distinct value even if it mismatches the schema (unless the schema's
-root is an array); with
-multiple values, require a unique schema match or an array schema that validates
-the ordered JSON items (including duplicates). Ambiguous/non-JSON content stays unchanged.
-Advertised schemas cause warnings for missing or recovered structured output;
-recovered results use the same duplicate-removal policy.
+For tools that advertise an output schema, missing `structuredContent` is
+recovered from complete JSON text blocks up to 2 Mi UTF-16 code units each: use
+a single distinct value even if it mismatches the schema (unless the schema's
+root is an array); with multiple values, require a unique schema match or an array schema that validates
+the ordered JSON items (including duplicates). Ambiguous/non-JSON content stays unchanged,
+and so does every result of a tool without an output schema. Missing or recovered
+structured output logs a warning; recovered results use the same duplicate-removal policy.
 
 Mismatches, invalid schemas, unsupported dialects, and unresolved references log
 warnings with backend/tool identifiers while returning results normally. This

@@ -320,25 +320,21 @@ test('error results skip the success schema and content-only tools remain suppor
 			],
 		};
 		expect(normalize(normal, undefined, context)).toBe(normal);
-		expect(
-			normalize(
-				{
-					content: [
-						{
-							type: 'text',
-							text: '{"count":2}',
-						},
-					],
-				},
-				undefined,
-				context,
-			),
-		).toEqual({
-			content: [],
-			structuredContent: {
-				count: 2,
-			},
-		});
+		// Without an output schema, JSON-looking text is just text.
+		for (const text of [
+			'{"count":2}',
+			'42',
+		]) {
+			const plain: ToolCallResult = {
+				content: [
+					{
+						type: 'text',
+						text,
+					},
+				],
+			};
+			expect(normalize(plain, undefined, context)).toEqual(plain);
+		}
 		expect(warn).not.toHaveBeenCalled();
 	} finally {
 		warn.mockRestore();
