@@ -3,7 +3,6 @@ import { createMcpRequestRouter } from '@/server/gateway/mcp_request_router';
 import { createMcpSessionManager } from '@/server/gateway/mcp_session';
 import {
 	BackendRpcError,
-	BackendTransportError,
 	ProtocolClient,
 } from '@/server/mcp_upstreams/protocol_client';
 import { startFixtureBackend } from '@/server/mcp_upstreams/protocol_fixture';
@@ -435,9 +434,13 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 					client.callTool({
 						name: 'echo',
 					}),
-				).rejects.toBeInstanceOf(BackendTransportError);
+				).rejects.toMatchObject({
+					code: -32000,
+					status: transientStatus,
+					data: undefined,
+				});
 			}
-			expect(recoveries).toBe(3);
+			expect(recoveries).toBe(0);
 		} finally {
 			await client.close();
 			server.stop(true);

@@ -128,6 +128,9 @@ entry under the date its change was committed. The project uses
   the annotation.
 - `trafficLimit` spaces requests that arrive together. Before, concurrent
   requests waited once and were sent at the same moment.
+- A timeout or HTTP `408`/`429`/`5xx` on one backend request fails only that
+  request. Before, it closed the backend connection, aborted other clients'
+  requests, and kept the backend down for at least 5 seconds.
 
 ### 2026-10-09
 

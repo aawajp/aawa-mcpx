@@ -74,9 +74,9 @@ silences the logger during tests.
 
 ### 2.2 Backend connections and recovery
 
-Enabled backends recover automatically from network interruptions, timeouts,
-HTTP `408`/`429`/`5xx`, and lost initialized HTTP sessions, including during
-handshakes. Transport failures retire the client and schedule recovery. Failed
+Enabled backends recover automatically from lost connections and lost
+initialized HTTP sessions. Handshakes also retry after timeouts and HTTP
+`408`/`429`/`5xx`. Transport failures retire the client and schedule recovery. Failed
 tool calls are never replayed, because their side effects may have completed.
 Negotiation failures stop retries until disable/re-enable ([3.1](#31-revisions-and-negotiation)).
 
@@ -91,9 +91,11 @@ Health probes run independently for enabled, connected backends after catalog
 refresh; disable/reconnect invalidates stale results. Successful requests
 suppress probes for **60 seconds**. Idle probes run on the next 10-second tick,
 time out after at most 9 seconds (or the configured timeout if shorter), and mark
-a backend down after two consecutive failures. An application transport failure
-or request timeout marks the backend down at once, closes its client (aborting
-its other in-flight requests), and schedules recovery. Probes do not refresh catalogs. Probes target configured backends, not general
+a backend down after two consecutive failures. An application request that loses
+its connection or HTTP session marks the backend down at once, closes its client
+(aborting its other in-flight requests), and schedules recovery. A request
+timeout or HTTP error fails only that request; probes catch a backend that stops
+answering. Probes do not refresh catalogs. Probes target configured backends, not general
 internet connectivity; `2026-07-28` backends are probed with discovery.
 
 ## 3. MCP protocol model

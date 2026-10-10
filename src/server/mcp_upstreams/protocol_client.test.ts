@@ -571,7 +571,7 @@ for (const status of [
 		try {
 			await expect(client.connect()).rejects.toBeInstanceOf(
 				status === 429 || status === 503
-					? BackendTransportError
+					? BackendRpcError
 					: ProtocolNegotiationError,
 			);
 			expect(methods).toEqual([

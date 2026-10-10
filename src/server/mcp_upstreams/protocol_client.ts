@@ -734,14 +734,19 @@ class ProtocolClient {
 						undefined,
 						response.status,
 					);
-				// A transient HTTP failure remains recoverable even when its body is
+				// A transient HTTP failure keeps its status even when its body is
 				// malformed. Never expose that body's unvalidated protocol code/data.
 				if (
 					response.status === 408 ||
 					response.status === 429 ||
 					response.status >= 500
 				)
-					throw new BackendTransportError(error);
+					throw new BackendRpcError(
+						`Backend HTTP ${response.status}`,
+						-32000,
+						undefined,
+						response.status,
+					);
 				throw error;
 			}
 			if (body.error)
@@ -909,14 +914,17 @@ class ProtocolClient {
 					AbortSignal.timeout(1000),
 				).catch(() => undefined);
 			}
-			// Recover the connection for subsequent calls. Never replay an operation:
-			// a lost response does not establish whether its side effects completed.
+			// Only a lost connection or session retires the client. A timeout or an
+			// HTTP error fails this call alone; health checks catch a hung backend.
+			// Never replay an operation: a lost response does not establish whether
+			// its side effects completed.
 			if (
 				!this.closed &&
-				!options.signal?.aborted &&
+				!signal.aborted &&
 				method !== 'ping' &&
 				method !== 'server/discover' &&
-				(isTransientBackendError(failure) || this.isSessionLostError(failure))
+				(failure instanceof BackendTransportError ||
+					this.isSessionLostError(failure))
 			)
 				this.ontransporterror(failure);
 			throw failure;

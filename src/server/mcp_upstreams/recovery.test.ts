@@ -222,7 +222,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 					toolCalls += 1;
 					if (failed)
 						return new Response('Session gone', {
-							status: version === CURRENT_PROTOCOL_VERSION ? 503 : 404,
+							status: 404,
 						});
 				}
 				if (!('id' in message))
@@ -247,11 +247,16 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 		const harness = createHarness(endpoint.url.href, async () => {
 			refreshes += 1;
 		});
+		const fetch = spyOn(globalThis, 'fetch');
 		try {
 			await harness.connections.initialize();
 			const client = harness.backend.client;
 			if (!client) throw new Error('Missing client');
-			failed = true;
+			// 2026 has no session, so its connection-level failure is a lost
+			// connection.
+			if (version === CURRENT_PROTOCOL_VERSION)
+				fetch.mockRejectedValueOnce(new TypeError('Connection reset'));
+			else failed = true;
 			await expect(
 				client.callTool({
 					name: 'echo',
@@ -267,9 +272,93 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 				protocolVersion: version,
 			});
 			expect(refreshes).toBe(2);
-			expect(toolCalls).toBe(1);
+			expect(toolCalls).toBe(version === CURRENT_PROTOCOL_VERSION ? 0 : 1);
 			client.ontransporterror(new Error('Late error from old client'));
 			expect(harness.backend.status?.connected).toBe(true);
+		} finally {
+			fetch.mockRestore();
+			await harness.connections.disconnect();
+			endpoint.stop(true);
+		}
+	});
+}
+
+for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
+	test(`${version}: a timeout or 5xx fails only its own call`, async () => {
+		const endpoint = Bun.serve({
+			port: 0,
+			hostname: '127.0.0.1',
+			async fetch(request) {
+				if (request.method === 'DELETE')
+					return new Response(null, {
+						status: 405,
+					});
+				const message = recordOf(await request.json()) ?? {};
+				const mode = recordOf(recordOf(message.params)?.arguments)?.mode;
+				if (mode === 'fail')
+					return new Response('Unavailable', {
+						status: 503,
+					});
+				if (mode === 'hang') await Bun.sleep(300);
+				if (mode === 'slow') await Bun.sleep(100);
+				if (!('id' in message))
+					return new Response(null, {
+						status: 202,
+					});
+				return Response.json(fixtureReply(message, version), {
+					status:
+						message.method === 'server/discover' &&
+						version !== CURRENT_PROTOCOL_VERSION
+							? 400
+							: 200,
+					headers:
+						message.method === 'initialize'
+							? {
+									'Mcp-Session-Id': 'fixture-session',
+								}
+							: undefined,
+				});
+			},
+		});
+		const harness = createHarness(endpoint.url.href);
+		try {
+			await harness.connections.initialize();
+			const client = harness.backend.client;
+			if (!client) throw new Error('Missing client');
+			const slow = client.callTool({
+				name: 'echo',
+				arguments: {
+					mode: 'slow',
+				},
+			});
+			await expect(
+				client.callTool({
+					name: 'echo',
+					arguments: {
+						mode: 'fail',
+					},
+				}),
+			).rejects.toMatchObject({
+				status: 503,
+			});
+			await expect(
+				client.callTool(
+					{
+						name: 'echo',
+						arguments: {
+							mode: 'hang',
+						},
+					},
+					undefined,
+					{
+						timeout: 20,
+					},
+				),
+			).rejects.toThrow();
+			await expect(slow).resolves.toBeDefined();
+			expect(harness.backend.client).toBe(client);
+			expect(harness.backend.status?.connected).toBe(true);
+			expect(harness.backend.reconnectTimer).toBeUndefined();
 		} finally {
 			await harness.connections.disconnect();
 			endpoint.stop(true);
