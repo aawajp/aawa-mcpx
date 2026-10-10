@@ -68,8 +68,6 @@ type TrafficStore = {
 	upsertResources: (params: { backend: string; resources: unknown[] }) => void;
 };
 
-const DATABASE_FILENAME = path.join('db', 'traffic.db');
-
 const safeParse = (value: string): unknown => {
 	try {
 		return JSON.parse(value);
@@ -78,9 +76,7 @@ const safeParse = (value: string): unknown => {
 	}
 };
 
-const createTrafficStore = (
-	dbPath = path.join(process.cwd(), DATABASE_FILENAME),
-): TrafficStore => {
+const createTrafficStore = (dbPath: string): TrafficStore => {
 	const dbDir = path.dirname(dbPath);
 	if (!existsSync(dbDir)) {
 		try {

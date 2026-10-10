@@ -1,9 +1,24 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
 import type { McpConfig } from '@/config/schema';
 import { createMcpUpstreamCatalog } from '@/mcp_upstreams/catalog';
 import { createMcpUpstreamBackend } from '@/mcp_upstreams/connections';
 import type { ProtocolClient as Client } from '@/mcp_upstreams/protocol_client';
 
-import { expect, test } from 'bun:test';
+import { afterAll, beforeAll, expect, test } from 'bun:test';
+
+let root = '';
+beforeAll(async () => {
+	root = await mkdtemp(path.join(tmpdir(), 'mcpx-catalog-'));
+});
+afterAll(async () => {
+	await rm(root, {
+		recursive: true,
+		force: true,
+	});
+});
 
 test('catalog responses invalidated by backend disable are discarded', async () => {
 	const server = createMcpUpstreamBackend({
@@ -75,6 +90,7 @@ test('catalog responses invalidated by backend disable are discarded', async () 
 	let statusErrors = 0;
 	const catalog = createMcpUpstreamCatalog({
 		attemptReconnect: async () => undefined,
+		configPath: path.join(root, 'mcp.json'),
 		backends: new Map([
 			[
 				server.serverName,
@@ -136,6 +152,7 @@ test('lists a backend does not advertise are never requested', async () => {
 	let statusErrors = 0;
 	const catalog = createMcpUpstreamCatalog({
 		attemptReconnect: async () => undefined,
+		configPath: path.join(root, 'mcp.json'),
 		backends: new Map([
 			[
 				server.serverName,

@@ -26,6 +26,7 @@ type CreateMcpUpstreamCatalogParams = {
 	attemptReconnect: (backend: McpUpstreamBackend) => Promise<void>;
 	backends: Map<string, McpUpstreamBackend>;
 	config: McpConfig;
+	configPath: string;
 	markMcpUpstreamConfigurationError: (
 		backend: McpUpstreamBackend,
 		error: string,
@@ -78,6 +79,7 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 		attemptReconnect,
 		backends,
 		config,
+		configPath,
 		markMcpUpstreamConfigurationError,
 		setMcpUpstreamStatusError,
 		trafficStore,
@@ -110,6 +112,7 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 		catalogParams.server.serverConfig.availableTools = toolNames;
 		try {
 			await saveToolState({
+				configPath,
 				config,
 				serverName: catalogParams.server.serverName,
 				enabledTools,
@@ -461,6 +464,7 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 
 		try {
 			await saveToolState({
+				configPath,
 				config,
 				serverName: server.serverName,
 				enabledTools: nextEnabled,

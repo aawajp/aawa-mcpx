@@ -15,7 +15,7 @@ import { CURRENT_PROTOCOL_VERSION, recordOf } from '@/shared/mcp_protocol';
 const createMcpUpstreamManager = (
 	params: CreateMcpUpstreamManagerParams,
 ): McpUpstreamManager => {
-	const { config, trafficStore } = params;
+	const { config, configPath, trafficStore } = params;
 	const backends = new Map<string, McpUpstreamBackend>(
 		Object.entries(config.mcpServers).map(([serverName, serverConfig]) => [
 			serverName,
@@ -39,6 +39,7 @@ const createMcpUpstreamManager = (
 		attemptReconnect: connections.attemptReconnect,
 		backends,
 		config,
+		configPath,
 		markMcpUpstreamConfigurationError:
 			connections.markMcpUpstreamConfigurationError,
 		setMcpUpstreamStatusError: connections.setMcpUpstreamStatusError,
@@ -143,6 +144,7 @@ const createMcpUpstreamManager = (
 		if (server.serverConfig.enabled === toggleParams.enabled) return;
 
 		await saveBackendEnabled({
+			configPath,
 			config,
 			...toggleParams,
 		});

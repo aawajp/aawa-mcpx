@@ -1,4 +1,5 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import {
@@ -79,8 +80,8 @@ const requireMockServer = (config: McpConfig): McpServerConfig => {
 };
 
 test('backend lifecycle preserves tool exposure state', async () => {
-	const originalCwd = process.cwd();
-	const testRoot = await mkdtemp(path.join(originalCwd, '.mcpx-lifecycle-'));
+	const testRoot = await mkdtemp(path.join(tmpdir(), 'mcpx-lifecycle-'));
+	const configPath = path.join(testRoot, 'mcp.json');
 	const methods: string[] = [];
 	let returnedCount: number | string = 2;
 	let initializeBarrier: InitializeBarrier | null = null;
@@ -248,12 +249,12 @@ test('backend lifecycle preserves tool exposure state', async () => {
 		});
 	const writeConfig = async (enabled: boolean): Promise<void> => {
 		await writeFile(
-			path.join(testRoot, 'mcp.json'),
+			configPath,
 			`${JSON.stringify(createConfig(enabled), null, '\t')}\n`,
 		);
 	};
 	const readConfig = async () => {
-		const config: unknown = await Bun.file('mcp.json').json();
+		const config: unknown = await Bun.file(configPath).json();
 		return mcpConfigType.assert(config);
 	};
 	let startupDisabledManager: ReturnType<
@@ -262,10 +263,10 @@ test('backend lifecycle preserves tool exposure state', async () => {
 	let runtimeManager: ReturnType<typeof createMcpUpstreamManager> | null = null;
 
 	try {
-		process.chdir(testRoot);
 		await writeConfig(false);
 		startupDisabledManager = createMcpUpstreamManager({
 			config: createConfig(false),
+			configPath,
 		});
 		await startupDisabledManager.initialize();
 		const startupDisabled = requireStatus(
@@ -292,6 +293,7 @@ test('backend lifecycle preserves tool exposure state', async () => {
 		await writeConfig(true);
 		runtimeManager = createMcpUpstreamManager({
 			config: createConfig(true),
+			configPath,
 		});
 		await runtimeManager.initialize();
 		expect(runtimeManager.getStatuses()[0]).toMatchObject({
@@ -367,7 +369,7 @@ test('backend lifecycle preserves tool exposure state', async () => {
 		}
 		const close = spyOn(ProtocolClient.prototype, 'close');
 		await writeFile(
-			path.join(testRoot, 'mcp.json'),
+			configPath,
 			`${JSON.stringify(
 				mcpConfigType.assert({
 					mcpServers: {
@@ -463,7 +465,6 @@ test('backend lifecycle preserves tool exposure state', async () => {
 		await startupDisabledManager?.disconnect();
 		await runtimeManager?.disconnect();
 		mockServer.stop(true);
-		process.chdir(originalCwd);
 		await rm(testRoot, {
 			recursive: true,
 			force: true,

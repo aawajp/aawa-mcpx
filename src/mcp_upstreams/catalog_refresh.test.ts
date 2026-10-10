@@ -1,4 +1,5 @@
 import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import { mcpConfigType } from '@/config/schema';
@@ -19,8 +20,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 		'stdio',
 	] as const) {
 		test(`${version} ${transport}: manual refresh fetches changed tools and preserves exposure`, async () => {
-			const originalCwd = process.cwd();
-			const root = await mkdtemp(path.join(originalCwd, '.mcpx-refresh-'));
+			const root = await mkdtemp(path.join(tmpdir(), 'mcpx-refresh-'));
 			const catalogPath = path.join(root, 'tools.json');
 			let holdNextToolsRequest = false;
 			const held = Promise.withResolvers<void>();
@@ -86,9 +86,9 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 			});
 			const manager = createMcpUpstreamManager({
 				config,
+				configPath: path.join(root, 'mcp.json'),
 			});
 			try {
-				process.chdir(root);
 				await manager.initialize();
 				expect(
 					manager.getStatuses().filter((status) => status.connected),
@@ -282,7 +282,6 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 				release.resolve();
 				await manager.disconnect();
 				fixture.stop();
-				process.chdir(originalCwd);
 				await rm(root, {
 					recursive: true,
 					force: true,

@@ -1,17 +1,10 @@
-import path from 'node:path';
-
-import { CONFIG_FILENAME } from '@/config/constants';
 import { type McpConfig, mcpConfigType } from '@/config/schema';
 import { errorMessage } from '@/shared/common';
 
 let writeQueue: Promise<unknown> = Promise.resolve();
 
-const getConfigPath = (): string => {
-	return path.join(process.cwd(), CONFIG_FILENAME);
-};
-
-const loadRawConfig = async (): Promise<unknown> => {
-	const configPath = getConfigPath();
+// Every path comes from the caller, so tests can only touch the files they pass.
+const loadRawConfig = async (configPath: string): Promise<unknown> => {
 	const modulePath = `${configPath}?cache=${Date.now()}-${Math.random()}`;
 	const module = await import(modulePath, {
 		with: {
@@ -34,26 +27,28 @@ const queueWrite = async <T>(run: () => Promise<T>): Promise<T> => {
 	return await pending;
 };
 
-const load = async (): Promise<McpConfig> => {
+const load = async (configPath: string): Promise<McpConfig> => {
 	try {
-		const contents = await loadRawConfig();
+		const contents = await loadRawConfig(configPath);
 		return parseConfig(contents);
 	} catch (err) {
-		throw new Error(
-			`Failed to load "${CONFIG_FILENAME}": ${errorMessage(err)}`,
-		);
+		throw new Error(`Failed to load "${configPath}": ${errorMessage(err)}`);
 	}
 };
 
-const persistConfig = async (config: McpConfig): Promise<void> => {
+const persistConfig = async (
+	configPath: string,
+	config: McpConfig,
+): Promise<void> => {
 	const snapshot = parseConfig(structuredClone(config));
 	const json = `${JSON.stringify(snapshot, null, '\t')}\n`;
 	await queueWrite(async () => {
-		await Bun.write(getConfigPath(), json);
+		await Bun.write(configPath, json);
 	});
 };
 
 const saveToolState = async (params: {
+	configPath: string;
 	config: McpConfig;
 	serverName: string;
 	enabledTools: string[];
@@ -72,10 +67,11 @@ const saveToolState = async (params: {
 	}
 	server.enabledTools = enabledTools;
 	server.availableTools = availableTools;
-	await persistConfig(params.config);
+	await persistConfig(params.configPath, params.config);
 };
 
 const saveBackendEnabled = async (params: {
+	configPath: string;
 	config: McpConfig;
 	serverName: string;
 	enabled: boolean;
@@ -87,7 +83,7 @@ const saveBackendEnabled = async (params: {
 	const previousEnabled = server.enabled;
 	server.enabled = params.enabled;
 	try {
-		await persistConfig(params.config);
+		await persistConfig(params.configPath, params.config);
 	} catch (err) {
 		if (server.enabled === params.enabled) {
 			server.enabled = previousEnabled;

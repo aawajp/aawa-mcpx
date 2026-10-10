@@ -1,6 +1,7 @@
 import Ajv2020 from 'ajv/dist/2020';
 
 import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import { mcpConfigType } from '@/config/schema';
@@ -102,8 +103,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 		'stdio',
 	] as const) {
 		test(`${backendVersion} ${transport}: schemas gate exposure and calls across client revisions and refreshes`, async () => {
-			const originalCwd = process.cwd();
-			const root = await mkdtemp(path.join(originalCwd, '.mcpx-input-'));
+			const root = await mkdtemp(path.join(tmpdir(), 'mcpx-input-'));
 			const catalogPath = path.join(root, 'tools.json');
 			const schema = (minimum: number) => ({
 				$id: 'urn:fixture:input',
@@ -198,12 +198,12 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 			});
 			const manager = createMcpUpstreamManager({
 				config,
+				configPath: path.join(root, 'mcp.json'),
 			});
 			const compile = spyOn(Ajv2020.prototype, 'compile');
 			const invoke = spyOn(ProtocolClient.prototype, 'callTool');
 			const warn = spyOn(logger, 'warn');
 			try {
-				process.chdir(root);
 				await manager.initialize();
 				expect(manager.getStatuses()[0]).toMatchObject({
 					connected: true,
@@ -443,7 +443,6 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 				warn.mockRestore();
 				await manager.disconnect();
 				backend.stop();
-				process.chdir(originalCwd);
 				await rm(root, {
 					recursive: true,
 					force: true,

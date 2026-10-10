@@ -43,6 +43,7 @@ import type { ToolCallResult } from '@/shared/mcp_results';
 
 type CreateMcpUpstreamManagerParams = {
 	config: McpConfig;
+	configPath: string;
 	trafficStore?: TrafficStore;
 };
 

@@ -1,3 +1,6 @@
+import path from 'node:path';
+
+import { CONFIG_FILENAME, DATABASE_FILENAME } from '@/config/constants';
 import { load as loadConfig } from '@/config/loader';
 import { startServer } from '@/gateway/server';
 import { createMcpUpstreamManager } from '@/mcp_upstreams/manager';
@@ -16,10 +19,14 @@ const resolvePort = (value: string | undefined): number => {
 	return Number.isNaN(parsed) ? DEFAULT_PORT : parsed;
 };
 
-const config = await loadConfig();
-const trafficStore = createTrafficStore();
+const configPath = path.join(process.cwd(), CONFIG_FILENAME);
+const config = await loadConfig(configPath);
+const trafficStore = createTrafficStore(
+	path.join(process.cwd(), DATABASE_FILENAME),
+);
 const mcpUpstreamManager = createMcpUpstreamManager({
 	config,
+	configPath,
 	trafficStore,
 });
 const initialization = mcpUpstreamManager.initialize();

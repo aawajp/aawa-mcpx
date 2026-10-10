@@ -91,6 +91,9 @@ doc in the same change.
 - Compile input schemas on catalog fetch, reuse validators on calls, and avoid
   repeated validation of the same request or catalog data within that lifecycle.
 - Keep public/exported function parameters and return types explicit.
+- Tests never read or write local private files such as `.env`, `mcp.json`, or
+  `db/`. Pass file paths explicitly and use temporary folders under the OS temp
+  directory; never change the working directory.
 - Use sentence case for markdown headings.
 
 ## Boundary checks

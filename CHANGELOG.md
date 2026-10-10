@@ -47,6 +47,8 @@ entry under the date its change was committed. The project uses
 - `@modelcontextprotocol/sdk` is a dev dependency, since the gateway uses only
   its types. The Tailwind packages and `tailwind-merge` are runtime
   dependencies, since the server bundles the dashboard at startup.
+- Bun no longer loads `.env` automatically; `bun dev` and `bun start` load it
+  explicitly. Running `bun src/index.ts` directly ignores `.env`.
 - Merged tool, prompt, and resource lists follow the backend order in
   `mcp.json`. Before, they followed the order in which backend catalogs arrived.
 
