@@ -1123,6 +1123,33 @@ test('POST checks Origin and Accept before reading the body', async () => {
 	expect((await passed.json()).error.code).toBe(-32600);
 });
 
+test('unknown protocol version headers without request metadata get HTTP 400', async () => {
+	const { route } = fixture();
+	for (const header of [
+		'zzz',
+		'2026-01-01',
+		'2099-01-01',
+	]) {
+		const response = await route.POST(
+			mcpPost({
+				headers: {
+					'MCP-Protocol-Version': header,
+				},
+				body: JSON.stringify({
+					jsonrpc: '2.0',
+					id: 1,
+					method: 'tools/list',
+				}),
+			}),
+		);
+		expect(response.status).toBe(400);
+		expect((await response.json()).error).toEqual({
+			code: -32600,
+			message: `Unsupported MCP protocol version header: ${header}`,
+		});
+	}
+});
+
 test('gateway transport errors keep their HTTP status and use Invalid Request', async () => {
 	const { route } = fixture();
 	const post = (

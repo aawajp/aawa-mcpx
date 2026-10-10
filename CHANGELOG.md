@@ -99,6 +99,9 @@ entry under the date its change was committed. The project uses
   `resources/read` return a JSON-RPC `-32603` error, like `tools/call`, so 2025
   clients get HTTP `200` instead of `500`. Prompt messages and resource contents
   are validated; before, a malformed one (for example `null`) crashed the request.
+- An unknown `MCP-Protocol-Version` header without request metadata returns HTTP
+  `400` with "Unsupported MCP protocol version header". Before, any value sorting
+  after `2025-11-25` (for example `zzz`) was handled as `2026-07-28`.
 
 ### 2026-10-09
 

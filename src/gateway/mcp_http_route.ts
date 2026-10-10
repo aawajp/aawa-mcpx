@@ -442,12 +442,12 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 			const metadata = recordOf(recordOf(message.params)?._meta);
 			const versionHeader = request.headers.get('MCP-Protocol-Version');
 			// Classify before session validation: 2026-07-28 requests ignore session
-			// IDs. Unknown newer revisions also reach the explicit version error path.
+			// IDs. Newer revisions carry request metadata and reach the explicit
+			// version error; other unknown headers fail the 2025 header check.
 			if (
 				('method' in message && message.method === 'server/discover') ||
 				(metadata && PROTOCOL_VERSION_META in metadata) ||
-				versionHeader === CURRENT_PROTOCOL_VERSION ||
-				(versionHeader && versionHeader > '2025-11-25')
+				versionHeader === CURRENT_PROTOCOL_VERSION
 			) {
 				const fail = (
 					code: number,

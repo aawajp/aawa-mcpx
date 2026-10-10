@@ -141,6 +141,9 @@ responses receive HTTP 202 without a body. The 2026 path uses discovery,
 per-request metadata, mirrored-header validation, and complete-result/cache
 fields; removed methods return HTTP 404 with JSON-RPC method-not-found. A supplied
 `MCP-Protocol-Version` must match the metadata (2026) or the session (2025).
+A request takes the 2026 path when it is `server/discover`, carries protocol
+version metadata, or has the exact `2026-07-28` header. Any other unsupported
+header gets HTTP 400 / `-32600`.
 A present `Origin` must match the `Host` header, or both must be local host names.
 This check does not stop DNS rebinding, because a rebinding page controls both
 values, and `/api/*` routes have no `Origin` check. Clients must accept both
