@@ -82,14 +82,16 @@ const createMcpUpstreamManager = (
 		resources: catalog.fetchResources,
 		resourceTemplates: catalog.fetchResourceTemplates,
 	};
-	// Each list is cached on its own. Concurrent requests share one fetch per
-	// list; a list without ttlMs is stale at once and re-fetched on next access.
+	// Each list is cached on its own. Concurrent requests on one connection share
+	// one fetch per list; a list without ttlMs is stale at once and re-fetched on
+	// next access.
 	const refreshList = async (
 		backend: McpUpstreamBackend,
 		list: CatalogList,
 	): Promise<void> => {
+		const client = backend.client;
 		const pending = backend.listRefreshes[list];
-		if (pending) return pending;
+		if (pending && pending.client === client) return pending.promise;
 		const refresh = async (): Promise<void> => {
 			const startedAt = Date.now();
 			// A failed fetch keeps the stale list and its expiry.
@@ -98,11 +100,14 @@ const createMcpUpstreamManager = (
 			backend.listExpiresAt[list] = startedAt + Math.max(0, ttl);
 		};
 		const promise = refresh();
-		backend.listRefreshes[list] = promise;
+		backend.listRefreshes[list] = {
+			client,
+			promise,
+		};
 		try {
 			await promise;
 		} finally {
-			if (backend.listRefreshes[list] === promise)
+			if (backend.listRefreshes[list]?.promise === promise)
 				delete backend.listRefreshes[list];
 		}
 	};
@@ -165,7 +170,9 @@ const createMcpUpstreamManager = (
 				if (!backend) throw new Error(`Unknown MCP upstream "${name}"`);
 				// A refresh already in flight may predate the button press. Wait for it,
 				// then fetch again, bypassing TTL for both initialized and modern peers.
-				await Promise.allSettled(Object.values(backend.listRefreshes));
+				await Promise.allSettled(
+					Object.values(backend.listRefreshes).map(({ promise }) => promise),
+				);
 				if (!backend.serverConfig.enabled || !backend.client)
 					throw new Error(`MCP upstream "${name}" is not available`);
 				await refreshCatalog(backend);

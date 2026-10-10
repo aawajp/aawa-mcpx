@@ -194,7 +194,16 @@ type McpUpstreamBackend = McpUpstreamServer & {
 	resourceTemplates?: McpUpstreamResourceTemplates;
 	// Each list is cached on its own; a 2026-07-28 list is stale from this time.
 	listExpiresAt: Record<CatalogList, number>;
-	listRefreshes: Partial<Record<CatalogList, Promise<void>>>;
+	// A pending fetch is shared only by requests on the client that started it.
+	listRefreshes: Partial<
+		Record<
+			CatalogList,
+			{
+				client?: Client;
+				promise: Promise<void>;
+			}
+		>
+	>;
 };
 
 type McpUpstreamManager = {

@@ -112,6 +112,9 @@ entry under the date its change was committed. The project uses
   `"42"`) was moved out of `content`.
 - The gateway reports its `package.json` version in `serverInfo` and toward
   backends in `clientInfo`. Before, it always reported `1.0.0`.
+- A backend disabled and re-enabled while a catalog refresh waited for its
+  rate-limit slot loads its catalog again. Before, the new connection reused the
+  old refresh and stayed with an empty catalog until the next manual refresh.
 
 ### 2026-10-09
 

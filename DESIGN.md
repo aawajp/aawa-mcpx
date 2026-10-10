@@ -179,7 +179,8 @@ TTL is stale at once. Before a public list request (`tools/list`,
 `prompts/list`, `resources/list`, `resources/templates/list`), the gateway
 re-fetches that list from every connected 2026 backend where it is stale; before
 `tools/call` it re-fetches only the target backend's tools. Concurrent requests
-share one fetch per list, and a failed re-fetch keeps serving the stale list.
+on one connection share one fetch per list; a new connection starts its own.
+A failed re-fetch keeps serving the stale list.
 2025 backend catalogs refresh only on connect, reconnect, enable, and dashboard
 refresh. All pages are materialized before [namespacing](#38-namespaces-and-resource-routing);
 upstream cursors are not aggregate cursors. Public `2026-07-28` catalogs carry

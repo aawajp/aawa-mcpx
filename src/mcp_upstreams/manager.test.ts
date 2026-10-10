@@ -471,3 +471,106 @@ test('backend lifecycle preserves tool exposure state', async () => {
 		});
 	}
 });
+
+test('a refresh pending across a reconnect does not leave an empty catalog', async () => {
+	const testRoot = await mkdtemp(path.join(tmpdir(), 'mcpx-refresh-'));
+	const configPath = path.join(testRoot, 'mcp.json');
+	const mockServer = Bun.serve({
+		hostname: '127.0.0.1',
+		port: 0,
+		async fetch(request) {
+			if (request.method !== 'POST')
+				return new Response(null, {
+					status: request.method === 'DELETE' ? 202 : 405,
+				});
+			const message = (await request.json()) as JsonRpcRequest;
+			if (message.id === undefined)
+				return new Response(null, {
+					status: 202,
+				});
+			const reply = (result: unknown): Response =>
+				Response.json({
+					jsonrpc: '2.0',
+					id: message.id,
+					result,
+				});
+			switch (message.method) {
+				case 'initialize':
+					return reply({
+						protocolVersion: '2025-11-25',
+						capabilities: {
+							tools: {},
+						},
+						serverInfo: {
+							name: 'mock-backend',
+							version: '1',
+						},
+					});
+				case 'tools/list':
+					return reply({
+						tools: [
+							{
+								name: 'alpha',
+								inputSchema: {
+									type: 'object',
+								},
+							},
+						],
+					});
+				default:
+					return Response.json({
+						jsonrpc: '2.0',
+						id: message.id,
+						error: {
+							code: -32601,
+							message: 'Method not found',
+						},
+					});
+			}
+		},
+	});
+	const config = mcpConfigType.assert({
+		mcpServers: {
+			mock: {
+				type: 'http',
+				url: `http://127.0.0.1:${mockServer.port}/mcp`,
+				enabled: true,
+				// The refresh below waits 500 ms for its rate-limit slot.
+				trafficLimit: 2,
+			},
+		},
+	});
+	await writeFile(configPath, `${JSON.stringify(config, null, '\t')}\n`);
+	const manager = createMcpUpstreamManager({
+		config,
+		configPath,
+	});
+	try {
+		await manager.initialize();
+		const staleRefresh = manager
+			.refreshCatalogs({
+				serverName: 'mock',
+			})
+			.catch(() => undefined);
+		await Bun.sleep(50);
+		await manager.toggleBackend({
+			serverName: 'mock',
+			enabled: false,
+		});
+		await manager.toggleBackend({
+			serverName: 'mock',
+			enabled: true,
+		});
+		await staleRefresh;
+		expect(toolNames(manager.listAllTools().get('mock')?.tools ?? [])).toEqual([
+			'alpha',
+		]);
+	} finally {
+		await manager.disconnect();
+		mockServer.stop(true);
+		await rm(testRoot, {
+			recursive: true,
+			force: true,
+		});
+	}
+});
