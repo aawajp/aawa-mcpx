@@ -451,9 +451,9 @@ errors. `prompts/get` and `resources/read` do not wrap them, so they return HTTP
 500 / `-32603` in every revision. An exposed tool with an unusable input schema
 also returns `-32603`.
 
-Ordinary 2025 RPC errors keep HTTP 200. Gateway-generated 2025 transport errors
-use the HTTP status as both status and JSON-RPC code: missing session 400, unknown
-session 404, header mismatch 400, invalid `Origin` 403, unacceptable `Accept` 400. The 2026 binding uses HTTP 400 for
+Ordinary 2025 RPC errors keep HTTP 200. Gateway-generated transport errors use
+JSON-RPC `-32600` with these HTTP statuses: missing session 400, unknown session
+404, header mismatch 400, invalid `Origin` 403, unacceptable `Accept` 400. The 2026 binding uses HTTP 400 for
 invalid requests/parameters and metadata errors, 404 for unknown methods, and
 500 for internal errors. HTTP handler failures use 500 in every revision.
 Backend HTTP statuses stay local to backend recovery/negotiation and are not

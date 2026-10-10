@@ -1122,3 +1122,87 @@ test('POST checks Origin and Accept before reading the body', async () => {
 	expect(passed.status).toBe(400);
 	expect((await passed.json()).error.code).toBe(-32600);
 });
+
+test('gateway transport errors keep their HTTP status and use Invalid Request', async () => {
+	const { route } = fixture();
+	const post = (
+		headers: Record<string, string>,
+		method = 'tools/list',
+		params: Record<string, unknown> = {},
+	) =>
+		route.POST(
+			mcpPost({
+				headers: {
+					'MCP-Protocol-Version': '2025-11-25',
+					...headers,
+				},
+				body: JSON.stringify({
+					jsonrpc: '2.0',
+					id: 1,
+					method,
+					params,
+				}),
+			}),
+		);
+	const initialize = (headers: Record<string, string> = {}) =>
+		post(headers, 'initialize', {
+			protocolVersion: '2025-11-25',
+			clientInfo: {
+				name: 'codes',
+				version: '1',
+			},
+		});
+	const session = (await initialize()).headers.get('Mcp-Session-Id') ?? '';
+	const cases: [
+		Promise<Response>,
+		number,
+	][] = [
+		[
+			post({
+				Origin: 'http://evil.example',
+			}),
+			403,
+		],
+		[
+			post({
+				Accept: 'application/json',
+			}),
+			400,
+		],
+		[
+			post({}),
+			400,
+		],
+		[
+			post({
+				'Mcp-Session-Id': 'unknown',
+			}),
+			404,
+		],
+		[
+			post({
+				'Mcp-Session-Id': session,
+				'MCP-Protocol-Version': '2025-06-18',
+			}),
+			400,
+		],
+		[
+			post({
+				'Mcp-Session-Id': session,
+				'MCP-Protocol-Version': '2024-11-05',
+			}),
+			400,
+		],
+		[
+			initialize({
+				'Mcp-Session-Id': session,
+			}),
+			400,
+		],
+	];
+	for (const [response, status] of cases) {
+		const resolved = await response;
+		expect(resolved.status).toBe(status);
+		expect((await resolved.json()).error.code).toBe(-32600);
+	}
+});

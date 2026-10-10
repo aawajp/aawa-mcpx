@@ -91,6 +91,10 @@ entry under the date its change was committed. The project uses
 - A backend whose discovery result lists only 2025 revisions is initialized with
   the highest of them instead of failing.
 - Backend SSE streams with bare CR line endings are read correctly.
+- Requests the gateway rejects at the HTTP level (invalid `Origin`, unacceptable
+  `Accept`, missing or unknown session, protocol version header errors) return
+  JSON-RPC `-32600` with the same HTTP status. Before, the HTTP status
+  (`400`/`403`/`404`) was used as the JSON-RPC code.
 
 ### 2026-10-09
 

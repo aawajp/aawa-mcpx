@@ -47,7 +47,7 @@ const createProtocolError = (params: {
 	status?: number;
 }): RouteResult => {
 	return {
-		payload: rpcError(params.id, params.status ?? 400, params.message),
+		payload: rpcError(params.id, -32600, params.message),
 		status: params.status ?? 400,
 	};
 };

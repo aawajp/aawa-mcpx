@@ -120,7 +120,7 @@ const createMethodNotAllowedResponse = (): Response => {
 };
 
 const createOriginForbiddenResponse = (): Response => {
-	const body = rpcError(undefined, 403, 'Invalid Origin header.');
+	const body = rpcError(undefined, -32600, 'Invalid Origin header.');
 	return createJsonResponse(body, undefined, 403);
 };
 
@@ -391,7 +391,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 			) {
 				const payload = rpcError(
 					undefined,
-					400,
+					-32600,
 					'MCP HTTP POST requests must accept application/json and text/event-stream.',
 				);
 				logResponseError({
