@@ -83,7 +83,6 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 				],
 				getInputValidator: () => compiled,
 				getOutputSchema: () => undefined,
-				onValidationError: () => undefined,
 				waitForRateLimit: rateLimit,
 			});
 			const manager = {

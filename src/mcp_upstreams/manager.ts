@@ -41,7 +41,6 @@ const createMcpUpstreamManager = (
 		config,
 		markMcpUpstreamConfigurationError:
 			connections.markMcpUpstreamConfigurationError,
-		onValidationError: connections.onValidationError,
 		setMcpUpstreamStatusError: connections.setMcpUpstreamStatusError,
 		trafficStore,
 		waitForRateLimit: connections.waitForRateLimit,
@@ -128,7 +127,6 @@ const createMcpUpstreamManager = (
 				.get(serverName)
 				?.tools?.tools.find((tool) => tool.name === toolName)?.outputSchema,
 		getBackend: connections.getBackend,
-		onValidationError: connections.onValidationError,
 		trafficStore,
 		waitForRateLimit: connections.waitForRateLimit,
 	});

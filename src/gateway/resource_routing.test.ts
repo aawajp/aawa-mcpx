@@ -114,7 +114,6 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 						},
 					});
 				},
-				onValidationError: () => undefined,
 				waitForRateLimit: rateLimit,
 			});
 			const manager = {

@@ -449,8 +449,9 @@ handled method parameters, HTTP API bodies, configuration, upstream response sha
 and UI overview/debug contracts. Ajv and `ajv-formats` are peer dependencies used
 only for arbitrary provider JSON Schema, which ArkType cannot import.
 
-`ProtocolClient.rpc` validates backend envelopes and result shapes; the catalog
-and call layers currently validate list and call results a second time. JSON-RPC envelopes require string/integer IDs, integer error
+`ProtocolClient.rpc` validates backend envelopes and result shapes once; the
+catalog and call layers use them as is. Health checks validate `ping` results,
+which `rpc` does not check. JSON-RPC envelopes require string/integer IDs, integer error
 codes, and matching response IDs; only the initial discovery fallback in
 [3.1](#31-revisions-and-negotiation) tolerates an invalid envelope.
 

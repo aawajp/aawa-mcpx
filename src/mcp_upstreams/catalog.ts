@@ -4,7 +4,6 @@ import type {
 	ListToolsResult,
 	Tool,
 } from '@modelcontextprotocol/sdk/types';
-import { type } from 'arktype';
 
 import { saveToolState } from '@/config/loader';
 import type { McpConfig } from '@/config/schema';
@@ -16,18 +15,12 @@ import type {
 	McpUpstreamPromptsMap,
 	McpUpstreamResourcesMap,
 	McpUpstreamToolsMap,
-	OnValidationError,
 	ToggleToolParams,
 } from '@/mcp_upstreams/types';
 import { logger } from '@/server/logger';
 import type { TrafficStore } from '@/server/traffic_store';
 import { errorMessage } from '@/shared/common';
 import { toolHeaderParameters } from '@/shared/mcp_protocol';
-import {
-	listPromptsResultType,
-	listResourcesResultType,
-	listToolsResultType,
-} from '@/shared/mcp_schemas';
 
 type CreateMcpUpstreamCatalogParams = {
 	attemptReconnect: (backend: McpUpstreamBackend) => Promise<void>;
@@ -37,7 +30,6 @@ type CreateMcpUpstreamCatalogParams = {
 		backend: McpUpstreamBackend,
 		error: string,
 	) => void;
-	onValidationError: OnValidationError;
 	setMcpUpstreamStatusError: (
 		backend: McpUpstreamBackend,
 		error: string,
@@ -87,7 +79,6 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 		backends,
 		config,
 		markMcpUpstreamConfigurationError,
-		onValidationError,
 		setMcpUpstreamStatusError,
 		trafficStore,
 		waitForRateLimit,
@@ -140,7 +131,6 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 			empty: () => T;
 			save: (result: T) => void;
 			fetch: (client: Client) => Promise<T>;
-			validate: (result: T) => unknown;
 			keepCacheOnError?: boolean;
 			// Runs after caching; an awaited step may outlive this client.
 			prepare?: (result: T, client: Client) => Promise<void>;
@@ -161,13 +151,6 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 			if (!isCurrent()) return options.empty();
 			const result = await options.fetch(client);
 			if (!isCurrent()) return options.empty();
-			const parsed = options.validate(result);
-			if (parsed instanceof type.errors)
-				onValidationError({
-					server,
-					method: options.method,
-					error: parsed,
-				});
 			options.save(result);
 			await options.prepare?.(result, client);
 			if (!isCurrent()) return options.empty();
@@ -304,7 +287,6 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 						timeout: server.serverConfig.timeout,
 					},
 				),
-			validate: listToolsResultType,
 			// Retain raw definitions for dashboard inspection and exposure settings:
 			// an unusable schema is not a removed tool or a backend failure.
 			keepCacheOnError: true,
@@ -339,7 +321,6 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 						timeout: server.serverConfig.timeout,
 					},
 				),
-			validate: listPromptsResultType,
 			persist: (result) =>
 				trafficStore?.upsertPrompts({
 					backend: server.serverName,
@@ -362,7 +343,6 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 						timeout: server.serverConfig.timeout,
 					},
 				),
-			validate: listResourcesResultType,
 			persist: (result) =>
 				trafficStore?.upsertResources({
 					backend: server.serverName,

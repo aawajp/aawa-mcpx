@@ -197,7 +197,6 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 				],
 				getInputValidator: () => compiled,
 				getOutputSchema: () => undefined,
-				onValidationError: () => undefined,
 				waitForRateLimit: async () => undefined,
 			});
 			const manager = {

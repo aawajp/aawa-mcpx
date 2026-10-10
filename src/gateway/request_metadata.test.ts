@@ -60,7 +60,6 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 					...createMcpUpstreamBackend(server),
 					client,
 				}),
-				onValidationError: () => undefined,
 				waitForRateLimit: async () => undefined,
 			});
 			const manager = {

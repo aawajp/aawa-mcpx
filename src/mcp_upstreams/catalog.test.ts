@@ -80,7 +80,6 @@ test('catalog responses invalidated by backend disable are discarded', async () 
 		markMcpUpstreamConfigurationError: () => {
 			configurationErrors += 1;
 		},
-		onValidationError: () => undefined,
 		setMcpUpstreamStatusError: () => {
 			statusErrors += 1;
 		},

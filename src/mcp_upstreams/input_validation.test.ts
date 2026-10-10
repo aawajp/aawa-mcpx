@@ -62,7 +62,6 @@ test('the shared call path validates arguments exactly once before backend work'
 		],
 		getInputValidator: () => compiled,
 		getOutputSchema: () => undefined,
-		onValidationError: () => undefined,
 		waitForRateLimit,
 	});
 	try {

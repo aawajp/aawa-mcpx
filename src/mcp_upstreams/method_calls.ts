@@ -11,17 +11,11 @@ import type {
 	CallToolParams,
 	GetPromptParams,
 	McpUpstreamBackend,
-	OnValidationError,
 	ReadResourceParams,
 } from '@/mcp_upstreams/types';
 import type { TrafficStore } from '@/server/traffic_store';
 import { errorMessage } from '@/shared/common';
 import { type ToolCallResult, toolErrorResult } from '@/shared/mcp_results';
-import {
-	callToolResultType,
-	getPromptResultType,
-	readResourceResultType,
-} from '@/shared/mcp_schemas';
 
 type CreateMcpUpstreamOperationsParams = {
 	getEnabledTools: (params: { serverName: string }) => string[];
@@ -34,7 +28,6 @@ type CreateMcpUpstreamOperationsParams = {
 		toolName: string;
 	}) => CompiledSchema | undefined;
 	getBackend: (serverName: string) => McpUpstreamBackend | undefined;
-	onValidationError: OnValidationError;
 	trafficStore?: TrafficStore;
 	waitForRateLimit: (
 		backend: McpUpstreamBackend,
@@ -45,13 +38,8 @@ type CreateMcpUpstreamOperationsParams = {
 const createMcpUpstreamOperations = (
 	params: CreateMcpUpstreamOperationsParams,
 ) => {
-	const {
-		getEnabledTools,
-		getBackend,
-		onValidationError,
-		trafficStore,
-		waitForRateLimit,
-	} = params;
+	const { getEnabledTools, getBackend, trafficStore, waitForRateLimit } =
+		params;
 	const normalizeToolResult = createToolResultNormalizer();
 
 	const callTool = async (
@@ -120,9 +108,6 @@ const createMcpUpstreamOperations = (
 				client,
 				method: `tools/call:${toolName}`,
 				request: args,
-				validationRequest: {
-					name: toolName,
-				},
 				invoke: () =>
 					client.callTool(
 						{
@@ -137,8 +122,6 @@ const createMcpUpstreamOperations = (
 							signal: callParams.signal,
 						},
 					),
-				validate: callToolResultType,
-				onValidationError,
 				trafficStore,
 			});
 			return normalizeToolResult(result, outputSchema, {
@@ -185,9 +168,6 @@ const createMcpUpstreamOperations = (
 			client,
 			method: `prompts/get:${promptName}`,
 			request: args,
-			validationRequest: {
-				name: promptName,
-			},
 			invoke: () =>
 				client.getPrompt(
 					{
@@ -201,8 +181,6 @@ const createMcpUpstreamOperations = (
 						signal: promptParams.signal,
 					},
 				),
-			validate: getPromptResultType,
-			onValidationError,
 			trafficStore,
 		});
 	};
@@ -235,9 +213,6 @@ const createMcpUpstreamOperations = (
 			request: {
 				uri,
 			},
-			validationRequest: {
-				uri,
-			},
 			invoke: () =>
 				client.readResource(
 					{
@@ -250,8 +225,6 @@ const createMcpUpstreamOperations = (
 						signal: resourceParams.signal,
 					},
 				),
-			validate: readResourceResultType,
-			onValidationError,
 			trafficStore,
 		});
 	};

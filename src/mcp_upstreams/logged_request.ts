@@ -1,10 +1,4 @@
-import { type } from 'arktype';
-
-import type {
-	Client,
-	McpUpstreamServer,
-	OnValidationError,
-} from '@/mcp_upstreams/types';
+import type { Client, McpUpstreamServer } from '@/mcp_upstreams/types';
 import { logger } from '@/server/logger';
 import type { TrafficStore } from '@/server/traffic_store';
 import { errorMessage } from '@/shared/common';
@@ -14,10 +8,7 @@ const runLoggedRequest = async <T>(params: {
 	client: Client;
 	method: string;
 	request: unknown;
-	validationRequest: unknown;
 	invoke: () => Promise<T>;
-	validate: (result: T) => unknown;
-	onValidationError: OnValidationError;
 	trafficStore?: TrafficStore;
 	signal?: AbortSignal;
 }): Promise<T> => {
@@ -32,14 +23,6 @@ const runLoggedRequest = async <T>(params: {
 	try {
 		const result = await params.invoke();
 		params.signal?.throwIfAborted();
-		const parsed = params.validate(result);
-		if (parsed instanceof type.errors)
-			params.onValidationError({
-				server: params.server,
-				method: params.method,
-				error: parsed,
-				request: params.validationRequest,
-			});
 		log(result);
 		return result;
 	} catch (error) {

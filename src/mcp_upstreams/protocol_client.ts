@@ -356,74 +356,106 @@ class ProtocolClient {
 	): Promise<unknown> {
 		if (signal.aborted) throw new BackendTransportError(signal.reason);
 		const config = this.server.serverConfig;
-		if (config.type === 'stdio') {
-			if (!this.child)
-				throw new BackendTransportError(
-					new Error('Backend process is not running'),
-				);
-			const child = this.child;
-			const id = message.id;
-			if (typeof id !== 'string' && typeof id !== 'number') {
-				child.stdin.write(`${JSON.stringify(message)}\n`);
-				return undefined;
-			}
-			return await new Promise((resolve, reject) => {
-				const abort = (): void => {
-					// Retire the ID before cancellation so a late stdio response cannot
-					// complete an abandoned discovery probe or another operation.
-					this.pending.delete(id);
-					signal.removeEventListener('abort', abort);
-					try {
-						// Both 2025 revisions forbid cancelling initialize. Shutdown also
-						// must not write to a process that is already being torn down.
-						if (!this.closed && message.method !== 'initialize')
-							child.stdin.write(
-								`${JSON.stringify({
-									jsonrpc: '2.0',
-									method: 'notifications/cancelled',
-									params: {
-										requestId: id,
-									},
-								})}\n`,
-							);
-					} catch (error) {
-						logger.warn(
-							JSON.stringify({
-								message: 'Backend cancellation notification failed',
-								context: {
-									backend: this.server.serverName,
+		if (config.type === 'stdio') return this.sendStdio(message, signal);
+		const response = await fetch(config.url, {
+			method: 'POST',
+			headers: this.httpHeaders(config.headers, message, mirroredHeaders),
+			body: JSON.stringify(message),
+			signal,
+		}).catch((error: unknown) => {
+			throw new BackendTransportError(error);
+		});
+		if (
+			this.protocolVersion !== CURRENT_PROTOCOL_VERSION &&
+			message.method === 'initialize'
+		)
+			this.sessionId = response.headers.get('Mcp-Session-Id') ?? undefined;
+		if (!('id' in message) && response.ok) return undefined;
+		if (
+			response.headers.get('content-type')?.includes('text/event-stream') &&
+			response.ok
+		)
+			return this.readEventStream(response, message.id);
+		return this.readJsonResponse(response, message);
+	}
+
+	private async sendStdio(
+		message: Record<string, unknown>,
+		signal: AbortSignal,
+	): Promise<unknown> {
+		if (!this.child)
+			throw new BackendTransportError(
+				new Error('Backend process is not running'),
+			);
+		const child = this.child;
+		const id = message.id;
+		if (typeof id !== 'string' && typeof id !== 'number') {
+			child.stdin.write(`${JSON.stringify(message)}\n`);
+			return undefined;
+		}
+		return await new Promise((resolve, reject) => {
+			const abort = (): void => {
+				// Retire the ID before cancellation so a late stdio response cannot
+				// complete an abandoned discovery probe or another operation.
+				this.pending.delete(id);
+				signal.removeEventListener('abort', abort);
+				try {
+					// Both 2025 revisions forbid cancelling initialize. Shutdown also
+					// must not write to a process that is already being torn down.
+					if (!this.closed && message.method !== 'initialize')
+						child.stdin.write(
+							`${JSON.stringify({
+								jsonrpc: '2.0',
+								method: 'notifications/cancelled',
+								params: {
 									requestId: id,
 								},
-								error: errorMessage(error),
-							}),
+							})}\n`,
 						);
-					} finally {
-						reject(new BackendTransportError(signal.reason));
-					}
-				};
-				this.pending.set(id, {
-					resolve: (value) => {
-						signal.removeEventListener('abort', abort);
-						this.pending.delete(id);
-						resolve(value);
-					},
-					reject: (error) => {
-						signal.removeEventListener('abort', abort);
-						this.pending.delete(id);
-						reject(error);
-					},
-				});
-				signal.addEventListener('abort', abort, {
-					once: true,
-				});
-				try {
-					child.stdin.write(`${JSON.stringify(message)}\n`);
 				} catch (error) {
-					this.pending.get(id)?.reject(new BackendTransportError(error));
+					logger.warn(
+						JSON.stringify({
+							message: 'Backend cancellation notification failed',
+							context: {
+								backend: this.server.serverName,
+								requestId: id,
+							},
+							error: errorMessage(error),
+						}),
+					);
+				} finally {
+					reject(new BackendTransportError(signal.reason));
 				}
+			};
+			this.pending.set(id, {
+				resolve: (value) => {
+					signal.removeEventListener('abort', abort);
+					this.pending.delete(id);
+					resolve(value);
+				},
+				reject: (error) => {
+					signal.removeEventListener('abort', abort);
+					this.pending.delete(id);
+					reject(error);
+				},
 			});
-		}
-		const headers = new Headers(config.headers as HeadersInit | undefined);
+			signal.addEventListener('abort', abort, {
+				once: true,
+			});
+			try {
+				child.stdin.write(`${JSON.stringify(message)}\n`);
+			} catch (error) {
+				this.pending.get(id)?.reject(new BackendTransportError(error));
+			}
+		});
+	}
+
+	private httpHeaders(
+		configured: Record<string, string> | undefined,
+		message: Record<string, unknown>,
+		mirroredHeaders?: Record<string, string>,
+	): Headers {
+		const headers = new Headers(configured);
 		// These fields belong to this RPC, never to static backend configuration.
 		// Clear stale mirrors even for legacy hops, which do not validate them.
 		for (const name of Array.from(headers.keys()))
@@ -461,71 +493,66 @@ class ProtocolClient {
 			);
 			if (this.sessionId) headers.set('Mcp-Session-Id', this.sessionId);
 		}
-		const response = await fetch(config.url, {
-			method: 'POST',
-			headers,
-			body: JSON.stringify(message),
-			signal,
-		}).catch((error: unknown) => {
-			throw new BackendTransportError(error);
-		});
-		if (
-			this.protocolVersion !== CURRENT_PROTOCOL_VERSION &&
-			message.method === 'initialize'
-		)
-			this.sessionId = response.headers.get('Mcp-Session-Id') ?? undefined;
-		if (!('id' in message) && response.ok) return undefined;
-		if (
-			response.headers.get('content-type')?.includes('text/event-stream') &&
-			response.ok
-		) {
-			if (!response.body) throw new Error('Missing backend stream');
-			const reader = response.body
-				.pipeThrough(new TextDecoderStream())
-				.getReader();
-			let buffer = '';
-			try {
-				for (;;) {
-					const next = await reader.read().catch((error: unknown) => {
-						throw new BackendTransportError(error);
-					});
-					if (next.done) break;
-					buffer = (buffer + next.value).replaceAll('\r\n', '\n');
-					if (buffer.length > 8 * 1024 * 1024)
-						throw new Error('Backend event exceeds size limit');
-					let end = buffer.indexOf('\n\n');
-					while (end >= 0) {
-						const data = buffer
-							// SSE events can span chunks and contain multiple data lines.
-							.slice(0, end)
-							.split('\n')
-							.filter((line) => line.startsWith('data:'))
-							.map((line) => line.slice(5).replace(/^ /, ''))
-							.join('\n');
-						buffer = buffer.slice(end + 2);
-						if (data) {
-							// Progress notifications are not the final response. Complete only
-							// when this request's ID has a result or protocol error.
-							const event = recordOf(JSON.parse(data));
-							if (
-								event &&
-								event.id === message.id &&
-								('result' in event || 'error' in event)
-							)
-								return event;
-						}
-						end = buffer.indexOf('\n\n');
+		return headers;
+	}
+
+	// A Streamable HTTP backend may answer a POST with an SSE stream instead of JSON.
+	private async readEventStream(
+		response: Response,
+		id: unknown,
+	): Promise<unknown> {
+		if (!response.body) throw new Error('Missing backend stream');
+		const reader = response.body
+			.pipeThrough(new TextDecoderStream())
+			.getReader();
+		let buffer = '';
+		try {
+			for (;;) {
+				const next = await reader.read().catch((error: unknown) => {
+					throw new BackendTransportError(error);
+				});
+				if (next.done) break;
+				buffer = (buffer + next.value).replaceAll('\r\n', '\n');
+				if (buffer.length > 8 * 1024 * 1024)
+					throw new Error('Backend event exceeds size limit');
+				let end = buffer.indexOf('\n\n');
+				while (end >= 0) {
+					const data = buffer
+						// SSE events can span chunks and contain multiple data lines.
+						.slice(0, end)
+						.split('\n')
+						.filter((line) => line.startsWith('data:'))
+						.map((line) => line.slice(5).replace(/^ /, ''))
+						.join('\n');
+					buffer = buffer.slice(end + 2);
+					if (data) {
+						// Progress notifications are not the final response. Complete only
+						// when this request's ID has a result or protocol error.
+						const event = recordOf(JSON.parse(data));
+						if (
+							event &&
+							event.id === id &&
+							('result' in event || 'error' in event)
+						)
+							return event;
 					}
+					end = buffer.indexOf('\n\n');
 				}
-				throw new BackendTransportError(
-					new Error('Backend stream ended without a result'),
-				);
-			} finally {
-				// An errored stream also rejects cancel(); preserve the transport error.
-				await reader.cancel().catch(() => undefined);
-				reader.releaseLock();
 			}
+			throw new BackendTransportError(
+				new Error('Backend stream ended without a result'),
+			);
+		} finally {
+			// An errored stream also rejects cancel(); preserve the transport error.
+			await reader.cancel().catch(() => undefined);
+			reader.releaseLock();
 		}
+	}
+
+	private async readJsonResponse(
+		response: Response,
+		message: Record<string, unknown>,
+	): Promise<unknown> {
 		const text = await response.text().catch((error: unknown) => {
 			throw new BackendTransportError(error);
 		});
@@ -787,10 +814,10 @@ class ProtocolClient {
 	): Promise<Record<string, unknown>> {
 		const receivedAt = Date.now();
 		const key = method.split('/')[0] ?? '';
+		// rpc validated each page against the method's result type.
 		const first = await this.rpc(method, params, options);
-		if (!Array.isArray(first[key])) throw new Error(`Invalid ${method} result`);
-		const items: unknown[] = [
-			...first[key],
+		const items = [
+			...(first[key] as unknown[]),
 		];
 		const cursors = new Set<string>();
 		let cursor = first.nextCursor;
@@ -807,8 +834,7 @@ class ProtocolClient {
 				},
 				options,
 			);
-			if (!Array.isArray(page[key])) throw new Error(`Invalid ${method} page`);
-			items.push(...page[key]);
+			items.push(...(page[key] as unknown[]));
 			ttl = Math.min(ttl, Number(page.ttlMs ?? 0));
 			cursor = page.nextCursor;
 		}
@@ -831,8 +857,6 @@ class ProtocolClient {
 			params,
 			options,
 		)) as ListToolsResult;
-		if (!Array.isArray(result.tools))
-			throw new Error('Invalid tools/list result');
 		this.tools.clear();
 		result.tools = result.tools.filter((tool) => {
 			try {
