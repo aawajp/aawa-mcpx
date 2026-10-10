@@ -11,6 +11,7 @@ import {
 	type RouteResult,
 } from '@/gateway/json_rpc';
 import type { createMcpSessionManager } from '@/gateway/mcp_session';
+import type { CatalogRequest } from '@/mcp_upstreams/types';
 import { logger } from '@/server/logger';
 import type { TrafficStore } from '@/server/traffic_store';
 import { withCancellation } from '@/shared/cancellation';
@@ -96,7 +97,7 @@ type CreateMcpHttpRouteParams = {
 		metadata: Record<string, unknown>,
 		client?: ClientInfo,
 	) => void;
-	refreshCatalogs?: () => Promise<void>;
+	refreshCatalogs?: (request: CatalogRequest) => Promise<void>;
 	waitForInitialization: (params: {
 		method: string;
 		sessionId: string | undefined;
@@ -407,7 +408,12 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 						);
 						if (unavailable) return unavailable;
 						await withCancellation(
-							Promise.resolve(params.refreshCatalogs?.()),
+							Promise.resolve(
+								params.refreshCatalogs?.({
+									method: message.method,
+									params: message.params,
+								}),
+							),
 							request.signal,
 						);
 					} catch (error) {

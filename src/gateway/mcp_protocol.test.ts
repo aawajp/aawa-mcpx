@@ -4,7 +4,7 @@ import { createRouteFixture } from '@/gateway/route_fixture';
 import { createOutputSchemaValidator } from '@/mcp_upstreams/output_schema';
 import { BackendRpcError } from '@/mcp_upstreams/protocol_client';
 import { createToolResultNormalizer } from '@/mcp_upstreams/tool_result';
-import type { McpUpstreamManager } from '@/mcp_upstreams/types';
+import type { CatalogRequest, McpUpstreamManager } from '@/mcp_upstreams/types';
 import {
 	CLIENT_CAPABILITIES_META,
 	CLIENT_INFO_META,
@@ -20,9 +20,9 @@ import { expect, mock, test } from 'bun:test';
 
 const fixture = () => {
 	let refreshes = 0;
-	const refreshCatalogs = async (): Promise<void> => {
+	const refreshCatalogs = async (request: CatalogRequest): Promise<void> => {
 		refreshes++;
-		await manager.refreshStaleCatalogs?.();
+		await manager.refreshStaleCatalogs?.(request);
 	};
 	const manager = {
 		listEnabledTools: () =>

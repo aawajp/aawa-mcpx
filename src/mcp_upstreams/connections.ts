@@ -36,7 +36,12 @@ const createMcpUpstreamBackend = (
 	healthCheckReady: false,
 	healthCheckFailures: 0,
 	lastRequestTime: 0,
-	catalogExpiresAt: 0,
+	listExpiresAt: {
+		tools: 0,
+		prompts: 0,
+		resources: 0,
+	},
+	listRefreshes: {},
 });
 
 const transportFields = (

@@ -153,11 +153,13 @@ is supported. Backend stdio buffers and SSE events are limited to 8 MiB, and
 backend pagination to 1,000 pages.
 
 The gateway requests only the lists (tools, prompts, resources) that a backend
-advertises in its capabilities. Backend 2026 caches use receipt time and the
-minimum TTL across the fetched lists, scoped to configured credentials; a fetched
-list without a TTL counts as zero. Before each catalog-dependent public request,
-every connected 2026 backend with an expired catalog is refreshed, with concurrent
-refresh deduplication. 2025 backend catalogs refresh only on connect, reconnect,
+advertises in its capabilities. Each 2026 backend list is cached on its own: it
+expires at its fetch start time plus its TTL (the smallest across pages), scoped
+to configured credentials, and a list without a TTL is stale at once. Before a
+public `tools/list`, `prompts/list`, or `resources/list`, the gateway re-fetches
+that list from every connected 2026 backend where it is stale; before `tools/call`
+it re-fetches only the target backend's tools. Concurrent requests share one
+fetch per list, and a failed re-fetch keeps serving the stale list. 2025 backend catalogs refresh only on connect, reconnect,
 enable, and dashboard refresh. All pages are materialized before [namespacing](#38-namespaces-and-resource-routing);
 upstream cursors are not aggregate cursors. Public `2026-07-28` catalogs carry
 private, zero-TTL cache hints.

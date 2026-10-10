@@ -72,6 +72,10 @@ entry under the date its change was committed. The project uses
   advertise, as the MCP lifecycle requires. Before, every backend got all three
   requests, and a missing list made a `2026-07-28` backend's catalog refresh on
   every client request.
+- `2026-07-28` backend lists are cached one by one. A client request re-fetches
+  only the stale list it reads, and a tool call only its target backend's tools,
+  so a slow backend no longer delays calls to other backends. A failed re-fetch
+  keeps the previous list instead of emptying it.
 
 ### 2026-10-09
 

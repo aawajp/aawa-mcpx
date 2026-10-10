@@ -126,7 +126,8 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 	};
 
 	// Tools, prompts and resources share one fetch flow. Tools also compile their
-	// schemas, persist exposure state, and keep their cache on runtime errors.
+	// schemas and persist exposure state. A failed fetch keeps the previous list,
+	// which the caching spec permits. Returns true when a fetched list was stored.
 	const fetchCatalog = async <T>(
 		server: McpUpstreamBackend,
 		options: {
@@ -136,7 +137,6 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 			// undefined clears the list of a backend that does not advertise it.
 			save: (result: T | undefined) => void;
 			fetch: (client: Client) => Promise<T>;
-			keepCacheOnError?: boolean;
 			// Runs after caching; an awaited step may outlive this client.
 			prepare?: (result: T, client: Client) => Promise<void>;
 			// Returns true when the result is rejected and must not be logged as a
@@ -144,27 +144,27 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 			reject?: (result: T, client: Client) => boolean;
 			persist: (result: T) => void;
 		},
-	): Promise<T> => {
+	): Promise<boolean> => {
 		const serverName = server.serverName;
 		const client = server.client;
-		if (!client) return options.empty();
+		if (!client) return false;
 		// Both parties MUST only use negotiated capabilities.
 		if (!client.getServerCapabilities()?.[options.capability]) {
 			options.save(undefined);
-			return options.empty();
+			return false;
 		}
 		// A backend may be disabled or reconnected while a request is in flight.
 		const isCurrent = (): boolean =>
 			server.serverConfig.enabled && server.client === client;
 		try {
 			await waitForRateLimit(server);
-			if (!isCurrent()) return options.empty();
+			if (!isCurrent()) return false;
 			const result = await options.fetch(client);
-			if (!isCurrent()) return options.empty();
+			if (!isCurrent()) return false;
 			options.save(result);
 			await options.prepare?.(result, client);
-			if (!isCurrent()) return options.empty();
-			if (options.reject?.(result, client)) return result;
+			if (!isCurrent()) return false;
+			if (options.reject?.(result, client)) return true;
 			trafficStore?.logBackendTraffic({
 				protocolVersion: client.protocolVersion,
 				backend: serverName,
@@ -173,18 +173,16 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 				response: result,
 			});
 			options.persist(result);
-			return result;
+			return true;
 		} catch (error) {
-			if (!isCurrent()) return options.empty();
-			const empty = options.empty();
+			if (!isCurrent()) return false;
 			if (isMethodNotFoundError(error)) {
-				options.save(empty);
+				options.save(options.empty());
 				logger.info(
 					`MCP upstream "${serverName}" does not support ${options.method}`,
 				);
-				return empty;
+				return true;
 			}
-			if (!options.keepCacheOnError) options.save(empty);
 			logger.error(
 				`Failed to fetch ${options.method} for MCP upstream "${serverName}": ${errorMessage(error)}`,
 			);
@@ -198,7 +196,7 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 				},
 			});
 			setMcpUpstreamStatusError(server, errorMessage(error));
-			return empty;
+			return false;
 		}
 	};
 
@@ -283,7 +281,7 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 		return true;
 	};
 
-	const fetchTools = (server: McpUpstreamBackend): Promise<ListToolsResult> =>
+	const fetchTools = (server: McpUpstreamBackend): Promise<boolean> =>
 		fetchCatalog(server, {
 			method: 'tools/list',
 			capability: 'tools',
@@ -298,9 +296,6 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 						timeout: server.serverConfig.timeout,
 					},
 				),
-			// Retain raw definitions for dashboard inspection and exposure settings:
-			// an unusable schema is not a removed tool or a backend failure.
-			keepCacheOnError: true,
 			prepare: async (result, client) => {
 				compileTools(server, client, result.tools);
 				await initializeToolState({
@@ -316,9 +311,7 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 					tools: result.tools,
 				}),
 		});
-	const fetchPrompts = (
-		server: McpUpstreamBackend,
-	): Promise<ListPromptsResult> =>
+	const fetchPrompts = (server: McpUpstreamBackend): Promise<boolean> =>
 		fetchCatalog(server, {
 			method: 'prompts/list',
 			capability: 'prompts',
@@ -339,9 +332,7 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 					prompts: result.prompts,
 				}),
 		});
-	const fetchResources = (
-		server: McpUpstreamBackend,
-	): Promise<ListResourcesResult> =>
+	const fetchResources = (server: McpUpstreamBackend): Promise<boolean> =>
 		fetchCatalog(server, {
 			method: 'resources/list',
 			capability: 'resources',

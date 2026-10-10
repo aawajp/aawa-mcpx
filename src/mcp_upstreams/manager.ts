@@ -6,11 +6,28 @@ import {
 } from '@/mcp_upstreams/connections';
 import { createMcpUpstreamOperations } from '@/mcp_upstreams/method_calls';
 import type {
+	CatalogList,
+	CatalogRequest,
 	CreateMcpUpstreamManagerParams,
 	McpUpstreamBackend,
 	McpUpstreamManager,
 } from '@/mcp_upstreams/types';
+import { parsePrefix } from '@/shared/mcp_namespaces';
 import { CURRENT_PROTOCOL_VERSION, recordOf } from '@/shared/mcp_protocol';
+
+const CATALOG_LISTS: CatalogList[] = [
+	'tools',
+	'prompts',
+	'resources',
+];
+
+// The list each catalog-dependent client request reads.
+const REQUEST_LISTS: Record<string, CatalogList | undefined> = {
+	'tools/list': 'tools',
+	'tools/call': 'tools',
+	'prompts/list': 'prompts',
+	'resources/list': 'resources',
+};
 
 const createMcpUpstreamManager = (
 	params: CreateMcpUpstreamManagerParams,
@@ -46,50 +63,72 @@ const createMcpUpstreamManager = (
 		trafficStore,
 		waitForRateLimit: connections.waitForRateLimit,
 	});
-	refreshCatalog = async (backend: McpUpstreamBackend): Promise<void> => {
-		// Multiple requests can observe the same expired 2026-07-28 catalog.
-		// Share its refresh; each backend retains its own credential/cache context.
-		const pending = backend.catalogRefresh;
+	const fetchList: Record<
+		CatalogList,
+		(backend: McpUpstreamBackend) => Promise<boolean>
+	> = {
+		tools: catalog.fetchTools,
+		prompts: catalog.fetchPrompts,
+		resources: catalog.fetchResources,
+	};
+	// Each list is cached on its own. Concurrent requests share one fetch per
+	// list; a list without ttlMs is stale at once and re-fetched on next access.
+	const refreshList = async (
+		backend: McpUpstreamBackend,
+		list: CatalogList,
+	): Promise<void> => {
+		const pending = backend.listRefreshes[list];
 		if (pending) return pending;
 		const refresh = async (): Promise<void> => {
 			const startedAt = Date.now();
-			await Promise.allSettled([
-				catalog.fetchTools(backend),
-				catalog.fetchPrompts(backend),
-				catalog.fetchResources(backend),
-			]);
-			// Lists the backend does not advertise are not fetched and never expire.
-			const results = [
-				backend.tools,
-				backend.prompts,
-				backend.resources,
-			].filter((result) => result !== undefined);
-			const ttl = Math.min(
-				// The first catalog to expire makes the combined snapshot stale.
-				...results.map((result) => Number(recordOf(result)?.ttlMs ?? 0)),
-			);
-			// A slower sibling catalog must not extend the freshness of an earlier result.
-			backend.catalogExpiresAt = startedAt + Math.max(0, ttl);
+			// A failed fetch keeps the stale list and its expiry.
+			if (!(await fetchList[list](backend))) return;
+			const ttl = Number(recordOf(backend[list])?.ttlMs ?? 0);
+			backend.listExpiresAt[list] = startedAt + Math.max(0, ttl);
 		};
 		const promise = refresh();
-		backend.catalogRefresh = promise;
+		backend.listRefreshes[list] = promise;
 		try {
 			await promise;
 		} finally {
-			if (backend.catalogRefresh === promise)
-				backend.catalogRefresh = undefined;
+			if (backend.listRefreshes[list] === promise)
+				delete backend.listRefreshes[list];
 		}
 	};
-	const refreshStaleCatalogs = async (): Promise<void> => {
+	refreshCatalog = async (backend: McpUpstreamBackend): Promise<void> => {
+		await Promise.allSettled(
+			CATALOG_LISTS.map((list) => refreshList(backend, list)),
+		);
+	};
+	// Re-fetch only the stale 2026-07-28 lists a client request reads: every
+	// backend's list for a list method, the target backend's tools for a call.
+	const refreshStaleCatalogs = async (
+		request: CatalogRequest,
+	): Promise<void> => {
+		const list = REQUEST_LISTS[request.method];
+		if (!list) return;
+		let targets = Array.from(backends.values());
+		if (request.method === 'tools/call') {
+			const name = recordOf(request.params)?.name;
+			let serverName: string;
+			try {
+				serverName = parsePrefix(String(name)).serverName;
+			} catch {
+				// The call itself reports the invalid name.
+				return;
+			}
+			targets = targets.filter((backend) => backend.serverName === serverName);
+		}
 		await Promise.all(
-			Array.from(backends.values())
+			targets
 				.filter(
 					(backend) =>
 						backend.status?.connected &&
 						backend.status.protocolVersion === CURRENT_PROTOCOL_VERSION &&
-						Date.now() >= backend.catalogExpiresAt,
+						backend.client?.getServerCapabilities()?.[list] &&
+						Date.now() >= backend.listExpiresAt[list],
 				)
-				.map(refreshCatalog),
+				.map((backend) => refreshList(backend, list)),
 		);
 	};
 	const refreshCatalogs = async (refreshParams?: {
@@ -113,7 +152,7 @@ const createMcpUpstreamManager = (
 				if (!backend) throw new Error(`Unknown MCP upstream "${name}"`);
 				// A refresh already in flight may predate the button press. Wait for it,
 				// then fetch again, bypassing TTL for both initialized and modern peers.
-				await backend.catalogRefresh;
+				await Promise.allSettled(Object.values(backend.listRefreshes));
 				if (!backend.serverConfig.enabled || !backend.client)
 					throw new Error(`MCP upstream "${name}" is not available`);
 				await refreshCatalog(backend);

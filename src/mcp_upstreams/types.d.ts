@@ -140,6 +140,14 @@ type McpUpstreamToolsMap = Map<string, McpUpstreamTools>;
 type McpUpstreamPromptsMap = Map<string, McpUpstreamPrompts>;
 type McpUpstreamResourcesMap = Map<string, McpUpstreamResources>;
 
+type CatalogList = 'tools' | 'prompts' | 'resources';
+
+// A client request that may need fresh backend lists.
+type CatalogRequest = {
+	method: string;
+	params?: unknown;
+};
+
 type PendingAttempt<T> = {
 	epoch: number;
 	promise: Promise<T>;
@@ -166,12 +174,13 @@ type McpUpstreamBackend = McpUpstreamServer & {
 	tools?: McpUpstreamTools;
 	prompts?: McpUpstreamPrompts;
 	resources?: McpUpstreamResources;
-	catalogExpiresAt: number;
-	catalogRefresh?: Promise<void>;
+	// Each list is cached on its own; a 2026-07-28 list is stale from this time.
+	listExpiresAt: Record<CatalogList, number>;
+	listRefreshes: Partial<Record<CatalogList, Promise<void>>>;
 };
 
 type McpUpstreamManager = {
-	refreshStaleCatalogs?: () => Promise<void>;
+	refreshStaleCatalogs?: (request: CatalogRequest) => Promise<void>;
 	refreshCatalogs: (params?: { serverName?: string }) => Promise<void>;
 	initialize: () => Promise<void>;
 	disconnect: () => Promise<void>;
@@ -190,6 +199,8 @@ type McpUpstreamManager = {
 
 export type {
 	CallToolParams,
+	CatalogList,
+	CatalogRequest,
 	Client,
 	CreateMcpUpstreamManagerParams,
 	GetPromptParams,

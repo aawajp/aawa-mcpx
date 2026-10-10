@@ -9,6 +9,7 @@ import { startFixtureBackend } from '@/mcp_upstreams/protocol_fixture';
 import type { TrafficStore } from '@/server/traffic_store';
 import {
 	CURRENT_PROTOCOL_VERSION,
+	recordOf,
 	SUPPORTED_PROTOCOL_VERSIONS,
 } from '@/shared/mcp_protocol';
 
@@ -119,7 +120,9 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 				// keeps automatic refresh from picking up this change prematurely.
 				await routes['/api/overview'].GET();
 				if (version === CURRENT_PROTOCOL_VERSION)
-					await manager.refreshStaleCatalogs?.();
+					await manager.refreshStaleCatalogs?.({
+						method: 'tools/list',
+					});
 				expect(names('selected')).toEqual([
 					'keep',
 					'remove',
@@ -290,3 +293,111 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 		});
 	}
 }
+
+test('2026-07-28 lists go stale on their own and refresh only for the request target', async () => {
+	const root = await mkdtemp(path.join(tmpdir(), 'mcpx-stale-'));
+	const requests: string[] = [];
+	let failTools = false;
+	const start = (name: string) =>
+		startFixtureBackend('http', CURRENT_PROTOCOL_VERSION, {
+			handle: (message, reply) => {
+				const method = String(message.method);
+				if (!method.endsWith('/list')) return undefined;
+				requests.push(`${name} ${method}`);
+				if (failTools && method === 'tools/list')
+					return Response.json({
+						jsonrpc: '2.0',
+						id: message.id,
+						error: {
+							code: -32603,
+							message: 'Temporarily unavailable',
+						},
+					});
+				// Tools go stale at once; prompts and resources stay fresh.
+				const result = recordOf(reply?.result);
+				if (result && method !== 'tools/list') result.ttlMs = 3_600_000;
+				return undefined;
+			},
+		});
+	const fixtures = [
+		start('a'),
+		start('b'),
+	];
+	const manager = createMcpUpstreamManager({
+		config: mcpConfigType.assert({
+			mcpServers: Object.fromEntries(
+				fixtures.map((fixture, index) => [
+					index === 0 ? 'a' : 'b',
+					{
+						...fixture.config,
+						timeout: 2000,
+						trafficLimit: 10000,
+					},
+				]),
+			),
+		}),
+		configPath: path.join(root, 'mcp.json'),
+	});
+	try {
+		await manager.initialize();
+		requests.length = 0;
+
+		await manager.refreshStaleCatalogs?.({
+			method: 'tools/call',
+			params: {
+				name: 'a__echo',
+			},
+		});
+		expect(requests).toEqual([
+			'a tools/list',
+		]);
+
+		requests.length = 0;
+		await manager.refreshStaleCatalogs?.({
+			method: 'prompts/list',
+		});
+		await manager.refreshStaleCatalogs?.({
+			method: 'prompts/get',
+			params: {
+				name: 'a__greet',
+			},
+		});
+		expect(requests).toEqual([]);
+
+		await manager.refreshStaleCatalogs?.({
+			method: 'tools/list',
+		});
+		expect(requests.toSorted((x, y) => x.localeCompare(y))).toEqual([
+			'a tools/list',
+			'b tools/list',
+		]);
+
+		// A failed re-fetch keeps serving the stale list.
+		requests.length = 0;
+		failTools = true;
+		await manager.refreshStaleCatalogs?.({
+			method: 'tools/call',
+			params: {
+				name: 'a__echo',
+			},
+		});
+		expect(requests).toEqual([
+			'a tools/list',
+		]);
+		expect(
+			manager
+				.listAllTools()
+				.get('a')
+				?.tools.map((tool) => tool.name),
+		).toEqual([
+			'echo',
+		]);
+	} finally {
+		await manager.disconnect();
+		for (const fixture of fixtures) fixture.stop();
+		await rm(root, {
+			recursive: true,
+			force: true,
+		});
+	}
+});

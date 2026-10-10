@@ -2,7 +2,7 @@ import { createHandlers } from '@/gateway/mcp_handlers';
 import { createMcpHttpRoute } from '@/gateway/mcp_http_route';
 import { createMcpRequestRouter } from '@/gateway/mcp_request_router';
 import { createMcpSessionManager } from '@/gateway/mcp_session';
-import type { McpUpstreamManager } from '@/mcp_upstreams/types';
+import type { CatalogRequest, McpUpstreamManager } from '@/mcp_upstreams/types';
 import type { TrafficStore } from '@/server/traffic_store';
 import {
 	CURRENT_PROTOCOL_VERSION,
@@ -16,7 +16,7 @@ import { mock } from 'bun:test';
 const createRouteFixture = (
 	manager: McpUpstreamManager,
 	options: {
-		beforeRequest?: () => Promise<void>;
+		beforeRequest?: (request: CatalogRequest) => Promise<void>;
 		// Check x-mcp-header mirrors against the listed tool schemas.
 		checkToolHeaders?: boolean;
 	} = {},

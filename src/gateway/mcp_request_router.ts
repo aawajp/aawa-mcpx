@@ -3,6 +3,7 @@ import { type } from 'arktype';
 import type { IncomingJsonRpcRequest, RouteResult } from '@/gateway/json_rpc';
 import type { createHandlers } from '@/gateway/mcp_handlers';
 import { BackendRpcError } from '@/mcp_upstreams/protocol_client';
+import type { CatalogRequest } from '@/mcp_upstreams/types';
 import { withCancellation } from '@/shared/cancellation';
 import { legacyRequestMetadataType } from '@/shared/mcp_metadata';
 import {
@@ -39,7 +40,7 @@ type RequireSession = (
 ) => RouteResult | null;
 
 type CreateMcpRequestRouterParams = {
-	beforeRequest?: () => Promise<void>;
+	beforeRequest?: (request: CatalogRequest) => Promise<void>;
 	handlers: GatewayHandlers;
 	requireSession: RequireSession;
 	handleInitialize: (
@@ -306,7 +307,7 @@ const createMcpRequestRouter = (
 			].includes(request.method)
 		)
 			await withCancellation(
-				params.beforeRequest?.() ?? Promise.resolve(),
+				params.beforeRequest?.(request) ?? Promise.resolve(),
 				signal,
 			);
 		let result: RouteResult;
