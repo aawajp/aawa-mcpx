@@ -5,6 +5,7 @@
 !/.env.example
 !.gitignore
 !/AGENTS.md
+!/CHANGELOG.md
 !/Dockerfile
 !/LICENSE
 !/README.md
