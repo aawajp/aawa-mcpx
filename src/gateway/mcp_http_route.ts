@@ -9,6 +9,7 @@ import {
 	type OutgoingJsonRpcResponse,
 	parseIncomingJsonRpcMessage,
 	type RouteResult,
+	rpcError,
 } from '@/gateway/json_rpc';
 import type { createMcpSessionManager } from '@/gateway/mcp_session';
 import type { CatalogRequest } from '@/mcp_upstreams/types';
@@ -149,14 +150,11 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 		if (tracksId) {
 			if (requests?.has(message.id))
 				return {
-					payload: {
-						jsonrpc: '2.0',
-						id: message.id,
-						error: {
-							code: -32600,
-							message: 'Request ID is already in progress',
-						},
-					},
+					payload: rpcError(
+						message.id,
+						-32600,
+						'Request ID is already in progress',
+					),
 					status: 400,
 				};
 			if (!requests) {
@@ -245,15 +243,11 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 				!acceptsContentType(request, 'application/json') ||
 				!acceptsContentType(request, 'text/event-stream')
 			) {
-				const payload: OutgoingJsonRpcResponse = {
-					jsonrpc: '2.0',
-					id: undefined,
-					error: {
-						code: 400,
-						message:
-							'MCP HTTP POST requests must accept application/json and text/event-stream.',
-					},
-				};
+				const payload = rpcError(
+					undefined,
+					400,
+					'MCP HTTP POST requests must accept application/json and text/event-stream.',
+				);
 				logResponseError({
 					method: 'unknown',
 					sessionId,
@@ -266,14 +260,11 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 			try {
 				rawBody = await request.json();
 			} catch (err) {
-				const payload: OutgoingJsonRpcResponse = {
-					jsonrpc: '2.0',
-					id: undefined,
-					error: {
-						code: -32700,
-						message: `Invalid JSON: ${errorMessage(err)}`,
-					},
-				};
+				const payload = rpcError(
+					undefined,
+					-32700,
+					`Invalid JSON: ${errorMessage(err)}`,
+				);
 				logResponseError({
 					method: 'unknown',
 					sessionId,
@@ -291,14 +282,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 						: undefined;
 				const method =
 					typeof record?.method === 'string' ? record.method : 'unknown';
-				const payload: OutgoingJsonRpcResponse = {
-					jsonrpc: '2.0',
-					id: maybeId,
-					error: {
-						code: -32600,
-						message: 'Invalid JSON-RPC message',
-					},
-				};
+				const payload = rpcError(maybeId, -32600, 'Invalid JSON-RPC message');
 				logResponseError({
 					method,
 					sessionId,
@@ -325,15 +309,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 					data?: Record<string, unknown>,
 				): Response =>
 					createJsonResponse(
-						{
-							jsonrpc: '2.0',
-							id: message.id,
-							error: {
-								code,
-								message: text,
-								data,
-							},
-						},
+						rpcError(message.id, code, text, data),
 						undefined,
 						code === -32603 ? 500 : 400,
 					);
@@ -469,14 +445,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 					);
 				} catch {
 					return createJsonResponse(
-						{
-							jsonrpc: '2.0',
-							id: message.id,
-							error: {
-								code: -32603,
-								message: 'Internal server error',
-							},
-						},
+						rpcError(message.id, -32603, 'Internal server error'),
 						undefined,
 						500,
 					);
@@ -697,14 +666,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 					},
 				});
 				return createJsonResponse(
-					{
-						jsonrpc: '2.0',
-						id: jsonRpcRequest.id,
-						error: {
-							code: -32603,
-							message: 'Internal server error',
-						},
-					},
+					rpcError(jsonRpcRequest.id, -32603, 'Internal server error'),
 					undefined,
 					500,
 				);

@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
 
-import type {
-	IncomingJsonRpcNotification,
-	IncomingJsonRpcRequest,
-	RouteResult,
+import {
+	type IncomingJsonRpcNotification,
+	type IncomingJsonRpcRequest,
+	type RouteResult,
+	rpcError,
 } from '@/gateway/json_rpc';
 import { logger } from '@/server/logger';
 import { type ClientInfo, parseClientInfo } from '@/shared/client_info';
@@ -47,14 +48,7 @@ const createProtocolError = (params: {
 	status?: number;
 }): RouteResult => {
 	return {
-		payload: {
-			jsonrpc: '2.0',
-			id: params.id,
-			error: {
-				code: params.status ?? 400,
-				message: params.message,
-			},
-		},
+		payload: rpcError(params.id, params.status ?? 400, params.message),
 		status: params.status ?? 400,
 	};
 };
@@ -128,29 +122,23 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 		if (!requested.client)
 			return {
 				status: 400,
-				payload: {
-					jsonrpc: '2.0',
-					id: request.id,
-					error: {
-						code: -32602,
-						message: 'Client info must include string name and version fields.',
-					},
-				},
+				payload: rpcError(
+					request.id,
+					-32602,
+					'Client info must include string name and version fields.',
+				),
 			};
 		const protocolVersion = negotiateProtocolVersion(requested.protocolVersion);
 		if (!protocolVersion) {
 			return {
-				payload: {
-					jsonrpc: '2.0',
-					id: request.id,
-					error: {
-						code: -32000,
-						message: `Unsupported MCP protocol version: ${requested.protocolVersion ?? 'missing'}`,
-						data: {
-							supported: params.supportedProtocolVersions,
-						},
+				payload: rpcError(
+					request.id,
+					-32000,
+					`Unsupported MCP protocol version: ${requested.protocolVersion ?? 'missing'}`,
+					{
+						supported: params.supportedProtocolVersions,
 					},
-				},
+				),
 				status: 400,
 			};
 		}

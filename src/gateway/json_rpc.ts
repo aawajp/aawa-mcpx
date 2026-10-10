@@ -106,6 +106,27 @@ const parseIncomingJsonRpcMessage = (
 	return jsonRpcResponseType.allows(record) ? record : null;
 };
 
+const rpcError = (
+	id: string | number | undefined,
+	code: number,
+	message: string,
+	data?: unknown,
+): JSONRPCErrorResponse => ({
+	jsonrpc: '2.0',
+	id,
+	error:
+		data === undefined
+			? {
+					code,
+					message,
+				}
+			: {
+					code,
+					message,
+					data,
+				},
+});
+
 const isJsonRpcErrorResponse = (
 	payload: OutgoingJsonRpcResponse | null,
 ): payload is JSONRPCErrorResponse => payload !== null && 'error' in payload;
@@ -136,4 +157,5 @@ export {
 	isIncomingJsonRpcResponse,
 	isJsonRpcErrorResponse,
 	parseIncomingJsonRpcMessage,
+	rpcError,
 };

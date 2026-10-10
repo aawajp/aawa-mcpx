@@ -1,6 +1,10 @@
 import { type } from 'arktype';
 
-import type { IncomingJsonRpcRequest, RouteResult } from '@/gateway/json_rpc';
+import {
+	type IncomingJsonRpcRequest,
+	type RouteResult,
+	rpcError,
+} from '@/gateway/json_rpc';
 import type { createHandlers } from '@/gateway/mcp_handlers';
 import { BackendRpcError } from '@/mcp_upstreams/protocol_client';
 import type { CatalogRequest } from '@/mcp_upstreams/types';
@@ -54,14 +58,7 @@ const createInvalidParamsError = (
 	message: string,
 ): RouteResult => {
 	return {
-		payload: {
-			jsonrpc: '2.0',
-			id,
-			error: {
-				code: -32602,
-				message,
-			},
-		},
+		payload: rpcError(id, -32602, message),
 	};
 };
 
@@ -131,14 +128,7 @@ const createMcpRequestRouter = (
 		)
 			return {
 				status: usesRequestMetadata ? 404 : undefined,
-				payload: {
-					jsonrpc: '2.0',
-					id: request.id,
-					error: {
-						code: -32601,
-						message: 'Method not supported',
-					},
-				},
+				payload: rpcError(request.id, -32601, 'Method not supported'),
 			};
 		if (request.method === 'initialize')
 			return await handleInitialize(request, sessionId);
@@ -196,14 +186,7 @@ const createMcpRequestRouter = (
 			sessionId,
 		});
 		const unsupported = (message: string): RouteResult => ({
-			payload: {
-				jsonrpc: '2.0',
-				id: request.id,
-				error: {
-					code: -32601,
-					message,
-				},
-			},
+			payload: rpcError(request.id, -32601, message),
 			sessionId,
 		});
 		switch (request.method) {
@@ -318,15 +301,7 @@ const createMcpRequestRouter = (
 		} catch (error) {
 			if (!(error instanceof BackendRpcError)) throw error;
 			result = {
-				payload: {
-					jsonrpc: '2.0',
-					id: request.id,
-					error: {
-						code: error.code,
-						message: error.message,
-						data: error.data,
-					},
-				},
+				payload: rpcError(request.id, error.code, error.message, error.data),
 				sessionId,
 			};
 		}

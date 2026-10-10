@@ -9,6 +9,7 @@ import { createClientActivityTracker } from '@/gateway/client_activity';
 import {
 	isJsonRpcErrorResponse,
 	type OutgoingJsonRpcResponse,
+	rpcError,
 } from '@/gateway/json_rpc';
 import { createHandlers } from '@/gateway/mcp_handlers';
 import { createMcpHttpRoute } from '@/gateway/mcp_http_route';
@@ -77,14 +78,7 @@ const createMethodNotAllowedResponse = (): Response => {
 };
 
 const createOriginForbiddenResponse = (): Response => {
-	const body = {
-		jsonrpc: '2.0',
-		id: undefined,
-		error: {
-			code: 403,
-			message: 'Invalid Origin header.',
-		},
-	} satisfies OutgoingJsonRpcResponse;
+	const body = rpcError(undefined, 403, 'Invalid Origin header.');
 	return createJsonResponse(body, undefined, 403);
 };
 
@@ -319,14 +313,11 @@ const startServer = async (
 			await initialization;
 			return null;
 		} catch (err) {
-			const payload: OutgoingJsonRpcResponse = {
-				jsonrpc: '2.0',
-				id: params.id,
-				error: {
-					code: -32603,
-					message: `Server initialization failed: ${errorMessage(err)}`,
-				},
-			};
+			const payload = rpcError(
+				params.id,
+				-32603,
+				`Server initialization failed: ${errorMessage(err)}`,
+			);
 			logResponseError({
 				method: params.method,
 				sessionId: params.sessionId,
