@@ -1,6 +1,15 @@
-import type { Prompt, Resource, Tool } from '@modelcontextprotocol/sdk/types';
+import type {
+	Prompt,
+	Resource,
+	ResourceTemplate,
+	Tool,
+} from '@modelcontextprotocol/sdk/types';
 
-import { addPrefix, addResourcePrefix } from '@/shared/mcp_namespaces';
+import {
+	addPrefix,
+	addResourcePrefix,
+	addResourceTemplatePrefix,
+} from '@/shared/mcp_namespaces';
 
 type NamespaceToolParams = {
 	serverName: string;
@@ -63,4 +72,27 @@ const namespaceResource = (params: NamespaceResourceParams): Resource => {
 	};
 };
 
-export { namespacePrompt, namespaceResource, namespaceTool };
+const namespaceResourceTemplate = (params: {
+	serverName: string;
+	resourceTemplate: ResourceTemplate;
+}): ResourceTemplate => {
+	const { serverName, resourceTemplate } = params;
+
+	return {
+		...resourceTemplate,
+		uriTemplate: addResourceTemplatePrefix({
+			serverName,
+			uriTemplate: resourceTemplate.uriTemplate,
+		}),
+		description: resourceTemplate.description
+			? `[${serverName}] ${resourceTemplate.description}`
+			: `[${serverName}]`,
+	};
+};
+
+export {
+	namespacePrompt,
+	namespaceResource,
+	namespaceResourceTemplate,
+	namespaceTool,
+};

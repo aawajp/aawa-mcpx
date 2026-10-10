@@ -3,6 +3,7 @@ import type {
 	Implementation,
 	ListPromptsResult,
 	ListResourcesResult,
+	ListResourceTemplatesResult,
 	ListToolsResult,
 	ReadResourceResult,
 	ServerCapabilities,
@@ -33,6 +34,7 @@ import {
 	jsonRpcResponseType,
 	listPromptsResultType,
 	listResourcesResultType,
+	listResourceTemplatesResultType,
 	listToolsResultType,
 	readResourceResultType,
 } from '@/shared/mcp_schemas';
@@ -737,6 +739,9 @@ class ProtocolClient {
 				case 'resources/list':
 					listResourcesResultType.assert(result);
 					break;
+				case 'resources/templates/list':
+					listResourceTemplatesResultType.assert(result);
+					break;
 				case 'tools/call':
 					callToolResultType.assert(result);
 					if (
@@ -807,13 +812,14 @@ class ProtocolClient {
 			options,
 		);
 	}
+	// key names the result field holding the listed items.
 	private async list(
 		method: string,
+		key: string,
 		params: Record<string, unknown>,
 		options?: RequestOptions,
 	): Promise<Record<string, unknown>> {
 		const receivedAt = Date.now();
-		const key = method.split('/')[0] ?? '';
 		// rpc validated each page against the method's result type.
 		const first = await this.rpc(method, params, options);
 		const items = [
@@ -854,6 +860,7 @@ class ProtocolClient {
 	): Promise<ListToolsResult> {
 		const result = (await this.list(
 			'tools/list',
+			'tools',
 			params,
 			options,
 		)) as ListToolsResult;
@@ -891,6 +898,7 @@ class ProtocolClient {
 	): Promise<ListPromptsResult> {
 		return (await this.list(
 			'prompts/list',
+			'prompts',
 			params,
 			options,
 		)) as ListPromptsResult;
@@ -901,9 +909,21 @@ class ProtocolClient {
 	): Promise<ListResourcesResult> {
 		return (await this.list(
 			'resources/list',
+			'resources',
 			params,
 			options,
 		)) as ListResourcesResult;
+	}
+	async listResourceTemplates(
+		params: Record<string, unknown> = {},
+		options?: RequestOptions,
+	): Promise<ListResourceTemplatesResult> {
+		return (await this.list(
+			'resources/templates/list',
+			'resourceTemplates',
+			params,
+			options,
+		)) as ListResourceTemplatesResult;
 	}
 	async callTool(
 		params: {

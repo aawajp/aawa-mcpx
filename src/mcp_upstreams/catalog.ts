@@ -1,6 +1,7 @@
 import type {
 	ListPromptsResult,
 	ListResourcesResult,
+	ListResourceTemplatesResult,
 	ListToolsResult,
 	Tool,
 } from '@modelcontextprotocol/sdk/types';
@@ -14,6 +15,7 @@ import type {
 	McpUpstreamBackend,
 	McpUpstreamPromptsMap,
 	McpUpstreamResourcesMap,
+	McpUpstreamResourceTemplatesMap,
 	McpUpstreamToolsMap,
 	ToggleToolParams,
 } from '@/mcp_upstreams/types';
@@ -49,6 +51,10 @@ const emptyPromptsResult = (): ListPromptsResult => ({
 
 const emptyResourcesResult = (): ListResourcesResult => ({
 	resources: [],
+});
+
+const emptyResourceTemplatesResult = (): ListResourceTemplatesResult => ({
+	resourceTemplates: [],
 });
 
 const getToolNames = (tools: Tool[]): string[] => {
@@ -142,7 +148,7 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 			// Returns true when the result is rejected and must not be logged as a
 			// normal fetch.
 			reject?: (result: T, client: Client) => boolean;
-			persist: (result: T) => void;
+			persist?: (result: T) => void;
 		},
 	): Promise<boolean> => {
 		const serverName = server.serverName;
@@ -172,7 +178,7 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 				request: {},
 				response: result,
 			});
-			options.persist(result);
+			options.persist?.(result);
 			return true;
 		} catch (error) {
 			if (!isCurrent()) return false;
@@ -354,6 +360,26 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 				}),
 		});
 
+	// Templates share the resources capability and are not persisted.
+	const fetchResourceTemplates = (
+		server: McpUpstreamBackend,
+	): Promise<boolean> =>
+		fetchCatalog(server, {
+			method: 'resources/templates/list',
+			capability: 'resources',
+			empty: emptyResourceTemplatesResult,
+			save: (result) => {
+				server.resourceTemplates = result;
+			},
+			fetch: (client) =>
+				client.listResourceTemplates(
+					{},
+					{
+						timeout: server.serverConfig.timeout,
+					},
+				),
+		});
+
 	// Backends that have fetched the given catalog, in configuration order.
 	const collect = <T>(
 		select: (backend: McpUpstreamBackend) => T | undefined,
@@ -396,6 +422,9 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 
 	const listAllResources = (): McpUpstreamResourcesMap =>
 		collect((backend) => backend.resources);
+
+	const listAllResourceTemplates = (): McpUpstreamResourceTemplatesMap =>
+		collect((backend) => backend.resourceTemplates);
 
 	const getEnabledTools = (catalogParams: { serverName: string }): string[] => {
 		const backend = backends.get(catalogParams.serverName);
@@ -478,10 +507,12 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 	return {
 		fetchPrompts,
 		fetchResources,
+		fetchResourceTemplates,
 		fetchTools,
 		getEnabledTools,
 		listAllPrompts,
 		listAllResources,
+		listAllResourceTemplates,
 		listAllTools,
 		listEnabledTools,
 		getInputValidator,

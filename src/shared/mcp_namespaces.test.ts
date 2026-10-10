@@ -1,6 +1,7 @@
 import {
 	addPrefix,
 	addResourcePrefix,
+	addResourceTemplatePrefix,
 	parsePrefix,
 	parseResourceUri,
 } from '@/shared/mcp_namespaces';
@@ -124,6 +125,34 @@ test('resource requests reject malformed wrappers and decoded URI syntax', () =>
 		'aawa-mcpx://resource/backend/file%3A%2F%2F%2Fa#injected',
 		'aawa-mcpx://resource/mcpx-0061/file%3A%2F%2F%2Fa',
 		'aawa-mcpx://bad/file:///a',
+	])
+		expect(() => parseResourceUri(uri)).toThrow();
+});
+
+test('template wrappers keep the backend template so client expansions route intact', () => {
+	for (const serverName of [
+		'Backend',
+		'a__b',
+		'日本語',
+	]) {
+		const wrapped = addResourceTemplatePrefix({
+			serverName,
+			uriTemplate: 'file:///logs/{name}{?lines}',
+		});
+		expect(wrapped.endsWith('/file:///logs/{name}{?lines}')).toBe(true);
+		// A client expands name="a b/c" and lines=5 as the backend itself would.
+		const expanded = wrapped.replace('{name}{?lines}', 'a%20b%2Fc?lines=5');
+		expect(URL.canParse(expanded)).toBe(true);
+		expect(parseResourceUri(expanded)).toEqual({
+			serverName,
+			originalUri: 'file:///logs/a%20b%2Fc?lines=5',
+		});
+	}
+	for (const uri of [
+		'aawa-mcpx://template/backend',
+		'aawa-mcpx://template//file:///a',
+		'aawa-mcpx://template/backend/file:///{name}',
+		'aawa-mcpx://template/backend/file:///a b',
 	])
 		expect(() => parseResourceUri(uri)).toThrow();
 });

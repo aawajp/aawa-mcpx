@@ -61,6 +61,14 @@ const resourceType = type({
 	'[string]': 'unknown',
 });
 
+const resourceTemplateType = type({
+	uriTemplate: 'string',
+	name: 'string',
+	'description?': 'string',
+	'mimeType?': 'string',
+	'[string]': 'unknown',
+});
+
 const listToolsResultType = type({
 	tools: toolType.array(),
 	'nextCursor?': 'string',
@@ -77,6 +85,13 @@ const listPromptsResultType = type({
 
 const listResourcesResultType = type({
 	resources: resourceType.array(),
+	'nextCursor?': 'string',
+	'_meta?': 'Record<string, unknown>',
+	'[string]': 'unknown',
+});
+
+const listResourceTemplatesResultType = type({
+	resourceTemplates: resourceTemplateType.array(),
 	'nextCursor?': 'string',
 	'_meta?': 'Record<string, unknown>',
 	'[string]': 'unknown',
@@ -176,6 +191,7 @@ export {
 	jsonRpcResponseType,
 	listPromptsResultType,
 	listResourcesResultType,
+	listResourceTemplatesResultType,
 	listToolsResultType,
 	pingResultType,
 	promptType,

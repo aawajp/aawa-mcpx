@@ -391,6 +391,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 						'prompts/list',
 						'prompts/get',
 						'resources/list',
+						'resources/templates/list',
 						'resources/read',
 					].includes(message.method)
 				) {

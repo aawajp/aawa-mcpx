@@ -152,7 +152,8 @@ Point your MCP client to `http://localhost:<PORT>/mcp`:
 ```
 
 Tools and prompts appear as `serverName__itemName`. Resources appear as
-`aawa-mcpx://resource/<namespace>/<encoded-original-uri>`. Names that would be
+`aawa-mcpx://resource/<namespace>/<encoded-original-uri>`, and resource templates
+as `aawa-mcpx://template/<namespace>/<original-template>`. Names that would be
 ambiguous are escaped; see [namespaces](DESIGN.md#38-namespaces-and-resource-routing).
 
 ## Dashboard

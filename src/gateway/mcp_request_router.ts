@@ -261,9 +261,7 @@ const createMcpRequestRouter = (
 				);
 			}
 			case 'resources/templates/list':
-				return success({
-					resourceTemplates: [],
-				});
+				return success(handlers.listResourceTemplates());
 			case 'resources/subscribe':
 			case 'resources/unsubscribe':
 				return unsupported('Resource subscriptions not supported');
@@ -303,6 +301,7 @@ const createMcpRequestRouter = (
 				'prompts/list',
 				'prompts/get',
 				'resources/list',
+				'resources/templates/list',
 				'resources/read',
 			].includes(request.method)
 		)

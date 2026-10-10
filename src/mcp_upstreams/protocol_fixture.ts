@@ -136,6 +136,16 @@ const fixtureReply = (
 				],
 			};
 			break;
+		case 'resources/templates/list':
+			result = {
+				resourceTemplates: [
+					{
+						name: 'logs',
+						uriTemplate: 'file:///logs/{name}',
+					},
+				],
+			};
+			break;
 		case 'resources/read':
 			result = {
 				contents: [

@@ -340,6 +340,14 @@ test('2026-07-28 lists go stale on their own and refresh only for the request ta
 	});
 	try {
 		await manager.initialize();
+		expect(
+			manager.listAllResourceTemplates().get('a')?.resourceTemplates,
+		).toEqual([
+			{
+				name: 'logs',
+				uriTemplate: 'file:///logs/{name}',
+			},
+		]);
 		requests.length = 0;
 
 		await manager.refreshStaleCatalogs?.({
@@ -355,6 +363,9 @@ test('2026-07-28 lists go stale on their own and refresh only for the request ta
 		requests.length = 0;
 		await manager.refreshStaleCatalogs?.({
 			method: 'prompts/list',
+		});
+		await manager.refreshStaleCatalogs?.({
+			method: 'resources/templates/list',
 		});
 		await manager.refreshStaleCatalogs?.({
 			method: 'prompts/get',

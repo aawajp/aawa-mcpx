@@ -76,6 +76,9 @@ entry under the date its change was committed. The project uses
   only the stale list it reads, and a tool call only its target backend's tools,
   so a slow backend no longer delays calls to other backends. A failed re-fetch
   keeps the previous list instead of emptying it.
+- Backend resource templates appear in `resources/templates/list` as
+  `aawa-mcpx://template/<namespace>/<original-template>`, and URIs expanded from
+  them are read from that backend. Before, the list was always empty.
 
 ### 2026-10-09
 

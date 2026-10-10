@@ -9,7 +9,11 @@ import type {
 	McpUpstreamManager,
 	McpUpstreamServer,
 } from '@/mcp_upstreams/types';
-import { addPrefix, addResourcePrefix } from '@/shared/mcp_namespaces';
+import {
+	addPrefix,
+	addResourcePrefix,
+	addResourceTemplatePrefix,
+} from '@/shared/mcp_namespaces';
 import {
 	CURRENT_PROTOCOL_VERSION,
 	recordOf,
@@ -165,6 +169,22 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 							},
 						]),
 					),
+				listAllResourceTemplates: () =>
+					new Map(
+						[
+							...servers.keys(),
+						].map((name) => [
+							name,
+							{
+								resourceTemplates: [
+									{
+										name: 'logs',
+										uriTemplate: 'file:///logs/{name}',
+									},
+								],
+							},
+						]),
+					),
 			} as unknown as McpUpstreamManager;
 			const handlers = createHandlers({
 				mcpUpstreamManager: manager,
@@ -246,7 +266,43 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 							),
 						),
 					);
+					const templates = await resultOf('resources/templates/list');
+					expect(templates.resourceTemplates).toEqual(
+						[
+							...servers.keys(),
+						].map((serverName) => ({
+							name: 'logs',
+							uriTemplate: addResourceTemplatePrefix({
+								serverName,
+								uriTemplate: 'file:///logs/{name}',
+							}),
+							description: `[${serverName}]`,
+						})),
+					);
 					for (const serverName of servers.keys()) {
+						// A client-expanded template reaches the backend as the backend's
+						// own expansion would.
+						const expanded = addResourceTemplatePrefix({
+							serverName,
+							uriTemplate: 'file:///logs/{name}',
+						}).replace('{name}', 'a%20b');
+						expect(
+							(
+								await resultOf('resources/read', {
+									uri: expanded,
+								})
+							).contents,
+						).toEqual(
+							expect.arrayContaining([
+								expect.objectContaining({
+									uri: addResourcePrefix({
+										serverName,
+										uri: 'file:///logs/a%20b',
+									}),
+									text: 'hello',
+								}),
+							]),
+						);
 						// Both identical catalog URIs and unlisted URIs must reach the correct
 						// backend intact, including spelling that URL serialization changes.
 						for (const uri of [

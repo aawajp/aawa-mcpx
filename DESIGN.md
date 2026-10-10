@@ -152,15 +152,17 @@ responses; the backend's standalone `GET` event stream is not used. Backend stdi
 is supported. Backend stdio buffers and SSE events are limited to 8 MiB, and
 backend pagination to 1,000 pages.
 
-The gateway requests only the lists (tools, prompts, resources) that a backend
-advertises in its capabilities. Each 2026 backend list is cached on its own: it
-expires at its fetch start time plus its TTL (the smallest across pages), scoped
-to configured credentials, and a list without a TTL is stale at once. Before a
-public `tools/list`, `prompts/list`, or `resources/list`, the gateway re-fetches
-that list from every connected 2026 backend where it is stale; before `tools/call`
-it re-fetches only the target backend's tools. Concurrent requests share one
-fetch per list, and a failed re-fetch keeps serving the stale list. 2025 backend catalogs refresh only on connect, reconnect,
-enable, and dashboard refresh. All pages are materialized before [namespacing](#38-namespaces-and-resource-routing);
+The gateway requests only the lists (tools, prompts, resources, resource
+templates) that a backend advertises in its capabilities. Each 2026 backend list
+is cached on its own: it expires at its fetch start time plus its TTL (the
+smallest across pages), scoped to configured credentials, and a list without a
+TTL is stale at once. Before a public list request (`tools/list`,
+`prompts/list`, `resources/list`, `resources/templates/list`), the gateway
+re-fetches that list from every connected 2026 backend where it is stale; before
+`tools/call` it re-fetches only the target backend's tools. Concurrent requests
+share one fetch per list, and a failed re-fetch keeps serving the stale list.
+2025 backend catalogs refresh only on connect, reconnect, enable, and dashboard
+refresh. All pages are materialized before [namespacing](#38-namespaces-and-resource-routing);
 upstream cursors are not aggregate cursors. Public `2026-07-28` catalogs carry
 private, zero-TTL cache hints.
 
@@ -272,6 +274,7 @@ and [2026](https://modelcontextprotocol.io/specification/2026-07-28/basic/utilit
 | --- | --- |
 | Tools, prompts | `serverName__itemName` |
 | Resources | `aawa-mcpx://resource/<namespace>/<encoded-original-uri>` |
+| Resource templates | `aawa-mcpx://template/<namespace>/<original-template>` |
 
 Ordinary names stay readable. Ambiguous backend names (including `__`, a trailing
 `_`, or exactly `.` or `..`), names outside `A-Za-z0-9_.-`, and the reserved
@@ -285,6 +288,11 @@ the backend name is a valid URI scheme other than `aawa-mcpx` and the original U
 is itself absolute. A read accepts only URIs that are valid ASCII RFC 3986, so
 resources whose URIs contain spaces or non-ASCII characters are listed but cannot be read.
 
+Clients expand resource templates themselves, so template wrappers keep the
+backend template unencoded. A URI expanded from a wrapped template is the
+backend's own expansion behind the template prefix, and a read strips the prefix
+without decoding.
+
 Only MCP resource fields are wrapped: catalogs, read contents, tool links/embedded
 resources, and prompt embedded resources; text and structured output stay intact.
 Backend responses in traffic records and dashboard tests remain original. Reads
@@ -296,15 +304,14 @@ to all supported revisions.
 
 ### 3.9 Feature scope
 
-Tools, prompts, and resources work across supported revisions. Interactive
+Tools, prompts, resources, and resource templates work across supported revisions. Interactive
 continuations, sampling, elicitation, subscriptions, and tasks are not advertised,
 and unsupported interactive results fail explicitly ([7.2](#72-interactive-mcp-requests)
 covers the planned design). Backend credentials define their authorization
 context. The gateway has no client authentication ([7.1](#71-runtime-options)).
 
-For 2025 clients the gateway answers `resources/templates/list` with an empty list,
-`completion/complete` with empty values, and `logging/setLevel` and `ping` with `{}`;
-backend resource templates are not aggregated. For 2026 clients these methods and
+For 2025 clients the gateway answers `completion/complete` with empty values,
+and `logging/setLevel` and `ping` with `{}`. For 2026 clients these methods and
 `initialize` return HTTP 404 / `-32601`. Results for 2025 clients drop the 2026
 `resultType`, `ttlMs`, and `cacheScope` fields. The gateway identifies itself as
 `aawa-mcpx` `1.0.0`.

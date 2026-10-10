@@ -18,6 +18,7 @@ type Client = Pick<
 	| 'listTools'
 	| 'listPrompts'
 	| 'listResources'
+	| 'listResourceTemplates'
 	| 'callTool'
 	| 'getPrompt'
 	| 'readResource'
@@ -33,6 +34,7 @@ import type {
 	Prompt,
 	ReadResourceResult,
 	Resource,
+	ResourceTemplate,
 	Tool,
 } from '@modelcontextprotocol/sdk/types';
 
@@ -136,11 +138,20 @@ type McpUpstreamResources = {
 	nextCursor?: string;
 	_meta?: Record<string, unknown>;
 };
+type McpUpstreamResourceTemplates = {
+	resourceTemplates: ResourceTemplate[];
+	nextCursor?: string;
+	_meta?: Record<string, unknown>;
+};
 type McpUpstreamToolsMap = Map<string, McpUpstreamTools>;
 type McpUpstreamPromptsMap = Map<string, McpUpstreamPrompts>;
 type McpUpstreamResourcesMap = Map<string, McpUpstreamResources>;
+type McpUpstreamResourceTemplatesMap = Map<
+	string,
+	McpUpstreamResourceTemplates
+>;
 
-type CatalogList = 'tools' | 'prompts' | 'resources';
+type CatalogList = 'tools' | 'prompts' | 'resources' | 'resourceTemplates';
 
 // A client request that may need fresh backend lists.
 type CatalogRequest = {
@@ -174,6 +185,7 @@ type McpUpstreamBackend = McpUpstreamServer & {
 	tools?: McpUpstreamTools;
 	prompts?: McpUpstreamPrompts;
 	resources?: McpUpstreamResources;
+	resourceTemplates?: McpUpstreamResourceTemplates;
 	// Each list is cached on its own; a 2026-07-28 list is stale from this time.
 	listExpiresAt: Record<CatalogList, number>;
 	listRefreshes: Partial<Record<CatalogList, Promise<void>>>;
@@ -188,6 +200,7 @@ type McpUpstreamManager = {
 	listEnabledTools: () => McpUpstreamToolsMap;
 	listAllPrompts: () => McpUpstreamPromptsMap;
 	listAllResources: () => McpUpstreamResourcesMap;
+	listAllResourceTemplates: () => McpUpstreamResourceTemplatesMap;
 	getEnabledTools: (params: { serverName: string }) => string[];
 	toggleBackend: (params: ToggleBackendParams) => Promise<void>;
 	toggleTool: (params: ToggleToolParams) => Promise<string[]>;
@@ -211,6 +224,8 @@ export type {
 	McpUpstreamPromptsMap,
 	McpUpstreamResources,
 	McpUpstreamResourcesMap,
+	McpUpstreamResourceTemplates,
+	McpUpstreamResourceTemplatesMap,
 	McpUpstreamServer,
 	McpUpstreamStatus,
 	McpUpstreamTools,

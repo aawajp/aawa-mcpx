@@ -13,6 +13,7 @@ type ParseResourceUriResult = {
 
 const ESCAPE_PREFIX = 'mcpx-';
 const RESOURCE_PREFIX = 'aawa-mcpx://resource/';
+const TEMPLATE_PREFIX = 'aawa-mcpx://template/';
 
 const encodeNamespace = (name: string): string => {
 	// A trailing underscore overlaps the separator when an item starts with one.
@@ -72,15 +73,42 @@ const addResourcePrefix = (params: {
 }): string =>
 	`${RESOURCE_PREFIX}${encodeNamespace(params.serverName)}/${encodeURIComponent(params.uri)}`;
 
+// Clients expand templates themselves, so the backend template stays
+// unencoded: an expanded URI then holds exactly the backend's own expansion.
+const addResourceTemplatePrefix = (params: {
+	serverName: string;
+	uriTemplate: string;
+}): string =>
+	`${TEMPLATE_PREFIX}${encodeNamespace(params.serverName)}/${params.uriTemplate}`;
+
+// Splits "<namespace>/<rest>" after a wrapper prefix.
+const splitNamespace = (
+	uri: string,
+	prefix: string,
+): {
+	serverName: string;
+	rest: string;
+} => {
+	const path = uri.slice(prefix.length);
+	const separator = path.indexOf('/');
+	if (separator <= 0) throw new Error(`Invalid resource URI "${uri}"`);
+	return {
+		serverName: decodeNamespace(path.slice(0, separator)),
+		rest: path.slice(separator + 1),
+	};
+};
+
 const parseResourceUri = (uri: string): ParseResourceUriResult => {
 	let serverName: string;
 	let originalUri: string;
-	if (uri.startsWith(RESOURCE_PREFIX)) {
-		const path = uri.slice(RESOURCE_PREFIX.length);
-		const separator = path.indexOf('/');
-		if (separator <= 0) throw new Error(`Invalid resource URI "${uri}"`);
-		serverName = decodeNamespace(path.slice(0, separator));
-		originalUri = decodeURIComponent(path.slice(separator + 1));
+	if (uri.startsWith(TEMPLATE_PREFIX)) {
+		const split = splitNamespace(uri, TEMPLATE_PREFIX);
+		serverName = split.serverName;
+		originalUri = split.rest;
+	} else if (uri.startsWith(RESOURCE_PREFIX)) {
+		const split = splitNamespace(uri, RESOURCE_PREFIX);
+		serverName = split.serverName;
+		originalUri = decodeURIComponent(split.rest);
 		if (
 			addResourcePrefix({
 				serverName,
@@ -114,6 +142,7 @@ const parseResourceUri = (uri: string): ParseResourceUriResult => {
 export {
 	addPrefix,
 	addResourcePrefix,
+	addResourceTemplatePrefix,
 	type ParsePrefixResult,
 	type ParseResourceUriResult,
 	parsePrefix,

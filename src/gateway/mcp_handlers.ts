@@ -2,6 +2,7 @@ import type {
 	GetPromptResult,
 	ListPromptsResult,
 	ListResourcesResult,
+	ListResourceTemplatesResult,
 	ListToolsResult,
 	ReadResourceResult,
 } from '@modelcontextprotocol/sdk/types';
@@ -9,6 +10,7 @@ import type {
 import {
 	namespacePrompt,
 	namespaceResource,
+	namespaceResourceTemplate,
 	namespaceTool,
 } from '@/gateway/mcp_namespaces';
 import { BackendRpcError } from '@/mcp_upstreams/protocol_client';
@@ -126,6 +128,25 @@ const createHandlers = (params: CreateHandlersParams) => {
 
 		return {
 			resources,
+		};
+	};
+
+	const listResourceTemplates = (): ListResourceTemplatesResult => {
+		const resourceTemplates: ListResourceTemplatesResult['resourceTemplates'] =
+			[];
+		for (const [
+			serverName,
+			result,
+		] of mcpUpstreamManager.listAllResourceTemplates())
+			for (const resourceTemplate of result.resourceTemplates)
+				resourceTemplates.push(
+					namespaceResourceTemplate({
+						serverName,
+						resourceTemplate,
+					}),
+				);
+		return {
+			resourceTemplates,
 		};
 	};
 
@@ -288,6 +309,7 @@ const createHandlers = (params: CreateHandlersParams) => {
 		listTools,
 		listPrompts,
 		listResources,
+		listResourceTemplates,
 		callTool,
 		getPrompt,
 		readResource,

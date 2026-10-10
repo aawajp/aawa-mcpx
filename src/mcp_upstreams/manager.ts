@@ -19,7 +19,16 @@ const CATALOG_LISTS: CatalogList[] = [
 	'tools',
 	'prompts',
 	'resources',
+	'resourceTemplates',
 ];
+
+// The server capability that covers each list.
+const LIST_CAPABILITIES = {
+	tools: 'tools',
+	prompts: 'prompts',
+	resources: 'resources',
+	resourceTemplates: 'resources',
+} as const satisfies Record<CatalogList, string>;
 
 // The list each catalog-dependent client request reads.
 const REQUEST_LISTS: Record<string, CatalogList | undefined> = {
@@ -27,6 +36,7 @@ const REQUEST_LISTS: Record<string, CatalogList | undefined> = {
 	'tools/call': 'tools',
 	'prompts/list': 'prompts',
 	'resources/list': 'resources',
+	'resources/templates/list': 'resourceTemplates',
 };
 
 const createMcpUpstreamManager = (
@@ -70,6 +80,7 @@ const createMcpUpstreamManager = (
 		tools: catalog.fetchTools,
 		prompts: catalog.fetchPrompts,
 		resources: catalog.fetchResources,
+		resourceTemplates: catalog.fetchResourceTemplates,
 	};
 	// Each list is cached on its own. Concurrent requests share one fetch per
 	// list; a list without ttlMs is stale at once and re-fetched on next access.
@@ -125,7 +136,9 @@ const createMcpUpstreamManager = (
 					(backend) =>
 						backend.status?.connected &&
 						backend.status.protocolVersion === CURRENT_PROTOCOL_VERSION &&
-						backend.client?.getServerCapabilities()?.[list] &&
+						backend.client?.getServerCapabilities()?.[
+							LIST_CAPABILITIES[list]
+						] &&
 						Date.now() >= backend.listExpiresAt[list],
 				)
 				.map((backend) => refreshList(backend, list)),
@@ -199,6 +212,7 @@ const createMcpUpstreamManager = (
 		listEnabledTools: catalog.listEnabledTools,
 		listAllPrompts: catalog.listAllPrompts,
 		listAllResources: catalog.listAllResources,
+		listAllResourceTemplates: catalog.listAllResourceTemplates,
 		getEnabledTools: catalog.getEnabledTools,
 		toggleBackend,
 		toggleTool: catalog.toggleTool,

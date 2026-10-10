@@ -40,6 +40,7 @@ const createMcpUpstreamBackend = (
 		tools: 0,
 		prompts: 0,
 		resources: 0,
+		resourceTemplates: 0,
 	},
 	listRefreshes: {},
 });
@@ -529,6 +530,7 @@ const createMcpUpstreamConnections = (
 			backend.tools = undefined;
 			backend.prompts = undefined;
 			backend.resources = undefined;
+			backend.resourceTemplates = undefined;
 			await closeMcpUpstreamConnection(backend, true);
 			setMcpUpstreamStatus({
 				backend,
@@ -593,6 +595,7 @@ const createMcpUpstreamConnections = (
 			backend.tools = undefined;
 			backend.prompts = undefined;
 			backend.resources = undefined;
+			backend.resourceTemplates = undefined;
 			setMcpUpstreamStatus({
 				backend,
 				connected: false,
