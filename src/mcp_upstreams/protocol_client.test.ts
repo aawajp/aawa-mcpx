@@ -917,3 +917,134 @@ test('old-only backends are rejected before initialized', async () => {
 		server.stop(true);
 	}
 });
+
+for (const version of [
+	'2025-11-25',
+	CURRENT_PROTOCOL_VERSION,
+] as const)
+	for (const transport of [
+		'http',
+		'stdio',
+	] as const)
+		test(`${transport} backend ${version}: backend requests get answers and never complete gateway calls`, async () => {
+			const answers: unknown[] = [];
+			const answered = Promise.withResolvers<void>();
+			const sessions: (string | null)[] = [];
+			const fixture = startFixtureBackend(transport, version, {
+				handle: (message, reply, request) => {
+					if (!('method' in message)) {
+						answers.push(message);
+						sessions.push(request.headers.get('Mcp-Session-Id'));
+						if (answers.length === 2) answered.resolve();
+						return new Response(null, {
+							status: 202,
+						});
+					}
+					if (message.method === 'initialize' && reply)
+						return Response.json(reply, {
+							headers: {
+								'Mcp-Session-Id': 'session-1',
+							},
+						});
+					if (message.method !== 'tools/call' || !reply) return undefined;
+					// The ping reuses the call's ID, which belongs to the gateway.
+					const events = [
+						{
+							jsonrpc: '2.0',
+							id: message.id,
+							method: 'ping',
+						},
+						{
+							jsonrpc: '2.0',
+							id: 'reverse-1',
+							method: 'sampling/createMessage',
+						},
+						reply,
+					];
+					return new Response(
+						events
+							.map((event) => `data: ${JSON.stringify(event)}\n\n`)
+							.join(''),
+						{
+							headers: {
+								'content-type': 'text/event-stream',
+							},
+						},
+					);
+				},
+			});
+			const client = new ProtocolClient({
+				serverName: 'reverse',
+				serverConfig: {
+					...fixture.config,
+					enabled: true,
+					timeout: 2000,
+					trafficLimit: 1000,
+				},
+			});
+			const legacy = version !== CURRENT_PROTOCOL_VERSION;
+			// The ping answer carries the call's ID, which differs per transport.
+			const pingAnswer = legacy
+				? {
+						jsonrpc: '2.0',
+						result: {},
+					}
+				: {
+						jsonrpc: '2.0',
+						error: {
+							code: -32601,
+							message: 'Method not found',
+						},
+					};
+			const expected = [
+				expect.objectContaining(pingAnswer),
+				{
+					jsonrpc: '2.0',
+					id: 'reverse-1',
+					error: {
+						code: -32601,
+						message: 'Method not found',
+					},
+				},
+			];
+			try {
+				await client.connect();
+				const result = await client.callTool({
+					name: 'echo',
+					arguments: {
+						text: 'done',
+						fixtureMode: transport === 'stdio' ? 'reverse' : undefined,
+					},
+				});
+				if (transport === 'stdio') {
+					// The stdio fixture replies only after both answers arrive.
+					const received = recordOf(result.structuredContent)?.answers;
+					expect(received).toEqual(expected);
+				} else if (legacy) {
+					expect(result.content).toEqual([
+						{
+							type: 'text',
+							text: 'done',
+						},
+					]);
+					await answered.promise;
+					expect(answers).toEqual(expected);
+					expect(sessions).toEqual([
+						'session-1',
+						'session-1',
+					]);
+				} else {
+					// A 2026-07-28 HTTP hop has no channel for answers.
+					expect(result.content).toEqual([
+						{
+							type: 'text',
+							text: 'done',
+						},
+					]);
+					expect(answers).toEqual([]);
+				}
+			} finally {
+				await client.close();
+				fixture.stop();
+			}
+		});

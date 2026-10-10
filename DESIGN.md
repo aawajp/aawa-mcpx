@@ -152,6 +152,12 @@ responses; the backend's standalone `GET` event stream is not used. Backend stdi
 is supported. Backend stdio buffers and SSE events are limited to 8 MiB, and
 backend pagination to 1,000 pages.
 
+Only a message with a `result` or `error` completes a gateway request; JSON-RPC
+IDs belong to their sender. The gateway answers a 2025 backend's `ping` with `{}`
+and every other backend request with `-32601`: over stdio on stdin, over HTTP as
+a `POST` in the backend's session. `2026-07-28` defines no backend requests, so
+stdio gets `-32601` and HTTP gets no answer. Backend notifications are ignored.
+
 The gateway requests only the lists (tools, prompts, resources, resource
 templates) that a backend advertises in its capabilities. Each 2026 backend list
 is cached on its own: it expires at its fetch start time plus its TTL (the

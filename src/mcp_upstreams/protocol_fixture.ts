@@ -303,6 +303,13 @@ if (import.meta.main) {
 		catalogPath: mode && !mode.startsWith('--') ? mode : undefined,
 	};
 	const events: Record<string, unknown>[] = [];
+	// A reverse-mode call waits for the gateway's answers to two backend requests.
+	let held:
+		| {
+				reply: Record<string, unknown>;
+				answers: unknown[];
+		  }
+		| undefined;
 	let buffer = '';
 	for await (const chunk of Bun.stdin.stream()) {
 		buffer += new TextDecoder().decode(chunk);
@@ -311,10 +318,46 @@ if (import.meta.main) {
 			const message = recordOf(JSON.parse(buffer.slice(0, end)));
 			buffer = buffer.slice(end + 1);
 			if (message && cancellationMode) events.push(message);
-			if (message && 'id' in message) {
+			if (message && !('method' in message)) {
+				held?.answers.push(message);
+				const result = recordOf(held?.reply.result);
+				if (held && result && held.answers.length === 2) {
+					result.structuredContent = {
+						answers: held.answers,
+					};
+					console.log(JSON.stringify(held.reply));
+					held = undefined;
+				}
+			} else if (message && 'id' in message) {
 				const reply = await optionReply(message, version, options);
 				const result = recordOf(reply.result);
-				if (cancellationMode && result) {
+				if (
+					result &&
+					recordOf(recordOf(message.params)?.arguments)?.fixtureMode ===
+						'reverse'
+				) {
+					// Reuse the call's ID: it belongs to the gateway, not to this backend.
+					for (const request of [
+						{
+							id: message.id,
+							method: 'ping',
+						},
+						{
+							id: 'reverse-1',
+							method: 'sampling/createMessage',
+						},
+					])
+						console.log(
+							JSON.stringify({
+								jsonrpc: '2.0',
+								...request,
+							}),
+						);
+					held = {
+						reply,
+						answers: [],
+					};
+				} else if (cancellationMode && result) {
 					const mode = recordOf(
 						recordOf(message.params)?.arguments,
 					)?.fixtureMode;

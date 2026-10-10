@@ -136,9 +136,9 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 							timeout: 200,
 						},
 					);
-				// Only a JSON body belongs to its request. Stdio waits for a reply
-				// with the request's ID, and SSE waits for a reply that has a result
-				// or error.
+				// Only a JSON body belongs to its request. Stdio and SSE wait for a
+				// message with the request's ID and a result or error; a message
+				// with a method is a backend request.
 				const expectInvalidEnvelope = (
 					reply: Record<string, unknown>,
 					omitId = false,
@@ -146,7 +146,8 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 					const matched =
 						!omitId &&
 						reply.id !== 'wrong' &&
-						(transport !== 'sse' || 'result' in reply || 'error' in reply);
+						!('method' in reply) &&
+						('result' in reply || 'error' in reply);
 					return expect(callEnvelope(reply, omitId)).rejects.toThrow(
 						matched || transport === 'json'
 							? 'Invalid backend RPC response'

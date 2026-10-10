@@ -331,7 +331,14 @@ class ProtocolClient {
 					if (line && !stderr) {
 						const message = recordOf(JSON.parse(line));
 						const id = message?.id;
-						if (typeof id === 'string' || typeof id === 'number')
+						// JSON-RPC IDs belong to their sender: only a result or error
+						// completes one of the gateway's requests.
+						if (message && 'method' in message) this.answerRequest(message);
+						else if (
+							message &&
+							(typeof id === 'string' || typeof id === 'number') &&
+							('result' in message || 'error' in message)
+						)
 							this.pending.get(id)?.resolve(message);
 					}
 					end = buffer.indexOf('\n');
@@ -349,6 +356,58 @@ class ProtocolClient {
 		} finally {
 			reader.releaseLock();
 		}
+	}
+
+	// The receiver of a request must respond. The gateway answers a backend's
+	// ping and declines every other backend request; notifications are ignored.
+	private answerRequest(request: Record<string, unknown>): void {
+		const id = request.id;
+		if (typeof id !== 'string' && typeof id !== 'number') return;
+		const legacy = this.protocolVersion !== CURRENT_PROTOCOL_VERSION;
+		const response =
+			legacy && request.method === 'ping'
+				? {
+						jsonrpc: '2.0',
+						id,
+						result: {},
+					}
+				: {
+						jsonrpc: '2.0',
+						id,
+						error: {
+							code: -32601,
+							message: 'Method not found',
+						},
+					};
+		const config = this.server.serverConfig;
+		const answer = async (): Promise<void> => {
+			if (config.type === 'stdio') {
+				this.child?.stdin.write(`${JSON.stringify(response)}\n`);
+				return;
+			}
+			// 2026-07-28 has no backend requests and no session to answer on.
+			if (!legacy) return;
+			const reply = await fetch(config.url, {
+				method: 'POST',
+				headers: this.httpHeaders(config.headers, response),
+				body: JSON.stringify(response),
+				signal: AbortSignal.timeout(config.timeout),
+			});
+			await reply.body?.cancel();
+			if (!reply.ok) throw new Error(`HTTP ${reply.status}`);
+		};
+		answer().catch((error: unknown) => {
+			logger.warn(
+				JSON.stringify({
+					message: 'Backend request answer failed',
+					context: {
+						backend: this.server.serverName,
+						method: request.method,
+					},
+					error: errorMessage(error),
+				}),
+			);
+		});
 	}
 
 	private async send(
@@ -531,7 +590,8 @@ class ProtocolClient {
 						// Progress notifications are not the final response. Complete only
 						// when this request's ID has a result or protocol error.
 						const event = recordOf(JSON.parse(data));
-						if (
+						if (event && 'method' in event) this.answerRequest(event);
+						else if (
 							event &&
 							event.id === id &&
 							('result' in event || 'error' in event)

@@ -79,6 +79,9 @@ entry under the date its change was committed. The project uses
 - Backend resource templates appear in `resources/templates/list` as
   `aawa-mcpx://template/<namespace>/<original-template>`, and URIs expanded from
   them are read from that backend. Before, the list was always empty.
+- Backend `ping` requests are answered, and other backend requests get
+  `-32601`. A backend request whose ID matched a pending gateway call no longer
+  completes that call.
 
 ### 2026-10-09
 
