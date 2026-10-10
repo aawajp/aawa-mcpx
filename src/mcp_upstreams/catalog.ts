@@ -128,8 +128,10 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 		server: McpUpstreamBackend,
 		options: {
 			method: string;
+			capability: 'tools' | 'prompts' | 'resources';
 			empty: () => T;
-			save: (result: T) => void;
+			// undefined clears the list of a backend that does not advertise it.
+			save: (result: T | undefined) => void;
 			fetch: (client: Client) => Promise<T>;
 			keepCacheOnError?: boolean;
 			// Runs after caching; an awaited step may outlive this client.
@@ -143,6 +145,11 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 		const serverName = server.serverName;
 		const client = server.client;
 		if (!client) return options.empty();
+		// Both parties MUST only use negotiated capabilities.
+		if (!client.getServerCapabilities()?.[options.capability]) {
+			options.save(undefined);
+			return options.empty();
+		}
 		// A backend may be disabled or reconnected while a request is in flight.
 		const isCurrent = (): boolean =>
 			server.serverConfig.enabled && server.client === client;
@@ -276,6 +283,7 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 	const fetchTools = (server: McpUpstreamBackend): Promise<ListToolsResult> =>
 		fetchCatalog(server, {
 			method: 'tools/list',
+			capability: 'tools',
 			empty: emptyToolsResult,
 			save: (result) => {
 				server.tools = result;
@@ -310,6 +318,7 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 	): Promise<ListPromptsResult> =>
 		fetchCatalog(server, {
 			method: 'prompts/list',
+			capability: 'prompts',
 			empty: emptyPromptsResult,
 			save: (result) => {
 				server.prompts = result;
@@ -332,6 +341,7 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 	): Promise<ListResourcesResult> =>
 		fetchCatalog(server, {
 			method: 'resources/list',
+			capability: 'resources',
 			empty: emptyResourcesResult,
 			save: (result) => {
 				server.resources = result;

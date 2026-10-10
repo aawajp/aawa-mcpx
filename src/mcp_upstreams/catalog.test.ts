@@ -34,6 +34,11 @@ test('catalog responses invalidated by backend disable are discarded', async () 
 		await released;
 	};
 	const client = {
+		getServerCapabilities: () => ({
+			tools: {},
+			prompts: {},
+			resources: {},
+		}),
 		async listTools() {
 			await waitForRelease();
 			return {
@@ -101,5 +106,60 @@ test('catalog responses invalidated by backend disable are discarded', async () 
 	expect(server.prompts).toBeUndefined();
 	expect(server.resources).toBeUndefined();
 	expect(configurationErrors).toBe(0);
+	expect(statusErrors).toBe(0);
+});
+
+test('lists a backend does not advertise are never requested', async () => {
+	const server = createMcpUpstreamBackend({
+		serverName: 'tools-only',
+		serverConfig: {
+			type: 'http',
+			url: 'http://127.0.0.1/tools-only',
+			enabled: true,
+			timeout: 10_000,
+			trafficLimit: 1,
+		},
+	});
+	const unexpected = async (): Promise<never> => {
+		throw new Error('Unadvertised list requested');
+	};
+	server.client = {
+		getServerCapabilities: () => ({
+			tools: {},
+		}),
+		listPrompts: unexpected,
+		listResources: unexpected,
+	} as unknown as Client;
+	server.prompts = {
+		prompts: [],
+	};
+	let statusErrors = 0;
+	const catalog = createMcpUpstreamCatalog({
+		attemptReconnect: async () => undefined,
+		backends: new Map([
+			[
+				server.serverName,
+				server,
+			],
+		]),
+		config: {
+			mcpServers: {
+				[server.serverName]: server.serverConfig,
+			},
+		},
+		markMcpUpstreamConfigurationError: () => undefined,
+		setMcpUpstreamStatusError: () => {
+			statusErrors += 1;
+		},
+		waitForRateLimit: async () => undefined,
+	});
+
+	await Promise.all([
+		catalog.fetchPrompts(server),
+		catalog.fetchResources(server),
+	]);
+
+	expect(server.prompts).toBeUndefined();
+	expect(server.resources).toBeUndefined();
 	expect(statusErrors).toBe(0);
 });

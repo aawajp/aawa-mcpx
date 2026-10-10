@@ -66,6 +66,10 @@ entry under the date its change was committed. The project uses
   left it empty until **Refresh** was pressed.
 - Failed `tools/list` fetches appear in the Debug page's backend traffic, like
   failed prompt and resource fetches.
+- Backends are asked only for the tool, prompt, and resource lists they
+  advertise, as the MCP lifecycle requires. Before, every backend got all three
+  requests, and a missing list made a `2026-07-28` backend's catalog refresh on
+  every client request.
 
 ### 2026-10-09
 

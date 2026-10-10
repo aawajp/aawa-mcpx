@@ -57,11 +57,12 @@ const createMcpUpstreamManager = (
 				catalog.fetchPrompts(backend),
 				catalog.fetchResources(backend),
 			]);
+			// Lists the backend does not advertise are not fetched and never expire.
 			const results = [
 				backend.tools,
 				backend.prompts,
 				backend.resources,
-			];
+			].filter((result) => result !== undefined);
 			const ttl = Math.min(
 				// The first catalog to expire makes the combined snapshot stale.
 				...results.map((result) => Number(recordOf(result)?.ttlMs ?? 0)),

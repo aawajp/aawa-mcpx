@@ -152,9 +152,10 @@ responses; the backend's standalone `GET` event stream is not used. Backend stdi
 is supported. Backend stdio buffers and SSE events are limited to 8 MiB, and
 backend pagination to 1,000 pages.
 
-Backend 2026 caches use receipt time and the minimum TTL across tools, prompts,
-and resources, scoped to configured credentials; a list without a TTL (including
-an unsupported list) counts as zero. Before each catalog-dependent public request,
+The gateway requests only the lists (tools, prompts, resources) that a backend
+advertises in its capabilities. Backend 2026 caches use receipt time and the
+minimum TTL across the fetched lists, scoped to configured credentials; a fetched
+list without a TTL counts as zero. Before each catalog-dependent public request,
 every connected 2026 backend with an expired catalog is refreshed, with concurrent
 refresh deduplication. 2025 backend catalogs refresh only on connect, reconnect,
 enable, and dashboard refresh. All pages are materialized before [namespacing](#38-namespaces-and-resource-routing);
