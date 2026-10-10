@@ -105,6 +105,8 @@ entry under the date its change was committed. The project uses
 - 2025 clients can list tools whose output schema has a root `$ref` (as
   zod-to-json-schema emits). Before, the wrapped schema crashed Ajv, so clients
   such as the TypeScript SDK failed the whole `tools/list`.
+- Resources whose URIs contain spaces or non-ASCII characters can be read. Before,
+  they were listed but every read was rejected as an invalid URI.
 
 ### 2026-10-09
 

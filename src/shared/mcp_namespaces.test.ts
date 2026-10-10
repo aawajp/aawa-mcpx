@@ -83,6 +83,8 @@ test('resource wrappers preserve complete original URIs and distinguish backends
 			'data:text/plain,a%20b',
 			'custom://host/path?x=1&y=2',
 			'file:///a%23b',
+			'file:///my file.txt',
+			'file:///日本語.txt',
 		]) {
 			const wrapped = addResourcePrefix({
 				serverName,
@@ -121,6 +123,7 @@ test('resource requests reject malformed wrappers and decoded URI syntax', () =>
 		'backend://file:///bad%ZZ',
 		'aawa-mcpx://resource/unknown',
 		'aawa-mcpx://resource/backend/%ZZ',
+		'aawa-mcpx://resource/backend/relative%20path',
 		'aawa-mcpx://resource/backend/file%3a%2f%2f%2fa',
 		'aawa-mcpx://resource/backend/file%3A%2F%2F%2Fa#injected',
 		'aawa-mcpx://resource/mcpx-0061/file%3A%2F%2F%2Fa',

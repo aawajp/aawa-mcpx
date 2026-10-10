@@ -116,6 +116,15 @@ const parseResourceUri = (uri: string): ParseResourceUriResult => {
 			}) !== uri
 		)
 			throw new Error(`Invalid resource URI "${uri}"`);
+		// The wrapper encodes the whole backend URI, so it stays valid RFC 3986
+		// even when the backend's URI has spaces or non-ASCII characters. Route
+		// exactly what the backend listed; only require an absolute URI.
+		if (!/^[A-Za-z][A-Za-z0-9+.-]*:/.test(originalUri))
+			throw new Error(`Invalid resource URI "${uri}"`);
+		return {
+			serverName,
+			originalUri,
+		};
 	} else {
 		// Accept previously issued URIs only when the legacy scheme identifies a
 		// backend unambiguously. Never interpret malformed new wrappers as legacy.

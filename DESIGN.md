@@ -304,8 +304,10 @@ percent escapes, queries, and fragments without URL normalization. Resource URI
 schemes must follow RFC 3986, so the gateway uses a fixed scheme rather than
 backend names as schemes. `backend://original-uri` references also route when
 the backend name is a valid URI scheme other than `aawa-mcpx` and the original URI
-is itself absolute. A read accepts only URIs that are valid ASCII RFC 3986, so
-resources whose URIs contain spaces or non-ASCII characters are listed but cannot be read.
+is itself absolute. Because the resource wrapper encodes the whole original URI,
+a read routes any absolute backend URI exactly as listed, including spaces and
+non-ASCII characters. Template and `backend://` reads accept only valid ASCII
+RFC 3986 URIs.
 
 Clients expand resource templates themselves, so template wrappers keep the
 backend template unencoded. A URI expanded from a wrapped template is the
