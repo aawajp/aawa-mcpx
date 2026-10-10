@@ -173,6 +173,7 @@ const createMcpUpstreamManager = (
 				);
 				if (!backend.serverConfig.enabled || !backend.client)
 					throw new Error(`MCP upstream "${name}" is not available`);
+				await connections.refreshDetails(backend);
 				await refreshCatalog(backend);
 			}),
 		);

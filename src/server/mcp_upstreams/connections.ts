@@ -466,6 +466,29 @@ const createMcpUpstreamConnections = (
 		return true;
 	};
 
+	// Re-read the backend's server info, capabilities and instructions. A
+	// failure keeps the current details; the catalog refresh reports outages.
+	const refreshDetails = async (backend: McpUpstreamBackend): Promise<void> => {
+		const client = backend.client;
+		if (!client) return;
+		try {
+			await waitForRateLimit(backend);
+			await client.rediscover();
+		} catch (error) {
+			logger.warn(
+				`Failed to refresh details for MCP upstream "${backend.serverName}": ${errorMessage(error)}`,
+			);
+			return;
+		}
+		if (backend.client !== client || !backend.status) return;
+		backend.status = {
+			...backend.status,
+			capabilities: client.getServerCapabilities(),
+			implementation: client.getServerVersion(),
+			instructions: client.getInstructions(),
+		};
+	};
+
 	const attemptReconnect = async (
 		backend: McpUpstreamBackend,
 	): Promise<void> => {
@@ -631,6 +654,7 @@ const createMcpUpstreamConnections = (
 		initialize,
 		markMcpUpstreamConfigurationError,
 		onValidationError,
+		refreshDetails,
 		setMcpUpstreamStatusError,
 		setBackendEnabled,
 		waitForRateLimit,

@@ -923,6 +923,21 @@ class ProtocolClient {
 		}
 	}
 
+	// 2026-07-28 discovery is stateless, so a backend can change what it
+	// reports without a new connection. A 2025 session keeps its initialize result.
+	async rediscover(): Promise<void> {
+		if (this.protocolVersion !== CURRENT_PROTOCOL_VERSION) return;
+		const details = await this.rpc('server/discover');
+		const versions = details.supportedVersions;
+		if (
+			!Array.isArray(versions) ||
+			!versions.includes(CURRENT_PROTOCOL_VERSION) ||
+			!recordOf(details.capabilities)
+		)
+			throw new Error('Invalid MCP 2026-07-28 discovery result');
+		this.details = details;
+	}
+
 	async ping(options?: RequestOptions): Promise<Record<string, unknown>> {
 		return this.rpc(
 			this.protocolVersion === CURRENT_PROTOCOL_VERSION

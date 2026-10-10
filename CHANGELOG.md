@@ -143,6 +143,9 @@ entry under the date its change was committed. The project uses
   client got an internal error even when the call had succeeded.
 - Tool results with `isError: true` are logged as errors, so the Debug page's
   **Errors only** filter shows them.
+- **Refresh** in the dashboard updates a `2026-07-28` backend's server info,
+  capabilities, and instructions, not only its catalogs. Before, they stayed as
+  they were at connect time.
 
 ### 2026-10-09
 

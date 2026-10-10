@@ -10,6 +10,7 @@ import type { TrafficStore } from '@/server/traffic_store';
 import {
 	CURRENT_PROTOCOL_VERSION,
 	recordOf,
+	SERVER_INFO_META,
 	SUPPORTED_PROTOCOL_VERSIONS,
 } from '@/shared/mcp_protocol';
 
@@ -351,6 +352,68 @@ test('2026-07-28 lists go stale on their own and refresh only for the request ta
 	} finally {
 		await manager.disconnect();
 		for (const fixture of fixtures) fixture.stop();
+		await rm(root, {
+			recursive: true,
+			force: true,
+		});
+	}
+});
+
+test('2026-07-28 manual refresh updates server info, capabilities and instructions', async () => {
+	const root = await mkdtemp(path.join(tmpdir(), 'mcpx-details-'));
+	let release = '1';
+	const fixture = startFixtureBackend('http', CURRENT_PROTOCOL_VERSION, {
+		handle: (message, reply) => {
+			const result = recordOf(reply?.result);
+			if (message.method !== 'server/discover' || !result) return undefined;
+			result.instructions = `Use release ${release}`;
+			result._meta = {
+				[SERVER_INFO_META]: {
+					name: 'fixture',
+					version: release,
+				},
+			};
+			if (release === '2') delete recordOf(result.capabilities)?.prompts;
+			return undefined;
+		},
+	});
+	const manager = createMcpUpstreamManager({
+		config: mcpConfigType.assert({
+			mcpServers: {
+				backend: {
+					...fixture.config,
+					timeout: 2000,
+					trafficLimit: 10000,
+				},
+			},
+		}),
+		configPath: path.join(root, 'mcp.json'),
+	});
+	const status = () =>
+		manager.getStatuses().find((entry) => entry.serverName === 'backend');
+	try {
+		await manager.initialize();
+		expect(status()).toMatchObject({
+			instructions: 'Use release 1',
+			implementation: {
+				version: '1',
+			},
+		});
+		release = '2';
+		await manager.refreshCatalogs({
+			serverName: 'backend',
+		});
+		expect(status()).toMatchObject({
+			connected: true,
+			instructions: 'Use release 2',
+			implementation: {
+				version: '2',
+			},
+		});
+		expect(status()?.capabilities?.prompts).toBeUndefined();
+	} finally {
+		await manager.disconnect();
+		fixture.stop();
 		await rm(root, {
 			recursive: true,
 			force: true,

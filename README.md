@@ -161,7 +161,8 @@ ambiguous are escaped; see [namespaces](/DESIGN.md#38-namespaces-and-resource-ro
 
 Open `http://localhost:<PORT>/`. The summary at the top lists backends with
 their status and **Enable**/**Disable** buttons, plus a **Refresh** for all
-catalogs. Below it are three tabs:
+backends. Refresh re-fetches catalogs and, for `2026-07-28` backends, server
+info, capabilities, and instructions. Below it are three tabs:
 
 - **Backends** (default view): each backend's tools, prompts, and resources, a per-backend **Refresh**, and **Expose to clients** toggles for tools.
 - **Client**: clients grouped by reported name and version, with first and last activity and latest protocol.

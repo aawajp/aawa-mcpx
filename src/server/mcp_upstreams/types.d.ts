@@ -14,6 +14,7 @@ type Client = Pick<
 	| 'getServerCapabilities'
 	| 'getServerVersion'
 	| 'getInstructions'
+	| 'rediscover'
 	| 'ping'
 	| 'listTools'
 	| 'listPrompts'
