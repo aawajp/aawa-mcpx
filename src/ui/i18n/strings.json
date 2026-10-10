@@ -23,7 +23,7 @@
 	"protocol.api.events": "SSE updates",
 	"protocol.api.health": "Health status",
 	"protocol.api.debug": "Traffic viewer",
-	"aggregated.tools.toggle": "Expose to clients",
+	"tools.toggle": "Expose to clients",
 	"backends.sectionTitle": "Backends",
 	"implementation.title": "Implementation",
 	"implementation.none": "No implementation info.",

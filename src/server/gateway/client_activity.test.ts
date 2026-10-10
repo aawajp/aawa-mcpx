@@ -195,11 +195,6 @@ test('client activity groups revisions and reconnects without exposing sessions'
 	const overview = overviewResponseType.assert({
 		clients,
 		backends: [],
-		aggregated: {
-			tools: [],
-			prompts: [],
-			resources: [],
-		},
 	});
 	const entry = overview.clients[0];
 	expect(entry).toMatchObject({

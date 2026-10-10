@@ -4,8 +4,8 @@ import {
 	listPromptsResultType,
 	listResourcesResultType,
 	listToolsResultType,
-	promptType,
-	resourceType,
+	type promptType,
+	type resourceType,
 	type toolType,
 } from '@/shared/mcp_schemas';
 
@@ -36,15 +36,6 @@ const clientActivityType = type({
 	protocolVersion: 'string',
 	firstSeen: 'number.integer',
 	lastSeen: 'number.integer',
-});
-
-const clientToolType = type({
-	name: 'string',
-	'description?': 'string',
-	enabled: 'boolean',
-	inputSchema: 'unknown',
-	'outputSchema?': 'unknown',
-	'[string]': 'unknown',
 });
 
 const backendStatusSharedFields = {
@@ -82,14 +73,16 @@ const backendStatusType = type(
 const overviewResponseType = type({
 	'protocolVersion?': 'string',
 	'supportedProtocolVersions?': 'string[]',
-	aggregated: {
-		tools: clientToolType.array(),
-		prompts: promptType.array(),
-		resources: resourceType.array(),
-		'[string]': 'unknown',
-	},
 	backends: backendStatusType.array(),
 	clients: clientActivityType.array(),
+	'[string]': 'unknown',
+});
+
+const toggleToolResponseType = type({
+	serverName: 'string',
+	toolName: 'string',
+	enabled: 'boolean',
+	enabledTools: 'string[]',
 	'[string]': 'unknown',
 });
 
@@ -142,4 +135,9 @@ export type {
 	TrafficPage,
 	TrafficRecord,
 };
-export { backendTrafficResponseType, overviewResponseType, trafficPageType };
+export {
+	backendTrafficResponseType,
+	overviewResponseType,
+	toggleToolResponseType,
+	trafficPageType,
+};

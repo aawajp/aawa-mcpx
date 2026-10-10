@@ -2,13 +2,11 @@ import type {
 	ListPromptsResult,
 	ListResourcesResult,
 	ListToolsResult,
-	Tool,
 } from '@modelcontextprotocol/sdk/types';
 
 import { createClientActivityTracker } from '@/server/gateway/client_activity';
 import { createHandlers } from '@/server/gateway/mcp_handlers';
 import { createMcpHttpRoute } from '@/server/gateway/mcp_http_route';
-import { namespaceTool } from '@/server/gateway/mcp_namespaces';
 import { createMcpRequestRouter } from '@/server/gateway/mcp_request_router';
 import { createMcpSessionManager } from '@/server/gateway/mcp_session';
 import { createUiRoutes } from '@/server/gateway/ui_routes';
@@ -77,34 +75,10 @@ const startServer = async (
 
 	// All data is cached - no network calls, pure synchronous
 	const buildOverview = () => {
-		const prompts = handlers.listPrompts();
-		const resources = handlers.listResources();
 		const rawTools = mcpUpstreamManager.listAllTools();
 		const rawPrompts = mcpUpstreamManager.listAllPrompts();
 		const rawResources = mcpUpstreamManager.listAllResources();
 		const statuses = mcpUpstreamManager.getStatuses();
-		const aggregatedTools: Array<
-			Tool & {
-				enabled: boolean;
-			}
-		> = [];
-
-		for (const [serverName, toolsResult] of rawTools) {
-			const enabledTools = new Set(
-				mcpUpstreamManager.getEnabledTools({
-					serverName,
-				}),
-			);
-			for (const tool of toolsResult.tools) {
-				aggregatedTools.push({
-					...namespaceTool({
-						serverName,
-						tool,
-					}),
-					enabled: enabledTools.has(tool.name),
-				});
-			}
-		}
 
 		const backends = statuses.map((status) => ({
 			...status,
@@ -129,11 +103,6 @@ const startServer = async (
 		return {
 			protocolVersion: DEFAULT_GATEWAY_PROTOCOL_VERSION,
 			supportedProtocolVersions: [...SUPPORTED_PROTOCOL_VERSIONS],
-			aggregated: {
-				tools: aggregatedTools,
-				prompts: prompts.prompts,
-				resources: resources.resources,
-			},
 			backends,
 			clients,
 		};

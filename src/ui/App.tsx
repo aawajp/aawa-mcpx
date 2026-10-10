@@ -1,9 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import '@/ui/styles/index.css';
 
 import { errorMessage } from '@/shared/common';
-import { type OverviewResponse, overviewResponseType } from '@/shared/ui_api';
+import {
+	type OverviewResponse,
+	overviewResponseType,
+	toggleToolResponseType,
+} from '@/shared/ui_api';
 import { t } from '@/ui/i18n';
 import { BackendsSection } from '@/ui/sections/BackendsSection';
 import { BackendTesterSection } from '@/ui/sections/BackendTesterSection';
@@ -14,6 +18,9 @@ import { SummarySection } from '@/ui/sections/SummarySection';
 type LoadState = 'idle' | 'loading' | 'error' | 'ready';
 type MainTab = 'tester' | 'backends' | 'clients';
 const MAIN_TAB_STORAGE_KEY = 'aawa-mcpx-main-tab';
+// Server and tool names may contain any character; JSON keeps the pair unambiguous.
+const toolKey = (serverName: string, toolName: string): string =>
+	JSON.stringify([serverName, toolName]);
 
 const isMainTab = (value: string | null): value is MainTab => {
 	return value === 'backends' || value === 'clients' || value === 'tester';
@@ -123,10 +130,15 @@ export default function App() {
 	}, [refresh, route]);
 
 	const toggleTool = useCallback(
-		async (params: { name: string; enabled: boolean }) => {
+		async (params: {
+			serverName: string;
+			toolName: string;
+			enabled: boolean;
+		}) => {
+			const key = toolKey(params.serverName, params.toolName);
 			setPendingTools((current) => ({
 				...current,
-				[params.name]: true,
+				[key]: true,
 			}));
 			try {
 				const response = await fetch('/api/tools/toggle', {
@@ -139,24 +151,23 @@ export default function App() {
 				if (!response.ok) {
 					throw new Error(`Failed to update tool state (${response.status})`);
 				}
+				const { enabledTools } = toggleToolResponseType.assert(
+					await response.json(),
+				);
 				setOverview((current) => {
 					if (!current) {
 						return current;
 					}
 					return {
 						...current,
-						aggregated: {
-							...current.aggregated,
-							tools: current.aggregated.tools.map((tool) => {
-								if (tool.name !== params.name) {
-									return tool;
-								}
-								return {
-									...tool,
-									enabled: params.enabled,
-								};
-							}),
-						},
+						backends: current.backends.map((backend) =>
+							backend.serverName === params.serverName
+								? {
+										...backend,
+										enabledTools,
+									}
+								: backend,
+						),
 					};
 				});
 			} catch (err) {
@@ -164,23 +175,12 @@ export default function App() {
 			} finally {
 				setPendingTools((current) => ({
 					...current,
-					[params.name]: false,
+					[key]: false,
 				}));
 			}
 		},
 		[],
 	);
-
-	const enabledToolMap = useMemo(() => {
-		const map = new Map<string, boolean>();
-		if (!overview) {
-			return map;
-		}
-		for (const tool of overview.aggregated.tools) {
-			map.set(tool.name, tool.enabled);
-		}
-		return map;
-	}, [overview]);
 
 	useEffect(() => {
 		if (route !== 'main') {
@@ -332,8 +332,9 @@ export default function App() {
 							}
 							isRefreshing={isRefreshing}
 							onToggleTool={(params) => void toggleTool(params)}
-							isToolEnabled={(name) => enabledToolMap.get(name) === true}
-							isToolPending={(name) => pendingTools[name] === true}
+							isToolPending={(serverName, toolName) =>
+								pendingTools[toolKey(serverName, toolName)] === true
+							}
 						/>
 					) : null}
 				</div>

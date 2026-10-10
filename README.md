@@ -182,7 +182,7 @@ The separate **Debug** page (`/debug`) shows client and backend traffic from the
 | `/api/events` | GET | SSE stream of dashboard updates |
 | `/api/backends/toggle` | POST | Enable or disable a backend (`{ serverName, enabled }`) |
 | `/api/backends/refresh` | POST | Refresh catalogs (`{ serverName }` for one backend, `{}` for all) |
-| `/api/tools/toggle` | POST | Show or hide a tool for clients (`{ name, enabled }`, `name` in public `serverName__toolName` form) |
+| `/api/tools/toggle` | POST | Show or hide a tool for clients (`{ serverName, toolName, enabled }`) |
 | `/api/tools/call` | POST | Call an exposed backend tool (`{ serverName, toolName, arguments? }`) |
 | `/api/health` | GET | Per-backend connectivity |
 | `/api/debug` | GET | First page of client traffic and of each backend's traffic (`?limit=&offset=&errorsOnly=`) |

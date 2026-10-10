@@ -1,11 +1,10 @@
 import { createUiRoutes } from '@/server/gateway/ui_routes';
 import type { McpUpstreamManager } from '@/server/mcp_upstreams/types';
 import type { TrafficStore } from '@/server/traffic_store';
-import { addPrefix } from '@/shared/mcp_namespaces';
 
 import { expect, test } from 'bun:test';
 
-test('dashboard toggles use the same escaped namespaces as the MCP catalog', async () => {
+test('dashboard toggles name the backend and tool as they are', async () => {
 	let toggled: unknown;
 	const routes = createUiRoutes({
 		buildOverview: () => ({}),
@@ -18,24 +17,34 @@ test('dashboard toggles use the same escaped namespaces as the MCP catalog', asy
 		shutdownSignal: new AbortController().signal,
 		trafficStore: {} as unknown as TrafficStore,
 	});
-	const response = await routes['/api/tools/toggle'].POST(
-		new Request('http://localhost/api/tools/toggle', {
-			method: 'POST',
-			body: JSON.stringify({
-				name: addPrefix({
-					serverName: 'backend__one_',
-					name: '_echo',
-				}),
-				enabled: true,
+	const toggle = (body: unknown) =>
+		routes['/api/tools/toggle'].POST(
+			new Request('http://localhost/api/tools/toggle', {
+				method: 'POST',
+				body: JSON.stringify(body),
 			}),
-		}),
-	);
-	expect(response.status).toBe(200);
-	expect(toggled).toEqual({
+		);
+	const params = {
 		serverName: 'backend__one_',
 		toolName: '_echo',
 		enabled: true,
+	};
+	const response = await toggle(params);
+	expect(response.status).toBe(200);
+	expect(toggled).toEqual(params);
+	expect(await response.json()).toEqual({
+		...params,
+		enabledTools: ['_echo'],
 	});
+	// A namespaced name alone no longer identifies the tool.
+	expect(
+		(
+			await toggle({
+				name: 'backend__one___echo',
+				enabled: true,
+			})
+		).status,
+	).toBe(400);
 });
 
 test('backend refresh waits for fresh catalogs before returning the overview', async () => {

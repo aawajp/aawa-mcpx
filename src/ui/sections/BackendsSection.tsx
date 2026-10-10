@@ -1,4 +1,3 @@
-import { addPrefix } from '@/shared/mcp_namespaces';
 import type { McpUpstreamStatus } from '@/shared/ui_api';
 import {
 	Card,
@@ -28,9 +27,12 @@ type Props = {
 	backends: McpUpstreamStatus[];
 	onRefresh: (serverName: string) => void;
 	isRefreshing: boolean;
-	onToggleTool: (params: { name: string; enabled: boolean }) => void;
-	isToolEnabled: (name: string) => boolean;
-	isToolPending: (name: string) => boolean;
+	onToggleTool: (params: {
+		serverName: string;
+		toolName: string;
+		enabled: boolean;
+	}) => void;
+	isToolPending: (serverName: string, toolName: string) => boolean;
 };
 
 const BackendsSection = ({
@@ -38,7 +40,6 @@ const BackendsSection = ({
 	onRefresh,
 	isRefreshing,
 	onToggleTool,
-	isToolEnabled,
 	isToolPending,
 }: Props) => {
 	const sortedBackends = [...backends].sort((a, b) =>
@@ -204,12 +205,8 @@ const BackendsSection = ({
 								tools={backend.tools.tools}
 								emptyLabel={t('list.empty.tools')}
 								renderAction={(tool) => {
-									const namespacedToolName = addPrefix({
-										serverName: backend.serverName,
-										name: tool.name,
-									});
-									const enabled = isToolEnabled(namespacedToolName);
-									const pending = isToolPending(namespacedToolName);
+									const enabled = backend.enabledTools.includes(tool.name);
+									const pending = isToolPending(backend.serverName, tool.name);
 									return (
 										<label className="inline-flex items-center gap-2 text-xs font-medium text-slate-200">
 											<input
@@ -218,13 +215,14 @@ const BackendsSection = ({
 												disabled={pending}
 												onChange={(event) =>
 													onToggleTool({
-														name: namespacedToolName,
+														serverName: backend.serverName,
+														toolName: tool.name,
 														enabled: event.target.checked,
 													})
 												}
 												className="h-4 w-4 rounded border border-sky-400/50 bg-slate-950"
 											/>
-											{t('aggregated.tools.toggle')}
+											{t('tools.toggle')}
 										</label>
 									);
 								}}

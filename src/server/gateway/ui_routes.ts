@@ -6,11 +6,11 @@ import { logger } from '@/server/logger';
 import type { McpUpstreamManager } from '@/server/mcp_upstreams/types';
 import type { TrafficStore } from '@/server/traffic_store';
 import { errorMessage } from '@/shared/common';
-import { parsePrefix } from '@/shared/mcp_namespaces';
 import { jsonObjectType } from '@/shared/mcp_schemas';
 
 const toggleToolBodyType = type({
-	name: 'string',
+	serverName: 'string',
+	toolName: 'string',
 	enabled: 'boolean',
 	'[string]': 'unknown',
 });
@@ -124,15 +124,14 @@ const createUiRoutes = (params: CreateUiRoutesParams) => {
 				}
 
 				try {
-					const parsed = parsePrefix(body.name);
 					const enabledTools = await mcpUpstreamManager.toggleTool({
-						serverName: parsed.serverName,
-						toolName: parsed.originalName,
+						serverName: body.serverName,
+						toolName: body.toolName,
 						enabled: body.enabled,
 					});
 					return Response.json({
-						serverName: parsed.serverName,
-						toolName: parsed.originalName,
+						serverName: body.serverName,
+						toolName: body.toolName,
 						enabled: body.enabled,
 						enabledTools,
 					});

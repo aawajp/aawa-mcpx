@@ -51,6 +51,9 @@ entry under the date its change was committed. The project uses
   explicitly. Running `bun src/index.ts` directly ignores `.env`.
 - Merged tool, prompt, and resource lists follow the backend order in
   `mcp.json`. Before, they followed the order in which backend catalogs arrived.
+- **Breaking:** `POST /api/tools/toggle` takes `{ serverName, toolName, enabled }`
+  instead of a namespaced `name`, and `/api/overview` no longer has an
+  `aggregated` section; each backend's `enabledTools` holds its tool state.
 
 #### Removed
 
