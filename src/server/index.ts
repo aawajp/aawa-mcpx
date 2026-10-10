@@ -38,12 +38,11 @@ void initialization.catch((err) => {
 const port = resolvePort(process.env.PORT);
 const server = await startServer({
 	port,
+	development: process.env.NODE_ENV !== 'production',
 	mcpUpstreamManager,
 	trafficStore,
 	initialization,
 });
-
-logger.info(`🚀 aawa-mcpx gateway running on http://localhost:${port}`);
 
 const shutdown = async () => {
 	logger.info('Shutting down aawa-mcpx gateway');

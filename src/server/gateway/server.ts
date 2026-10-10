@@ -39,6 +39,7 @@ const resolveNumberEnv = (key: string, fallback: number): number => {
 
 type StartServerParams = {
 	port: number;
+	development: boolean;
 	mcpUpstreamManager: McpUpstreamManager;
 	trafficStore: TrafficStore;
 	initialization?: Promise<void>;
@@ -52,6 +53,7 @@ const startServer = async (
 	params: StartServerParams,
 ): Promise<ServerInstance> => {
 	const {
+		development,
 		initialization = Promise.resolve(),
 		mcpUpstreamManager,
 		port,
@@ -146,6 +148,12 @@ const startServer = async (
 
 	const server = Bun.serve({
 		port,
+		development: development
+			? {
+					hmr: true,
+					console: true,
+				}
+			: false,
 		routes: {
 			'/mcp': createMcpHttpRoute({
 				refreshCatalogs: mcpUpstreamManager.refreshStaleCatalogs,
