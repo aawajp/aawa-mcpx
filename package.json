@@ -7,28 +7,31 @@
 	"type": "module",
 	"packageManager": "bun@1.4.3",
 	"scripts": {
-		"dev": "bun --env-file=.env --hot src/server/index.ts",
-		"start": "bun --env-file=.env src/server/index.ts",
+		"css": "tailwindcss -i ./src/ui/index.css -o ./.tailwind/index.css",
+		"css:watch": "tailwindcss -i ./src/ui/index.css -o ./.tailwind/index.css --watch=always",
+		"dev": "bun run css && bun run --parallel css:watch dev:server",
+		"dev:server": "bun --env-file=.env --hot src/server/index.ts",
+		"start": "bun run css && bun --env-file=.env src/server/index.ts",
 		"test": "bun test",
 		"lint": "bun check && biome check --fix"
 	},
 	"trustedDependencies": [],
 	"dependencies": {
 		"arktype": "2.2.7",
-		"bun-plugin-tailwind": "0.1.2",
 		"clsx": "2.1.1",
 		"react": "19.3.0",
 		"react-dom": "19.3.0",
-		"tailwind-merge": "3.7.0",
-		"tailwindcss": "4.3.3",
-		"tw-animate-css": "1.4.0"
+		"tailwind-merge": "3.7.0"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.15",
 		"@modelcontextprotocol/sdk": "1.32.1",
+		"@tailwindcss/cli": "4.3.3",
 		"@types/bun": "1.4.2",
 		"@types/react": "19.3.0",
-		"@types/react-dom": "19.3.0"
+		"@types/react-dom": "19.3.0",
+		"tailwindcss": "4.3.3",
+		"tw-animate-css": "1.4.0"
 	},
 	"peerDependencies": {
 		"ajv": "8.20.0",

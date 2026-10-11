@@ -113,7 +113,7 @@ bun dev     # hot reload
 bun start   # normal run
 ```
 
-Bun runs the TypeScript source directly; there is no build step.
+Bun runs the TypeScript source directly.
 
 ### Docker
 

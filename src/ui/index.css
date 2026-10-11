@@ -1,4 +1,6 @@
-@import './globals.css';
+@import 'tailwindcss' source('..');
+@import 'tw-animate-css';
+@import './styles/globals.css';
 
 @layer base {
 	:root {

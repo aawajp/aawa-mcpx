@@ -13,7 +13,7 @@ env = false
 	auto = "disable"
 
 	# do not auto-install peer dependencies (Bun installs them by default);
-	# e.g. bun-plugin-tailwind's peer "bun" puts an npm Bun in node_modules/.bin
+	# e.g. a peer dependency on "bun" puts an npm Bun in node_modules/.bin
 	# that shadows the pinned Bun in package scripts
 	peer = false
 
@@ -26,13 +26,6 @@ env = false
 [run]
 	# execute "run" commands with "bun" instead of "node" (note: bun's default is "node"
 	bun = true
-
-# TODO: update when there's a long term solution for tailwind integration:
-# - https://github.com/oven-sh/bun/issues/12878
-# - https://github.com/oven-sh/bun/issues/29603
-[serve.static]
-plugins = ["bun-plugin-tailwind"]
-env = "BUN_PUBLIC_*"
 
 [test]
 	# silence the logger during tests

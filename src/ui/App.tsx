@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import '@/ui/styles/index.css';
-
 import { errorMessage } from '@/shared/common';
 import {
 	type OverviewResponse,

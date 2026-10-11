@@ -33,6 +33,8 @@ EOF
 
 COPY --chown=1000:1000 . .
 
+RUN bun run css
+
 # Expose the default port
 EXPOSE 4567
 

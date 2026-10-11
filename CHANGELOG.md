@@ -45,8 +45,12 @@ entry under the date its change was committed. The project uses
 - `ajv` 8.20.0 and `ajv-formats` 3.0.1 are new peer dependencies;
   `@modelcontextprotocol/sdk` updated to 1.32.1.
 - `@modelcontextprotocol/sdk` is a dev dependency, since the gateway uses only
-  its types. The Tailwind packages and `tailwind-merge` are runtime
-  dependencies, since the server bundles the dashboard at startup.
+  its types. `tailwind-merge` is a runtime dependency, since the server bundles
+  the dashboard at startup.
+- The Tailwind CLI builds the dashboard CSS into `.tailwind/index.css`:
+  `bun dev` rebuilds it on change, and `bun start` and the image build run it
+  first. This replaces `bun-plugin-tailwind`, which embedded Tailwind 4.1.14, so
+  the dashboard now uses the installed Tailwind 4.3.3.
 - Bun no longer loads `.env` automatically; `bun dev` and `bun start` load it
   explicitly. Running `bun src/index.ts` directly ignores `.env`.
 - Merged tool, prompt, and resource lists follow the backend order in
