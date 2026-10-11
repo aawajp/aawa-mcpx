@@ -17,6 +17,7 @@ import { SummarySection } from '@/ui/sections/SummarySection';
 type LoadState = 'idle' | 'loading' | 'error' | 'ready';
 type MainTab = 'tester' | 'backends' | 'clients';
 const MAIN_TAB_STORAGE_KEY = 'aawa-mcpx-main-tab';
+const EVENT_STREAM_RETRY_MS = 5000;
 // Server and tool names may contain any character; JSON keeps the pair unambiguous.
 const toolKey = (serverName: string, toolName: string): string =>
 	JSON.stringify([serverName, toolName]);
@@ -37,6 +38,7 @@ export default function App() {
 	const [status, setStatus] = useState<LoadState>('idle');
 	const [isRefreshing, setIsRefreshing] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [streamError, setStreamError] = useState<string | null>(null);
 	const [mainTab, setMainTab] = useState<MainTab>(() => {
 		if (typeof window === 'undefined') return 'backends';
 		const stored = window.localStorage.getItem(MAIN_TAB_STORAGE_KEY);
@@ -90,6 +92,7 @@ export default function App() {
 				...current,
 				[params.serverName]: true,
 			}));
+			setError(null);
 			try {
 				await fetchJson('/api/backends/toggle', {
 					method: 'POST',
@@ -130,6 +133,7 @@ export default function App() {
 				...current,
 				[key]: true,
 			}));
+			setError(null);
 			try {
 				const { enabledTools } = toggleToolResponseType.assert(
 					await fetchJson('/api/tools/toggle', {
@@ -172,27 +176,33 @@ export default function App() {
 		if (route !== 'main') {
 			return;
 		}
-		const eventSource = new EventSource('/api/events');
-
-		eventSource.onmessage = (event) => {
-			try {
-				const payload = JSON.parse(event.data) as unknown;
-				const data = overviewResponseType.assert(payload);
-				setOverview(data);
-				setStatus('ready');
-				setError(null);
-			} catch (err) {
-				setError(errorMessage(err));
-			}
+		let eventSource: EventSource | undefined;
+		let retryTimer: ReturnType<typeof setTimeout> | undefined;
+		const connect = () => {
+			eventSource = new EventSource('/api/events');
+			eventSource.onmessage = (event) => {
+				try {
+					const payload = JSON.parse(event.data) as unknown;
+					const data = overviewResponseType.assert(payload);
+					setOverview(data);
+					setStatus('ready');
+					setStreamError(null);
+				} catch (err) {
+					setStreamError(errorMessage(err));
+				}
+			};
+			eventSource.onerror = () => {
+				setStreamError(t('event.error'));
+				if (eventSource?.readyState === EventSource.CLOSED) {
+					retryTimer = setTimeout(connect, EVENT_STREAM_RETRY_MS);
+				}
+			};
 		};
-
-		eventSource.onerror = () => {
-			setError(t('event.error'));
-			setStatus('error');
-		};
+		connect();
 
 		return () => {
-			eventSource.close();
+			clearTimeout(retryTimer);
+			eventSource?.close();
 		};
 	}, [route]);
 
@@ -265,7 +275,7 @@ export default function App() {
 						}
 						status={status}
 						isRefreshing={isRefreshing}
-						error={error}
+						error={error ?? streamError}
 					/>
 					<div className="flex items-center gap-2">
 						<button

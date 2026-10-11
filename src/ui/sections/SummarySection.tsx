@@ -68,7 +68,7 @@ const SummarySection = ({
 									{t('backends.loading')}
 								</span>
 							) : null}
-							{status === 'error' && error ? (
+							{error ? (
 								<span className="text-xs text-rose-300">{error}</span>
 							) : null}
 						</div>

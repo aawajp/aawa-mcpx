@@ -15,6 +15,10 @@ entry under the date its change was committed. The project uses
   malformed request or a refused tool call, 404 for an unknown backend or tool,
   and 500 otherwise. The dashboard and debug page show that reason. Before, the
   API returned a bare 400 or 500 and the dashboard showed only the status code.
+- The dashboard shows every error, including a failed tool toggle, and reopens
+  its event stream when the server closes it, for example with a 503 during
+  shutdown. Before, a failed tool toggle showed nothing, and after such a close
+  the dashboard stopped updating until the page was reloaded.
 
 ### 2026-10-10
 
