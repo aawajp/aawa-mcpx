@@ -16,6 +16,7 @@ import {
 	type TrafficRecord,
 	trafficPageType,
 } from '@/shared/ui_api';
+import { fetchJson } from '@/ui/api/client';
 import {
 	Card,
 	CardContent,
@@ -208,13 +209,11 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 	const loadDebugSummary = useCallback(async () => {
 		try {
 			setDebugError(null);
-			const res = await fetch('/api/overview', {
-				cache: 'no-store',
-			});
-			if (!res.ok) {
-				throw new Error(`Debug request failed with status ${res.status}`);
-			}
-			const data = overviewResponseType.assert(await res.json());
+			const data = overviewResponseType.assert(
+				await fetchJson('/api/overview', {
+					cache: 'no-store',
+				}),
+			);
 			const nextEntries: Record<string, BackendEntry> = {};
 			data.backends.forEach((entry) => {
 				nextEntries[entry.serverName] = {
@@ -240,16 +239,14 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 			try {
 				const offset = page * debugLimit;
 				const errorsOnlyParam = errorsOnly ? '&errorsOnly=1' : '';
-				const res = await fetch(
-					`/api/debug/client?limit=${debugLimit}&offset=${offset}${errorsOnlyParam}`,
-					{
-						cache: 'no-store',
-					},
+				const data = trafficPageType.assert(
+					await fetchJson(
+						`/api/debug/client?limit=${debugLimit}&offset=${offset}${errorsOnlyParam}`,
+						{
+							cache: 'no-store',
+						},
+					),
 				);
-				if (!res.ok) {
-					throw new Error(`Client debug fetch failed (${res.status})`);
-				}
-				const data = trafficPageType.assert(await res.json());
 				if (generation !== clientRequest.current) return;
 				setDebugError(null);
 				setDebugClient(data);
@@ -278,18 +275,14 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 						? `&method=${encodeURIComponent(method)}`
 						: '';
 				const errorsOnlyParam = errorsOnly ? '&errorsOnly=1' : '';
-				const res = await fetch(
-					`/api/debug/backend?backend=${encodeURIComponent(backend)}&limit=${debugLimit}&offset=${offset}${methodParam}${errorsOnlyParam}`,
-					{
-						cache: 'no-store',
-					},
+				const data = backendTrafficResponseType.assert(
+					await fetchJson(
+						`/api/debug/backend?backend=${encodeURIComponent(backend)}&limit=${debugLimit}&offset=${offset}${methodParam}${errorsOnlyParam}`,
+						{
+							cache: 'no-store',
+						},
+					),
 				);
-				if (!res.ok) {
-					throw new Error(
-						`Backend debug fetch failed for ${backend} (${res.status})`,
-					);
-				}
-				const data = backendTrafficResponseType.assert(await res.json());
 				if (generation !== backendRequests.current.get(backend)) return;
 				setDebugError(null);
 				setBackendEntries((current) => ({

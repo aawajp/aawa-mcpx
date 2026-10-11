@@ -189,7 +189,7 @@ The separate **Debug** page (`/debug`) shows client and backend traffic from the
 | `/api/debug/client` | GET | Client traffic (`?limit=&offset=&errorsOnly=`) |
 | `/api/debug/backend` | GET | One backend's traffic (`?backend=&method=&limit=&offset=&errorsOnly=`; `backend` required) |
 
-Toggles persist to `mcp.json`. Traffic is stored in `db/traffic.db`, which keeps the newest 10,000 records and is cleared at startup. Any other path serves the dashboard page.
+Failed `/api/*` requests return `{ error }` with status 400 for a malformed request or a refused tool call, 404 for an unknown backend or tool, and 500 otherwise. Toggles persist to `mcp.json`. Traffic is stored in `db/traffic.db`, which keeps the newest 10,000 records and is cleared at startup. Any other path serves the dashboard page.
 
 ## Development
 

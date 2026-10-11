@@ -7,6 +7,15 @@ entry under the date its change was committed. The project uses
 
 ## [Unreleased]
 
+### 2026-10-11
+
+#### Fixed
+
+- Failed `/api/*` requests return `{ error }` with the reason: 400 for a
+  malformed request or a refused tool call, 404 for an unknown backend or tool,
+  and 500 otherwise. The dashboard and debug page show that reason. Before, the
+  API returned a bare 400 or 500 and the dashboard showed only the status code.
+
 ### 2026-10-10
 
 #### Added

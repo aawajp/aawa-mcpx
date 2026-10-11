@@ -6,6 +6,7 @@ import {
 	overviewResponseType,
 	toggleToolResponseType,
 } from '@/shared/ui_api';
+import { fetchJson } from '@/ui/api/client';
 import { t } from '@/ui/i18n';
 import { BackendsSection } from '@/ui/sections/BackendsSection';
 import { BackendTesterSection } from '@/ui/sections/BackendTesterSection';
@@ -58,8 +59,8 @@ export default function App() {
 			// the explicit backend refresh finishes.
 			if (options?.force) setIsRefreshing(true);
 			try {
-				const res = options?.force
-					? await fetch('/api/backends/refresh', {
+				const data = options?.force
+					? await fetchJson('/api/backends/refresh', {
 							method: 'POST',
 							headers: {
 								'Content-Type': 'application/json',
@@ -68,14 +69,10 @@ export default function App() {
 								serverName: options.serverName,
 							}),
 						})
-					: await fetch('/api/overview', {
+					: await fetchJson('/api/overview', {
 							method: 'GET',
 						});
-				if (!res.ok) {
-					throw new Error(`Request failed with status ${res.status}`);
-				}
-				const data = overviewResponseType.assert(await res.json());
-				setOverview(data);
+				setOverview(overviewResponseType.assert(data));
 				setStatus('ready');
 			} catch (err) {
 				setError(errorMessage(err));
@@ -94,18 +91,13 @@ export default function App() {
 				[params.serverName]: true,
 			}));
 			try {
-				const response = await fetch('/api/backends/toggle', {
+				await fetchJson('/api/backends/toggle', {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',
 					},
 					body: JSON.stringify(params),
 				});
-				if (!response.ok) {
-					throw new Error(
-						`Failed to update backend state (${response.status})`,
-					);
-				}
 				await refresh();
 			} catch (err) {
 				setError(errorMessage(err));
@@ -139,18 +131,14 @@ export default function App() {
 				[key]: true,
 			}));
 			try {
-				const response = await fetch('/api/tools/toggle', {
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-					},
-					body: JSON.stringify(params),
-				});
-				if (!response.ok) {
-					throw new Error(`Failed to update tool state (${response.status})`);
-				}
 				const { enabledTools } = toggleToolResponseType.assert(
-					await response.json(),
+					await fetchJson('/api/tools/toggle', {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+						},
+						body: JSON.stringify(params),
+					}),
 				);
 				setOverview((current) => {
 					if (!current) {

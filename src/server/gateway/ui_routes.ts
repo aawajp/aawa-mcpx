@@ -3,6 +3,7 @@ import { type } from 'arktype';
 import { setInterval as setIntervalAsync } from 'node:timers/promises';
 
 import { logger } from '@/server/logger';
+import { BackendRpcError } from '@/server/mcp_upstreams/protocol_client';
 import type { McpUpstreamManager } from '@/server/mcp_upstreams/types';
 import type { TrafficStore } from '@/server/traffic_store';
 import { errorMessage } from '@/shared/common';
@@ -40,6 +41,16 @@ type CreateUiRoutesParams = {
 	trafficStore: TrafficStore;
 };
 
+const jsonError = (status: number, message: string): Response =>
+	Response.json(
+		{
+			error: message,
+		},
+		{
+			status,
+		},
+	);
+
 const parsePagination = (url: string) => {
 	const search = new URL(url).searchParams;
 	const limitRaw = Number(search.get('limit'));
@@ -62,6 +73,28 @@ const parsePagination = (url: string) => {
 const createUiRoutes = (params: CreateUiRoutesParams) => {
 	const { buildOverview, mcpUpstreamManager, shutdownSignal, trafficStore } =
 		params;
+	const findMissing = (
+		serverName: string,
+		toolName?: string,
+	): Response | undefined => {
+		if (
+			!mcpUpstreamManager
+				.getStatuses()
+				.some((status) => status.serverName === serverName)
+		)
+			return jsonError(404, `Unknown MCP upstream "${serverName}"`);
+		if (
+			toolName !== undefined &&
+			!mcpUpstreamManager
+				.listAllTools()
+				.get(serverName)
+				?.tools.some((tool) => tool.name === toolName)
+		)
+			return jsonError(
+				404,
+				`Unknown tool "${toolName}" on MCP upstream "${serverName}"`,
+			);
+	};
 	return {
 		'/api/overview': {
 			GET() {
@@ -70,9 +103,7 @@ const createUiRoutes = (params: CreateUiRoutesParams) => {
 					return Response.json(overview);
 				} catch (err) {
 					logger.error(`UI overview error: ${errorMessage(err)}`);
-					return new Response('Internal Server Error', {
-						status: 500,
-					});
+					return jsonError(500, errorMessage(err));
 				}
 			},
 		},
@@ -88,10 +119,13 @@ const createUiRoutes = (params: CreateUiRoutesParams) => {
 							error: errorMessage(error),
 						}),
 					);
-					return new Response('Bad Request', {
-						status: 400,
-					});
+					return jsonError(400, `Invalid request body: ${errorMessage(error)}`);
 				}
+				const missing =
+					body.serverName === undefined
+						? undefined
+						: findMissing(body.serverName);
+				if (missing) return missing;
 				try {
 					await mcpUpstreamManager.refreshCatalogs(body);
 					return Response.json(buildOverview());
@@ -105,9 +139,7 @@ const createUiRoutes = (params: CreateUiRoutesParams) => {
 							error: errorMessage(error),
 						}),
 					);
-					return new Response('Internal Server Error', {
-						status: 500,
-					});
+					return jsonError(500, errorMessage(error));
 				}
 			},
 		},
@@ -118,11 +150,10 @@ const createUiRoutes = (params: CreateUiRoutesParams) => {
 					body = toggleToolBodyType.assert(await request.json());
 				} catch (err) {
 					logger.warn(`Invalid toggle tool request: ${errorMessage(err)}`);
-					return new Response('Bad Request', {
-						status: 400,
-					});
+					return jsonError(400, `Invalid request body: ${errorMessage(err)}`);
 				}
-
+				const missing = findMissing(body.serverName, body.toolName);
+				if (missing) return missing;
 				try {
 					const enabledTools = await mcpUpstreamManager.toggleTool({
 						serverName: body.serverName,
@@ -137,9 +168,7 @@ const createUiRoutes = (params: CreateUiRoutesParams) => {
 					});
 				} catch (err) {
 					logger.error(`Toggle tool error: ${errorMessage(err)}`);
-					return new Response('Internal Server Error', {
-						status: 500,
-					});
+					return jsonError(500, errorMessage(err));
 				}
 			},
 		},
@@ -150,19 +179,16 @@ const createUiRoutes = (params: CreateUiRoutesParams) => {
 					body = toggleBackendBodyType.assert(await request.json());
 				} catch (err) {
 					logger.warn(`Invalid toggle backend request: ${errorMessage(err)}`);
-					return new Response('Bad Request', {
-						status: 400,
-					});
+					return jsonError(400, `Invalid request body: ${errorMessage(err)}`);
 				}
-
+				const missing = findMissing(body.serverName);
+				if (missing) return missing;
 				try {
 					await mcpUpstreamManager.toggleBackend(body);
 					return Response.json(body);
 				} catch (err) {
 					logger.error(`Toggle backend error: ${errorMessage(err)}`);
-					return new Response('Internal Server Error', {
-						status: 500,
-					});
+					return jsonError(500, errorMessage(err));
 				}
 			},
 		},
@@ -173,11 +199,10 @@ const createUiRoutes = (params: CreateUiRoutesParams) => {
 					body = callToolBodyType.assert(await request.json());
 				} catch (err) {
 					logger.warn(`Invalid tool call request: ${errorMessage(err)}`);
-					return new Response('Bad Request', {
-						status: 400,
-					});
+					return jsonError(400, `Invalid request body: ${errorMessage(err)}`);
 				}
-
+				const missing = findMissing(body.serverName, body.toolName);
+				if (missing) return missing;
 				try {
 					const result = await mcpUpstreamManager.callTool({
 						serverName: body.serverName,
@@ -191,9 +216,10 @@ const createUiRoutes = (params: CreateUiRoutesParams) => {
 					});
 				} catch (err) {
 					logger.error(`Tool test error: ${errorMessage(err)}`);
-					return new Response('Internal Server Error', {
-						status: 500,
-					});
+					return jsonError(
+						err instanceof BackendRpcError && err.code === -32602 ? 400 : 500,
+						errorMessage(err),
+					);
 				}
 			},
 		},
@@ -331,9 +357,7 @@ const createUiRoutes = (params: CreateUiRoutesParams) => {
 					});
 				} catch (err) {
 					logger.error(`Debug endpoint error: ${errorMessage(err)}`);
-					return new Response('Internal Server Error', {
-						status: 500,
-					});
+					return jsonError(500, errorMessage(err));
 				}
 			},
 		},
@@ -349,9 +373,7 @@ const createUiRoutes = (params: CreateUiRoutesParams) => {
 					return Response.json(client);
 				} catch (err) {
 					logger.error(`Debug client error: ${errorMessage(err)}`);
-					return new Response('Internal Server Error', {
-						status: 500,
-					});
+					return jsonError(500, errorMessage(err));
 				}
 			},
 		},
@@ -363,9 +385,7 @@ const createUiRoutes = (params: CreateUiRoutesParams) => {
 				const backend = search.get('backend');
 				const method = search.get('method') ?? undefined;
 				if (!backend) {
-					return new Response('Missing backend parameter', {
-						status: 400,
-					});
+					return jsonError(400, 'Missing backend parameter');
 				}
 				try {
 					const data = trafficStore.getBackendTraffic({
@@ -383,9 +403,7 @@ const createUiRoutes = (params: CreateUiRoutesParams) => {
 					});
 				} catch (err) {
 					logger.error(`Debug backend error: ${errorMessage(err)}`);
-					return new Response('Internal Server Error', {
-						status: 500,
-					});
+					return jsonError(500, errorMessage(err));
 				}
 			},
 		},

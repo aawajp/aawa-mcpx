@@ -2,6 +2,7 @@ import { type SubmitEvent, useEffect, useMemo, useState } from 'react';
 
 import { errorMessage } from '@/shared/common';
 import type { McpUpstreamStatus, Tool } from '@/shared/ui_api';
+import { fetchJson } from '@/ui/api/client';
 import { Button } from '@/ui/base_components/button';
 import {
 	Card,
@@ -268,7 +269,7 @@ const BackendTesterSection = ({ backends }: Props) => {
 		setRunError(null);
 		setResult(null);
 		try {
-			const response = await fetch('/api/tools/call', {
+			const payload = (await fetchJson('/api/tools/call', {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
@@ -278,11 +279,7 @@ const BackendTesterSection = ({ backends }: Props) => {
 					toolName: tool.name,
 					arguments: args,
 				}),
-			});
-			if (!response.ok) {
-				throw new Error(`Request failed with status ${response.status}`);
-			}
-			const payload = (await response.json()) as {
+			})) as {
 				result?: unknown;
 			};
 			setResult(payload.result ?? null);

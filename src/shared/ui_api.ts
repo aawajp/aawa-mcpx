@@ -78,6 +78,11 @@ const overviewResponseType = type({
 	'[string]': 'unknown',
 });
 
+const apiErrorType = type({
+	error: 'string',
+	'[string]': 'unknown',
+});
+
 const toggleToolResponseType = type({
 	serverName: 'string',
 	toolName: 'string',
@@ -136,6 +141,7 @@ export type {
 	TrafficRecord,
 };
 export {
+	apiErrorType,
 	backendTrafficResponseType,
 	overviewResponseType,
 	toggleToolResponseType,
