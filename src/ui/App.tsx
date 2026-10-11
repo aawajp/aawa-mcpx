@@ -41,8 +41,12 @@ export default function App() {
 	const [streamError, setStreamError] = useState<string | null>(null);
 	const [mainTab, setMainTab] = useState<MainTab>(() => {
 		if (typeof window === 'undefined') return 'backends';
-		const stored = window.localStorage.getItem(MAIN_TAB_STORAGE_KEY);
-		return isMainTab(stored) ? stored : 'backends';
+		try {
+			const stored = window.localStorage.getItem(MAIN_TAB_STORAGE_KEY);
+			return isMainTab(stored) ? stored : 'backends';
+		} catch {
+			return 'backends';
+		}
 	});
 	const [pendingBackends, setPendingBackends] = useState<
 		Record<string, boolean>
@@ -234,7 +238,9 @@ export default function App() {
 
 	const selectMainTab = useCallback((tab: MainTab) => {
 		setMainTab(tab);
-		window.localStorage.setItem(MAIN_TAB_STORAGE_KEY, tab);
+		try {
+			window.localStorage.setItem(MAIN_TAB_STORAGE_KEY, tab);
+		} catch {}
 	}, []);
 
 	const tabClassName = useCallback(

@@ -23,6 +23,9 @@ entry under the date its change was committed. The project uses
   untyped arguments as JSON, and sends enum values with their own type. Before,
   it listed hidden tools that the API then refused, and sent all of those
   arguments as strings.
+- The dashboard works when the browser blocks `localStorage`, the capabilities
+  fold is labelled "Reported capabilities" instead of "Input schema", and each
+  "Expose to clients" checkbox names its tool for screen readers.
 
 ### 2026-10-10
 

@@ -175,7 +175,7 @@ const BackendsSection = ({
 								{backend.capabilities ? (
 									<details className="rounded border border-muted p-2">
 										<summary className="cursor-pointer text-sm font-medium">
-											{t('tool.fold.schema')}
+											{t('capabilities.fold')}
 										</summary>
 										<div className="mt-2">
 											<JsonPreview data={backend.capabilities} />
@@ -211,6 +211,7 @@ const BackendsSection = ({
 										<label className="inline-flex items-center gap-2 text-xs font-medium text-slate-200">
 											<input
 												type="checkbox"
+												aria-label={`${t('tools.toggle')}: ${tool.name}`}
 												checked={enabled}
 												disabled={pending}
 												onChange={(event) =>

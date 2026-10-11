@@ -29,6 +29,7 @@
 	"implementation.none": "No implementation info.",
 	"capabilities.title": "Capabilities",
 	"capabilities.none": "No capabilities reported.",
+	"capabilities.fold": "Reported capabilities",
 	"instructions.title": "Instructions",
 	"tools.title": "Tools",
 	"prompts.title": "Prompts",
