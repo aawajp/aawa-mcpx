@@ -14,14 +14,17 @@ import {
 import { JsonPreview } from '@/ui/components/JsonPreview';
 import { t } from '@/ui/i18n';
 
-type FieldKind = 'string' | 'number' | 'integer' | 'boolean' | 'enum';
+type FieldKind = 'string' | 'number' | 'integer' | 'boolean' | 'enum' | 'json';
 
 type ToolField = {
 	name: string;
 	required: boolean;
 	kind: FieldKind;
 	description?: string;
-	enumValues?: string[];
+	enumOptions?: {
+		value: string;
+		label: string;
+	}[];
 	defaultValue?: string;
 };
 
@@ -74,14 +77,20 @@ const getToolFields = (tool: Tool | null): ToolField[] => {
 		const defaultValue = toDefault(property.default);
 		const enumRaw = Array.isArray(property.enum) ? property.enum : null;
 		if (enumRaw && enumRaw.length > 0) {
-			const enumValues = enumRaw.map((item) => String(item));
+			const enumOptions = enumRaw.map((item: unknown) => ({
+				value: JSON.stringify(item),
+				label: typeof item === 'string' ? item : JSON.stringify(item),
+			}));
 			fields.push({
 				name,
 				required: required.has(name),
 				kind: 'enum',
 				description,
-				enumValues,
-				defaultValue: defaultValue ?? enumValues[0],
+				enumOptions,
+				defaultValue:
+					property.default === undefined
+						? enumOptions[0]?.value
+						: JSON.stringify(property.default),
 			});
 			continue;
 		}
@@ -120,12 +129,29 @@ const getToolFields = (tool: Tool | null): ToolField[] => {
 			});
 			continue;
 		}
+		if (
+			typeName === 'string' &&
+			!('anyOf' in property) &&
+			!('oneOf' in property)
+		) {
+			fields.push({
+				name,
+				required: required.has(name),
+				kind: 'string',
+				description,
+				defaultValue,
+			});
+			continue;
+		}
 		fields.push({
 			name,
 			required: required.has(name),
-			kind: 'string',
+			kind: 'json',
 			description,
-			defaultValue,
+			defaultValue:
+				property.default === undefined
+					? undefined
+					: JSON.stringify(property.default, null, 2),
 		});
 	}
 
@@ -167,11 +193,13 @@ const BackendTesterSection = ({ backends }: Props) => {
 		null;
 	const tools = useMemo(() => {
 		const backendTools = currentBackend?.tools.tools ?? [];
-		return [...backendTools].sort((a, b) =>
-			a.name.localeCompare(b.name, undefined, {
-				sensitivity: 'base',
-			}),
-		);
+		return backendTools
+			.filter((item) => currentBackend?.enabledTools.includes(item.name))
+			.sort((a, b) =>
+				a.name.localeCompare(b.name, undefined, {
+					sensitivity: 'base',
+				}),
+			);
 	}, [currentBackend]);
 
 	useEffect(() => {
@@ -260,6 +288,15 @@ const BackendTesterSection = ({ backends }: Props) => {
 					return;
 				}
 				args[field.name] = numberValue;
+				continue;
+			}
+			if (field.kind === 'enum' || field.kind === 'json') {
+				try {
+					args[field.name] = JSON.parse(text);
+				} catch {
+					setRunError(`Field "${field.name}" must be valid JSON.`);
+					return;
+				}
 				continue;
 			}
 			args[field.name] = text;
@@ -396,9 +433,9 @@ const BackendTesterSection = ({ backends }: Props) => {
 													className="w-full rounded-md border bg-background px-3 py-2 text-sm"
 												>
 													<option value="">—</option>
-													{field.enumValues?.map((value) => (
-														<option key={value} value={value}>
-															{value}
+													{field.enumOptions?.map((option) => (
+														<option key={option.value} value={option.value}>
+															{option.label}
 														</option>
 													))}
 												</select>
@@ -415,6 +452,18 @@ const BackendTesterSection = ({ backends }: Props) => {
 														updateValue(field.name, event.target.value)
 													}
 													className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+												/>
+											) : null}
+											{field.kind === 'json' ? (
+												<textarea
+													id={inputId}
+													value={values[field.name] ?? ''}
+													onChange={(event) =>
+														updateValue(field.name, event.target.value)
+													}
+													rows={4}
+													spellCheck={false}
+													className="w-full rounded-md border bg-background px-3 py-2 font-mono text-sm"
 												/>
 											) : null}
 										</div>

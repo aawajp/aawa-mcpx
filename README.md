@@ -166,7 +166,7 @@ info, capabilities, and instructions. Below it are three tabs:
 
 - **Backends** (default view): each backend's tools, prompts, and resources, a per-backend **Refresh**, and **Expose to clients** toggles for tools.
 - **Client**: clients grouped by reported name and version, with first and last activity and latest protocol.
-- **Tester**: call an exposed tool through a form generated from its input schema.
+- **Tester**: call an exposed tool through a form generated from its input schema. Object, array, `anyOf`, and untyped arguments are entered as JSON.
 
 The separate **Debug** page (`/debug`) shows client and backend traffic from the current run, with filters.
 

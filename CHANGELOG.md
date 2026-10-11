@@ -19,6 +19,10 @@ entry under the date its change was committed. The project uses
   its event stream when the server closes it, for example with a 503 during
   shutdown. Before, a failed tool toggle showed nothing, and after such a close
   the dashboard stopped updating until the page was reloaded.
+- The Tester lists only exposed tools, takes object, array, `anyOf`, and
+  untyped arguments as JSON, and sends enum values with their own type. Before,
+  it listed hidden tools that the API then refused, and sent all of those
+  arguments as strings.
 
 ### 2026-10-10
 
