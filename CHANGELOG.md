@@ -51,6 +51,8 @@ entry under the date its change was committed. The project uses
   `bun dev` rebuilds it on change, and `bun start` and the image build run it
   first. This replaces `bun-plugin-tailwind`, which embedded Tailwind 4.1.14, so
   the dashboard now uses the installed Tailwind 4.3.3.
+- The container image installs only production dependencies and builds the
+  dashboard CSS in a separate build stage, which makes it about 270 MB smaller.
 - Bun no longer loads `.env` automatically; `bun dev` and `bun start` load it
   explicitly. Running `bun src/index.ts` directly ignores `.env`.
 - Merged tool, prompt, and resource lists follow the backend order in
