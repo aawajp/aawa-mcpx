@@ -63,6 +63,12 @@ type RouteResult = {
 	status?: number;
 };
 
+// An error the session layer answers with before routing.
+type SessionError = {
+	payload: JSONRPCErrorResponse;
+	status: number;
+};
+
 const getJsonRpcId = (value: unknown): string | number | null => {
 	if (typeof value === 'string') return value;
 	if (typeof value === 'number' && Number.isInteger(value)) return value;
@@ -150,6 +156,7 @@ export type {
 	IncomingJsonRpcResponse,
 	OutgoingJsonRpcResponse,
 	RouteResult,
+	SessionError,
 };
 export {
 	getJsonRpcId,

@@ -20,5 +20,8 @@ const parseClientInfo = (value: unknown): ClientInfo | undefined => {
 	};
 };
 
+const formatClientInfo = (client: ClientInfo): string =>
+	client.version ? `${client.name}@${client.version}` : client.name;
+
 export type { ClientInfo };
-export { clientInfoType, parseClientInfo };
+export { clientInfoType, formatClientInfo, parseClientInfo };

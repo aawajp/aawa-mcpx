@@ -26,6 +26,10 @@ type NamespaceResourceParams = {
 	resource: Resource;
 };
 
+// Descriptions start with the backend that owns the item.
+const describe = (serverName: string, description?: string): string =>
+	description ? `[${serverName}] ${description}` : `[${serverName}]`;
+
 const namespaceTool = (params: NamespaceToolParams): Tool => {
 	const { serverName, tool } = params;
 
@@ -35,9 +39,7 @@ const namespaceTool = (params: NamespaceToolParams): Tool => {
 			serverName,
 			name: tool.name,
 		}),
-		description: tool.description
-			? `[${serverName}] ${tool.description}`
-			: `[${serverName}]`,
+		description: describe(serverName, tool.description),
 	};
 };
 
@@ -50,17 +52,12 @@ const namespacePrompt = (params: NamespacePromptParams): Prompt => {
 			serverName,
 			name: prompt.name,
 		}),
-		description: prompt.description
-			? `[${serverName}] ${prompt.description}`
-			: `[${serverName}]`,
+		description: describe(serverName, prompt.description),
 	};
 };
 
 const namespaceResource = (params: NamespaceResourceParams): Resource => {
 	const { serverName, resource } = params;
-	const description = resource.description
-		? `[${serverName}] ${resource.description}`
-		: `[${serverName}]`;
 
 	return {
 		...resource,
@@ -68,7 +65,7 @@ const namespaceResource = (params: NamespaceResourceParams): Resource => {
 			serverName,
 			uri: resource.uri,
 		}),
-		description,
+		description: describe(serverName, resource.description),
 	};
 };
 
@@ -84,9 +81,7 @@ const namespaceResourceTemplate = (params: {
 			serverName,
 			uriTemplate: resourceTemplate.uriTemplate,
 		}),
-		description: resourceTemplate.description
-			? `[${serverName}] ${resourceTemplate.description}`
-			: `[${serverName}]`,
+		description: describe(serverName, resourceTemplate.description),
 	};
 };
 

@@ -510,4 +510,9 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 	};
 };
 
-export { createMcpUpstreamCatalog };
+export {
+	createMcpUpstreamCatalog,
+	emptyPromptsResult,
+	emptyResourcesResult,
+	emptyToolsResult,
+};

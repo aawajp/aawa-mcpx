@@ -17,6 +17,14 @@ const GATEWAY_INFO = {
 	name: packageJson.name,
 	version: packageJson.version,
 };
+// The gateway serves these features to clients on every revision.
+const GATEWAY_CAPABILITIES = {
+	tools: {},
+	prompts: {},
+	resources: {},
+};
+// Methods that target one named tool, prompt or resource.
+const NAMED_METHODS = new Set(['tools/call', 'prompts/get', 'resources/read']);
 const CACHEABLE_METHODS = new Set([
 	'server/discover',
 	'tools/list',
@@ -198,6 +206,12 @@ const validateToolHeaders = (
 	return undefined;
 };
 
+// The tool or prompt name, or resource URI, a named method targets.
+const requestName = (
+	method: string,
+	params: Record<string, unknown> | undefined,
+): unknown => (method === 'resources/read' ? params?.uri : params?.name);
+
 const protocolHeaders = (
 	method: string,
 	params: Record<string, unknown>,
@@ -207,11 +221,8 @@ const protocolHeaders = (
 		'MCP-Protocol-Version': CURRENT_PROTOCOL_VERSION,
 		'Mcp-Method': method,
 	});
-	const name = method === 'resources/read' ? params.uri : params.name;
-	if (
-		['tools/call', 'prompts/get', 'resources/read'].includes(method) &&
-		typeof name === 'string'
-	)
+	const name = requestName(method, params);
+	if (NAMED_METHODS.has(method) && typeof name === 'string')
 		headers.set('Mcp-Name', encodeHeaderValue(name));
 	if (method !== 'tools/call') return headers;
 	for (const parameter of parameters) {
@@ -240,11 +251,14 @@ export {
 	CURRENT_PROTOCOL_VERSION,
 	decodeHeaderValue,
 	encodeHeaderValue,
+	GATEWAY_CAPABILITIES,
 	GATEWAY_INFO,
 	isProtocolVersion,
+	NAMED_METHODS,
 	PROTOCOL_VERSION_META,
 	protocolHeaders,
 	recordOf,
+	requestName,
 	requiresInitialization,
 	SERVER_INFO_META,
 	SUPPORTED_PROTOCOL_VERSIONS,

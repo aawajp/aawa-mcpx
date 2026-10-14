@@ -4,10 +4,16 @@ import {
 	type IncomingJsonRpcRequest,
 	type RouteResult,
 	rpcError,
+	type SessionError,
 } from '@/server/gateway/json_rpc';
 import { logger } from '@/server/logger';
-import { type ClientInfo, parseClientInfo } from '@/shared/client_info';
 import {
+	type ClientInfo,
+	formatClientInfo,
+	parseClientInfo,
+} from '@/shared/client_info';
+import {
+	GATEWAY_CAPABILITIES,
 	GATEWAY_INFO,
 	isProtocolVersion,
 	type ProtocolVersion,
@@ -46,7 +52,7 @@ const createProtocolError = (params: {
 	id?: string | number;
 	message: string;
 	status?: number;
-}): RouteResult => {
+}): SessionError => {
 	return {
 		payload: rpcError(params.id, -32600, params.message),
 		status: params.status ?? 400,
@@ -63,12 +69,6 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 	const getClientInfo = (value: unknown): ClientInfo | undefined => {
 		const record = recordOf(value);
 		return parseClientInfo(record?.clientInfo);
-	};
-
-	const formatClientInfo = (client: ClientInfo): string => {
-		const name = client.name;
-		const version = client.version;
-		return version ? `${name}@${version}` : name;
 	};
 
 	const formatClient = (
@@ -180,11 +180,7 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 				result: {
 					protocolVersion,
 					serverInfo: GATEWAY_INFO,
-					capabilities: {
-						tools: {},
-						prompts: {},
-						resources: {},
-					},
+					capabilities: GATEWAY_CAPABILITIES,
 				},
 			},
 		};
@@ -194,7 +190,7 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 		sessionId: string | undefined,
 		id: string | number | undefined,
 		_method: string,
-	): RouteResult | null => {
+	): SessionError | null => {
 		if (!sessionId) {
 			return createProtocolError({
 				id,
@@ -219,7 +215,7 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 		sessionId: string | undefined,
 		id: string | number | undefined,
 		method: string,
-	): RouteResult | null => {
+	): SessionError | null => {
 		if (method === 'initialize') return null;
 		const header = request.headers.get(params.protocolHeaderName);
 		if (!header) return null;

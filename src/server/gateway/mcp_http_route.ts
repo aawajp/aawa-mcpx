@@ -17,15 +17,21 @@ import { logger } from '@/server/logger';
 import type { CatalogRequest } from '@/server/mcp_upstreams/types';
 import type { TrafficStore } from '@/server/traffic_store';
 import { withCancellation } from '@/shared/cancellation';
-import type { ClientInfo } from '@/shared/client_info';
+import {
+	type ClientInfo,
+	formatClientInfo,
+	parseClientInfo,
+} from '@/shared/client_info';
 import { errorMessage } from '@/shared/common';
 import { requestMetadataType } from '@/shared/mcp_metadata';
 import {
 	CLIENT_INFO_META,
 	CURRENT_PROTOCOL_VERSION,
 	decodeHeaderValue,
+	NAMED_METHODS,
 	PROTOCOL_VERSION_META,
 	recordOf,
+	requestName,
 	SUPPORTED_PROTOCOL_VERSIONS,
 } from '@/shared/mcp_protocol';
 
@@ -46,6 +52,12 @@ const CATALOG_METHODS = new Set([
 	'resources/templates/list',
 	'resources/read',
 ]);
+
+const NAME_LABELS: Record<string, string> = {
+	'tools/call': 'tool',
+	'prompts/get': 'prompt',
+	'resources/read': 'resource',
+};
 
 const cancelledParamsType = type({
 	requestId: 'string | number.integer',
@@ -187,13 +199,9 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 		message += `, method=${method}`;
 		// Log public identifiers directly. Routing validates/decodes them once;
 		// logging runs at several points and must not repeat request validation.
-		const fields = recordOf(params);
-		if (method === 'tools/call' && typeof fields?.name === 'string')
-			message += `, tool=${fields.name}`;
-		if (method === 'prompts/get' && typeof fields?.name === 'string')
-			message += `, prompt=${fields.name}`;
-		if (method === 'resources/read' && typeof fields?.uri === 'string')
-			message += `, resource=${fields.uri}`;
+		const name = requestName(method, recordOf(params));
+		const label = NAME_LABELS[method];
+		if (label && typeof name === 'string') message += `, ${label}=${name}`;
 		return message;
 	};
 
@@ -225,6 +233,17 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 		);
 	};
 
+	const respondError = (params: {
+		method: string;
+		sessionId: string | undefined;
+		requestParams?: unknown;
+		payload: OutgoingJsonRpcResponse;
+		status: number;
+	}): Response => {
+		logResponseError(params);
+		return createJsonResponse(params.payload, params.sessionId, params.status);
+	};
+
 	const waitForInitialization = async (params: {
 		method: string;
 		sessionId: string | undefined;
@@ -235,19 +254,15 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 			await initialization;
 			return null;
 		} catch (err) {
-			const payload = rpcError(
-				params.id,
-				-32603,
-				`Server initialization failed: ${errorMessage(err)}`,
-			);
-			logResponseError({
-				method: params.method,
-				sessionId: params.sessionId,
-				requestParams: params.requestParams,
-				payload,
+			return respondError({
+				...params,
+				payload: rpcError(
+					params.id,
+					-32603,
+					`Server initialization failed: ${errorMessage(err)}`,
+				),
 				status: 503,
 			});
-			return createJsonResponse(payload, params.sessionId, 503);
 		}
 	};
 
@@ -359,14 +374,11 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 		const metadata = recordOf(requestParams?._meta);
 		const client =
 			entry.protocolVersion === CURRENT_PROTOCOL_VERSION
-				? recordOf(metadata?.[CLIENT_INFO_META])
+				? parseClientInfo(metadata?.[CLIENT_INFO_META])
 				: mcpSessions.getClient(entry.sessionId);
-		const name = typeof client?.name === 'string' ? client.name : 'unknown';
-		const version =
-			typeof client?.version === 'string' ? client.version : 'unknown';
 		// Store the version now so subsequent session changes cannot rewrite history.
 		trafficStore.logClientTraffic({
-			client: `${name}@${version}`,
+			client: client && formatClientInfo(client),
 			method: entry.method,
 			request: entry.request,
 			response: entry.response,
@@ -386,35 +398,31 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 				!acceptsContentType(request, 'application/json') ||
 				!acceptsContentType(request, 'text/event-stream')
 			) {
-				const payload = rpcError(
-					undefined,
-					-32600,
-					'MCP HTTP POST requests must accept application/json and text/event-stream.',
-				);
-				logResponseError({
+				return respondError({
 					method: 'unknown',
 					sessionId,
-					payload,
+					payload: rpcError(
+						undefined,
+						-32600,
+						'MCP HTTP POST requests must accept application/json and text/event-stream.',
+					),
 					status: 400,
 				});
-				return createJsonResponse(payload, sessionId, 400);
 			}
 			let rawBody: unknown;
 			try {
 				rawBody = await request.json();
 			} catch (err) {
-				const payload = rpcError(
-					undefined,
-					-32700,
-					`Invalid JSON: ${errorMessage(err)}`,
-				);
-				logResponseError({
+				return respondError({
 					method: 'unknown',
 					sessionId,
-					payload,
+					payload: rpcError(
+						undefined,
+						-32700,
+						`Invalid JSON: ${errorMessage(err)}`,
+					),
 					status: 400,
 				});
-				return createJsonResponse(payload, sessionId, 400);
 			}
 			const message = parseIncomingJsonRpcMessage(rawBody);
 			if (!message) {
@@ -425,15 +433,13 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 						: undefined;
 				const method =
 					typeof record?.method === 'string' ? record.method : 'unknown';
-				const payload = rpcError(maybeId, -32600, 'Invalid JSON-RPC message');
-				logResponseError({
+				return respondError({
 					method,
 					sessionId,
 					requestParams: record?.params,
-					payload,
+					payload: rpcError(maybeId, -32600, 'Invalid JSON-RPC message'),
 					status: 400,
 				});
-				return createJsonResponse(payload, sessionId, 400);
 			}
 
 			const metadata = recordOf(recordOf(message.params)?._meta);
@@ -476,15 +482,8 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 				if (request.headers.get('Mcp-Method') !== message.method)
 					return fail(-32020, 'Missing or mismatched Mcp-Method');
 				const bodyParams = recordOf(message.params);
-				if (
-					['tools/call', 'prompts/get', 'resources/read'].includes(
-						message.method,
-					)
-				) {
-					const name =
-						message.method === 'resources/read'
-							? bodyParams?.uri
-							: bodyParams?.name;
+				if (NAMED_METHODS.has(message.method)) {
+					const name = requestName(message.method, bodyParams);
 					try {
 						const header = request.headers.get('Mcp-Name');
 						if (header === null || decodeHeaderValue(header) !== name)
@@ -545,11 +544,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 						request: message,
 						response: result.payload,
 					});
-					return createJsonResponse(
-						result.payload as OutgoingJsonRpcResponse,
-						undefined,
-						result.status,
-					);
+					return createJsonResponse(result.payload, undefined, result.status);
 				} catch {
 					return createJsonResponse(
 						rpcError(message.id, -32603, 'Internal server error'),
@@ -573,44 +568,31 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 					undefined,
 					notification.method,
 				);
-				if (protocolError) {
-					logResponseError({
+				if (protocolError)
+					return respondError({
+						...protocolError,
 						method: notification.method,
-						sessionId: sessionId,
-						requestParams: notification.params,
-						payload: protocolError.payload,
-						status: protocolError.status,
-					});
-					return createJsonResponse(
-						protocolError.payload as OutgoingJsonRpcResponse,
 						sessionId,
-						protocolError.status,
-					);
-				}
+						requestParams: notification.params,
+					});
 				const invalid = mcpSessions.requireSession(
 					sessionId,
 					undefined,
 					notification.method,
 				);
 				if (invalid) {
-					logResponseError({
-						method: notification.method,
-						sessionId,
-						requestParams: notification.params,
-						payload: invalid.payload,
-						status: invalid.status,
-					});
 					logClientTraffic({
 						sessionId,
 						method: notification.method,
 						request: notification,
 						response: invalid.payload,
 					});
-					return createJsonResponse(
-						invalid.payload as OutgoingJsonRpcResponse,
+					return respondError({
+						...invalid,
+						method: notification.method,
 						sessionId,
-						invalid.status,
-					);
+						requestParams: notification.params,
+					});
 				}
 				if (
 					notification.method === 'notifications/cancelled' &&
@@ -647,44 +629,29 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 					undefined,
 					'response',
 				);
-				if (protocolError) {
-					logResponseError({
+				if (protocolError)
+					return respondError({
+						...protocolError,
 						method: 'response',
-						sessionId: sessionId,
-						requestParams: undefined,
-						payload: protocolError.payload,
-						status: protocolError.status,
-					});
-					return createJsonResponse(
-						protocolError.payload as OutgoingJsonRpcResponse,
 						sessionId,
-						protocolError.status,
-					);
-				}
+					});
 				const invalid = mcpSessions.requireSession(
 					sessionId,
 					undefined,
 					'response',
 				);
 				if (invalid) {
-					logResponseError({
-						method: 'response',
-						sessionId,
-						requestParams: undefined,
-						payload: invalid.payload,
-						status: invalid.status,
-					});
 					logClientTraffic({
 						sessionId,
 						method: 'response',
 						request: message,
 						response: invalid.payload,
 					});
-					return createJsonResponse(
-						invalid.payload as OutgoingJsonRpcResponse,
+					return respondError({
+						...invalid,
+						method: 'response',
 						sessionId,
-						invalid.status,
-					);
+					});
 				}
 				logger.info(buildInboundMessageLog('response', sessionId));
 				logClientTraffic({
@@ -711,20 +678,13 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 					jsonRpcRequest.id,
 					jsonRpcRequest.method,
 				);
-				if (protocolError) {
-					logResponseError({
+				if (protocolError)
+					return respondError({
+						...protocolError,
 						method: jsonRpcRequest.method,
-						sessionId: sessionId,
-						requestParams: jsonRpcRequest.params,
-						payload: protocolError.payload,
-						status: protocolError.status,
-					});
-					return createJsonResponse(
-						protocolError.payload as OutgoingJsonRpcResponse,
 						sessionId,
-						protocolError.status,
-					);
-				}
+						requestParams: jsonRpcRequest.params,
+					});
 				// The session is authoritative even when the optional 2025 header is
 				// absent. Error classification must use this client's negotiated era.
 				const routeResult = await routeCancellableRequest(
@@ -747,7 +707,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 					);
 				}
 				const response = createJsonResponse(
-					routeResult.payload as OutgoingJsonRpcResponse,
+					routeResult.payload,
 					responseSessionId,
 					routeResult.status,
 				);

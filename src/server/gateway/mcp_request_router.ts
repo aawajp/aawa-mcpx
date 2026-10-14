@@ -15,6 +15,7 @@ import {
 import {
 	CACHEABLE_METHODS,
 	CURRENT_PROTOCOL_VERSION,
+	GATEWAY_CAPABILITIES,
 	GATEWAY_INFO,
 	isProtocolVersion,
 	recordOf,
@@ -195,22 +196,6 @@ const createMcpRequestRouter = (
 			);
 		// November 2025 requires peers without task capabilities to ignore task
 		// augmentation and execute normally. Only supported fields are dispatched.
-		if (usesRequestMetadata && request.method === 'server/discover')
-			return {
-				payload: {
-					jsonrpc: '2.0',
-					id: request.id,
-					result: {
-						supportedVersions: [...SUPPORTED_PROTOCOL_VERSIONS],
-						capabilities: {
-							tools: {},
-							prompts: {},
-							resources: {},
-						},
-					},
-				},
-			};
-
 		const success = (result: Record<string, unknown>): RouteResult => ({
 			payload: {
 				jsonrpc: '2.0',
@@ -218,6 +203,11 @@ const createMcpRequestRouter = (
 				result,
 			},
 		});
+		if (usesRequestMetadata && request.method === 'server/discover')
+			return success({
+				supportedVersions: [...SUPPORTED_PROTOCOL_VERSIONS],
+				capabilities: GATEWAY_CAPABILITIES,
+			});
 		const unsupported = (message: string): RouteResult => ({
 			payload: rpcError(request.id, -32601, message),
 		});

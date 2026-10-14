@@ -22,8 +22,6 @@ import type {
 import { errorMessage } from '@/shared/common';
 import {
 	addResourcePrefix,
-	type ParsePrefixResult,
-	type ParseResourceUriResult,
 	parsePrefix,
 	parseResourceUri,
 } from '@/shared/mcp_namespaces';
@@ -61,6 +59,27 @@ type ReadResourceHandlerParams = {
 	signal?: AbortSignal;
 };
 
+// A malformed name or URI is the client's error.
+const parseOrInvalid = <T>(parse: () => T): T => {
+	try {
+		return parse();
+	} catch (error) {
+		throw new BackendRpcError(errorMessage(error), -32602);
+	}
+};
+
+// Routes a resource reference back to the backend that returned it.
+const prefixResource = <T extends { uri: string }>(
+	serverName: string,
+	resource: T,
+): T => ({
+	...resource,
+	uri: addResourcePrefix({
+		serverName,
+		uri: resource.uri,
+	}),
+});
+
 const createHandlers = (params: CreateHandlersParams) => {
 	const { mcpUpstreamManager } = params;
 
@@ -85,12 +104,7 @@ const createHandlers = (params: CreateHandlersParams) => {
 
 	// The enabled tool behind a namespaced name; a client error otherwise.
 	const resolveTool = (name: string): EnabledTool => {
-		let parsed: ParsePrefixResult;
-		try {
-			parsed = parsePrefix(name);
-		} catch (error) {
-			throw new BackendRpcError(errorMessage(error), -32602);
-		}
+		const parsed = parseOrInvalid(() => parsePrefix(name));
 		return mcpUpstreamManager.getEnabledTool({
 			serverName: parsed.serverName,
 			toolName: parsed.originalName,
@@ -176,23 +190,11 @@ const createHandlers = (params: CreateHandlersParams) => {
 				...result,
 				content: result.content.map((block) => {
 					if (block.type === 'resource_link')
-						return {
-							...block,
-							uri: addResourcePrefix({
-								serverName,
-								uri: block.uri,
-							}),
-						};
+						return prefixResource(serverName, block);
 					if (block.type === 'resource')
 						return {
 							...block,
-							resource: {
-								...block.resource,
-								uri: addResourcePrefix({
-									serverName,
-									uri: block.resource.uri,
-								}),
-							},
+							resource: prefixResource(serverName, block.resource),
 						};
 					return block;
 				}),
@@ -219,12 +221,7 @@ const createHandlers = (params: CreateHandlersParams) => {
 		request: GetPromptHandlerParams,
 	): Promise<GetPromptResult> => {
 		const { name, args } = request;
-		let parsed: ParsePrefixResult;
-		try {
-			parsed = parsePrefix(name);
-		} catch (error) {
-			throw new BackendRpcError(errorMessage(error), -32602);
-		}
+		const parsed = parseOrInvalid(() => parsePrefix(name));
 
 		const result = await mcpUpstreamManager.getPrompt({
 			serverName: parsed.serverName,
@@ -243,13 +240,7 @@ const createHandlers = (params: CreateHandlersParams) => {
 					...message,
 					content: {
 						...block,
-						resource: {
-							...block.resource,
-							uri: addResourcePrefix({
-								serverName: parsed.serverName,
-								uri: block.resource.uri,
-							}),
-						},
+						resource: prefixResource(parsed.serverName, block.resource),
 					},
 				};
 			}),
@@ -260,12 +251,7 @@ const createHandlers = (params: CreateHandlersParams) => {
 		request: ReadResourceHandlerParams,
 	): Promise<ReadResourceResult> => {
 		const { uri } = request;
-		let parsed: ParseResourceUriResult;
-		try {
-			parsed = parseResourceUri(uri);
-		} catch (error) {
-			throw new BackendRpcError(errorMessage(error), -32602);
-		}
+		const parsed = parseOrInvalid(() => parseResourceUri(uri));
 
 		// Links and template instances need not appear in resources/list. Route
 		// by namespace, leaving resource existence checks to the owning backend.
@@ -278,13 +264,9 @@ const createHandlers = (params: CreateHandlersParams) => {
 		});
 		return {
 			...result,
-			contents: result.contents.map((content) => ({
-				...content,
-				uri: addResourcePrefix({
-					serverName: parsed.serverName,
-					uri: content.uri,
-				}),
-			})),
+			contents: result.contents.map((content) =>
+				prefixResource(parsed.serverName, content),
+			),
 		};
 	};
 

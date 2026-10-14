@@ -1,9 +1,3 @@
-import type {
-	ListPromptsResult,
-	ListResourcesResult,
-	ListToolsResult,
-} from '@modelcontextprotocol/sdk/types';
-
 import { createClientActivityTracker } from '@/server/gateway/client_activity';
 import { createHandlers } from '@/server/gateway/mcp_handlers';
 import { createMcpHttpRoute } from '@/server/gateway/mcp_http_route';
@@ -11,6 +5,11 @@ import { createMcpRequestRouter } from '@/server/gateway/mcp_request_router';
 import { createMcpSessionManager } from '@/server/gateway/mcp_session';
 import { createUiRoutes } from '@/server/gateway/ui_routes';
 import { logger } from '@/server/logger';
+import {
+	emptyPromptsResult,
+	emptyResourcesResult,
+	emptyToolsResult,
+} from '@/server/mcp_upstreams/catalog';
 import type { McpUpstreamManager } from '@/server/mcp_upstreams/types';
 import type { TrafficStore } from '@/server/traffic_store';
 import { errorMessage } from '@/shared/common';
@@ -86,19 +85,10 @@ const startServer = async (
 								...tools,
 								tools: tools.tools.toSorted((a, b) => byName(a.name, b.name)),
 							}
-						: ({
-								tools: [],
-							} satisfies ListToolsResult),
-					prompts:
-						rawPrompts.get(status.serverName) ??
-						({
-							prompts: [],
-						} satisfies ListPromptsResult),
+						: emptyToolsResult(),
+					prompts: rawPrompts.get(status.serverName) ?? emptyPromptsResult(),
 					resources:
-						rawResources.get(status.serverName) ??
-						({
-							resources: [],
-						} satisfies ListResourcesResult),
+						rawResources.get(status.serverName) ?? emptyResourcesResult(),
 				};
 			});
 		const clients = clientActivity.list();

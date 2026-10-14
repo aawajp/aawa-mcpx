@@ -24,6 +24,7 @@ Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 #### Changed
 
+- Share repeated gateway helpers and constants.
 - Update tool state only through the config loader.
 - Share one backend request path for tool calls, prompts, and resource reads.
 - Simplify the backend protocol client.
