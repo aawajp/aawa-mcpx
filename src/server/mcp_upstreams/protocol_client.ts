@@ -7,7 +7,7 @@ import type {
 	ListToolsResult,
 	ReadResourceResult,
 	ServerCapabilities,
-} from '@modelcontextprotocol/sdk/types';
+} from '@modelcontextprotocol/client';
 
 import { logger } from '@/server/logger';
 import type { McpUpstreamServer } from '@/server/mcp_upstreams/types';

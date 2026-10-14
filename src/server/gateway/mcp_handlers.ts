@@ -5,7 +5,7 @@ import type {
 	ListResourceTemplatesResult,
 	ListToolsResult,
 	ReadResourceResult,
-} from '@modelcontextprotocol/sdk/types';
+} from '@modelcontextprotocol/client';
 
 import {
 	namespacePrompt,

@@ -1,7 +1,7 @@
 import type {
 	GetPromptResult,
 	ReadResourceResult,
-} from '@modelcontextprotocol/sdk/types';
+} from '@modelcontextprotocol/client';
 
 import { runLoggedRequest } from '@/server/mcp_upstreams/logged_request';
 import { BackendRpcError } from '@/server/mcp_upstreams/protocol_client';

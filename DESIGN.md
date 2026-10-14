@@ -491,7 +491,7 @@ ArkType is the default for JSON-RPC envelopes, modern request metadata/capabilit
 handled method parameters, HTTP API bodies and queries, environment variables and
 `mcp.json`, upstream response shapes, and UI overview/debug contracts. Settings
 and dashboard inputs refuse unknown fields and invalid values instead of falling
-back to defaults. Ajv and `ajv-formats` are peer dependencies used
+back to defaults. Ajv and `ajv-formats` are runtime dependencies used
 only for arbitrary provider JSON Schema, which ArkType cannot import.
 
 `ProtocolClient.rpc` validates backend envelopes and result shapes once; the
@@ -628,9 +628,9 @@ Payload conversion alone is insufficient. The design must resolve:
 
 #### 7.2.4 Validation and implementation decisions
 
-Use ArkType for protocol shapes and existing Ajv peers only for provider JSON
-Schema. Validate new public requests and backend results once at their boundary;
-downstream layers consume validated types. Native retries are new untrusted
+Use ArkType for protocol shapes and Ajv only for provider JSON Schema. Validate
+new public requests and backend results once at their boundary; downstream
+layers consume validated types. Native retries are new untrusted
 requests, so one argument-validation pass per retry remains necessary.
 
 Acceptance fixtures must cover HTTP/stdio, repeated rounds, multiple/partial

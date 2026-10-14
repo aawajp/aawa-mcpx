@@ -37,7 +37,7 @@ import type {
 	Resource,
 	ResourceTemplate,
 	Tool,
-} from '@modelcontextprotocol/sdk/types';
+} from '@modelcontextprotocol/client';
 
 import type { McpConfig, McpServerConfig } from '@/server/config/schema';
 import type { SchemaIssue } from '@/server/mcp_upstreams/json_schema';

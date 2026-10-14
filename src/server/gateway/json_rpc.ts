@@ -1,7 +1,7 @@
 import type {
 	JSONRPCErrorResponse,
 	JSONRPCResultResponse,
-} from '@modelcontextprotocol/sdk/types';
+} from '@modelcontextprotocol/client';
 
 import { recordOf } from '@/shared/mcp_protocol';
 import { jsonRpcResponseType } from '@/shared/mcp_schemas';

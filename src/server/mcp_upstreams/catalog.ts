@@ -4,7 +4,7 @@ import type {
 	ListResourceTemplatesResult,
 	ListToolsResult,
 	Tool,
-} from '@modelcontextprotocol/sdk/types';
+} from '@modelcontextprotocol/client';
 
 import { saveToolState } from '@/server/config/loader';
 import type { McpConfig } from '@/server/config/schema';

@@ -1,4 +1,4 @@
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types';
+import type { CallToolResult } from '@modelcontextprotocol/client';
 
 // The SDK's CallToolResult restricts structuredContent to a JSON object, matching
 // MCP 2025-06-18 and 2025-11-25. MCP 2026-07-28 also permits arrays, primitives,

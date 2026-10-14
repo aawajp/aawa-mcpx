@@ -68,7 +68,7 @@ doc in the same change.
 - Import code through the `@/` alias, even from the same folder. Relative
   paths are only for non-code files such as JSON, CSS, and HTML; `bun lint`
   enforces this and the `src/ui`, `src/shared`, `src/server` import boundaries.
-- Use ArkType by default. Reserve the existing Ajv peers for arbitrary provider
+- Use ArkType by default. Reserve Ajv and ajv-formats for arbitrary provider
   JSON Schema, which ArkType cannot import.
 - Compile input schemas on catalog fetch, reuse validators on calls, and avoid
   repeated validation of the same request or catalog data within that lifecycle.

@@ -1,9 +1,9 @@
 import type {
 	Prompt,
 	Resource,
-	ResourceTemplate,
+	ResourceTemplateType,
 	Tool,
-} from '@modelcontextprotocol/sdk/types';
+} from '@modelcontextprotocol/client';
 
 import {
 	addPrefix,
@@ -71,8 +71,8 @@ const namespaceResource = (params: NamespaceResourceParams): Resource => {
 
 const namespaceResourceTemplate = (params: {
 	serverName: string;
-	resourceTemplate: ResourceTemplate;
-}): ResourceTemplate => {
+	resourceTemplate: ResourceTemplateType;
+}): ResourceTemplateType => {
 	const { serverName, resourceTemplate } = params;
 
 	return {

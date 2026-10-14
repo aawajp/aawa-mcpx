@@ -1,4 +1,4 @@
-import type { Tool } from '@modelcontextprotocol/sdk/types';
+import type { Tool } from '@modelcontextprotocol/client';
 
 import { createHandlers } from '@/server/gateway/mcp_handlers';
 import { createMcpHttpRoute } from '@/server/gateway/mcp_http_route';

@@ -1,4 +1,4 @@
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types';
+import type { CallToolResult } from '@modelcontextprotocol/client';
 
 import { logger } from '@/server/logger';
 import { createOutputSchemaValidator } from '@/server/mcp_upstreams/output_schema';

@@ -1,4 +1,4 @@
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types';
+import type { CallToolResult } from '@modelcontextprotocol/client';
 
 import { stripDuplicateToolContent } from '@/server/mcp_upstreams/tool_result';
 
