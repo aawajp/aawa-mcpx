@@ -4,14 +4,8 @@ import {
 	listPromptsResultType,
 	listResourcesResultType,
 	listToolsResultType,
-	type promptType,
-	type resourceType,
 	type toolType,
 } from '@/shared/mcp_schemas';
-
-const listToolsWithMetaType = listToolsResultType;
-const listPromptsWithMetaType = listPromptsResultType;
-const listResourcesWithMetaType = listResourcesResultType;
 
 const implementationInfoType = type({
 	'name?': 'string',
@@ -43,6 +37,7 @@ const backendStatusSharedFields = {
 	'protocolVersion?': 'string',
 	enabled: 'boolean',
 	enabledTools: 'string[]',
+	availableTools: 'string[]',
 	connected: 'boolean',
 	'error?': 'string',
 	'errorState?': "'runtime' | 'configuration' | 'protocol' | 'authentication'",
@@ -50,9 +45,9 @@ const backendStatusSharedFields = {
 	'implementation?': implementationInfoType,
 	'capabilities?': capabilitiesInfoType,
 	'instructions?': 'string',
-	tools: listToolsWithMetaType,
-	prompts: listPromptsWithMetaType,
-	resources: listResourcesWithMetaType,
+	tools: listToolsResultType,
+	prompts: listPromptsResultType,
+	resources: listResourcesResultType,
 	'[string]': 'unknown',
 } as const;
 
@@ -80,14 +75,6 @@ const overviewResponseType = type({
 
 const apiErrorType = type({
 	error: 'string',
-	'[string]': 'unknown',
-});
-
-const toggleToolResponseType = type({
-	serverName: 'string',
-	toolName: 'string',
-	enabled: 'boolean',
-	enabledTools: 'string[]',
 	'[string]': 'unknown',
 });
 
@@ -122,8 +109,6 @@ const backendTrafficResponseType = type({
 });
 
 type Tool = typeof toolType.infer;
-type Prompt = typeof promptType.infer;
-type Resource = typeof resourceType.infer;
 type McpUpstreamStatus = typeof backendStatusType.infer;
 type ClientActivity = typeof clientActivityType.infer;
 type OverviewResponse = typeof overviewResponseType.infer;
@@ -134,8 +119,6 @@ export type {
 	ClientActivity,
 	McpUpstreamStatus,
 	OverviewResponse,
-	Prompt,
-	Resource,
 	Tool,
 	TrafficPage,
 	TrafficRecord,
@@ -144,6 +127,5 @@ export {
 	apiErrorType,
 	backendTrafficResponseType,
 	overviewResponseType,
-	toggleToolResponseType,
 	trafficPageType,
 };

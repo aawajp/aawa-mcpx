@@ -7,6 +7,49 @@ entry under the date its change was committed. The project uses
 
 ## [Unreleased]
 
+### 2026-10-14
+
+#### Changed
+
+- The dashboard is more compact: the summary cards, backend rows, buttons, and
+  status badges use less padding and spacing, and use the default font size
+  instead of a mix of sizes. Each backend lists its prompts and resources before
+  its tools, with prompts and resources side by side. A backend card shows the
+  backend name with its `mcp.json` `type` and `url` (or `command`) and its
+  protocol, its buttons at the top right, and its reported server info (as
+  JSON), capabilities, and instructions as folds. Each list's `_meta` is a fold
+  too, and all folds start closed. Like the summary, it shows the enabled tool
+  count, status, **Enable**/**Disable**, and **Refresh**.
+- Each backend in the summary has its own **Refresh** button. The button that
+  refreshes every backend is now labelled **Refresh all** and sits on the title
+  line with the online count, and neither the page header nor the summary card
+  has a subtitle.
+- `POST /api/backends/toggle` and `POST /api/tools/toggle` return the dashboard
+  overview, like `POST /api/backends/refresh`, and the overview lists backends
+  and tools sorted by name.
+- Each tool in the Backends tab starts collapsed to one line. Clicking the
+  line shows or hides its description and input and output schemas, which
+  replaces the three separate folds.
+- The summary lists backends in a table with column headers, and shows how
+  many of each backend's tools are enabled, for example 3/5, whether the
+  backend is enabled or not. Each backend name links to its card in the
+  Backends tab. The summary's backend card is wider than the protocol card.
+- Disabling a backend keeps its tools, prompts, resources, server info,
+  capabilities, and instructions, and the dashboard shows them as for an
+  enabled backend, with working tool toggles. Before, they were cleared and the
+  dashboard showed only a notice and the enabled tool names.
+- At startup, the gateway connects once to each disabled backend to fetch its
+  server details and catalogs for the dashboard, then disconnects. Before, a
+  disabled backend was never contacted and the dashboard had nothing to show.
+
+#### Fixed
+
+- The dashboard lists every configured backend from the moment the gateway
+  starts, with a **Connecting…** badge until the first connection attempt
+  ends. Before, a backend appeared only after that attempt.
+- MCP clients no longer see the prompts, resources, and resource templates of
+  a backend with a configuration error. Before, only its tools were hidden.
+
 ### 2026-10-11
 
 #### Fixed

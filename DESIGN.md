@@ -79,6 +79,9 @@ initialized HTTP sessions. Handshakes also retry after timeouts and HTTP
 `401`/`403`/`408`/`429`/`5xx`. Transport failures retire the client and schedule recovery. Failed
 tool calls are never replayed, because their side effects may have completed.
 Negotiation failures stop retries until disable/re-enable ([3.1](#31-revisions-and-negotiation)).
+At startup, the gateway connects to each disabled backend once, fetches its
+server details and catalogs for the dashboard, and disconnects. It does not
+retry, health-check, or expose such a backend.
 
 Retry delays are jittered: **5–10**, **10–20**, **20–40**, then **30–60 seconds**,
 measured after each attempt finishes, following
@@ -476,7 +479,7 @@ copied across protocol boundaries.
 
 | State | Storage and lifetime |
 | --- | --- |
-| Backend/tool exposure | `mcp.json`: read once. A tool catalog fetch or dashboard change that alters `enabled`, `enabledTools`, or `availableTools` writes the file as read with only those fields changed (no defaults added, in place, so a single-file Docker mount keeps working); unchanged state is not written. External edits are not reread or merged. Disable preserves tool settings; configured enabled tools appear inactive. |
+| Backend/tool exposure | `mcp.json`: read once. A tool catalog fetch or dashboard change that alters `enabled`, `enabledTools`, or `availableTools` writes the file as read with only those fields changed (no defaults added, in place, so a single-file Docker mount keeps working); unchanged state is not written. External edits are not reread or merged. Disable keeps tool settings, catalogs, and server details, and the dashboard still shows them. MCP clients get no catalog from a disabled backend or one with a configuration error. |
 | Traffic | `server/traffic_store.ts` stores current-run request/response records in the `traffic` table of `db/traffic.db`, keeping the newest 10,000 records; the table is cleared at startup and written with `synchronous=NORMAL`. JSON-RPC errors and tool results with `isError: true` count as errors. A failed write is printed to the console and never changes the reply. |
 | Sessions/client activity | In-memory state with the retention limits in [3.3](#33-sessions) and [3.4](#34-client-identity); cleared on restart. |
 
@@ -665,6 +668,12 @@ build-context checksum (which must include the Dockerfile and file paths).
 every change that editing the file allows: adding, removing, and modifying
 backends, including transport settings, credentials, timeouts, and traffic
 limits. Today it can only enable or disable backends and tools.
+
+### 7.5 stdio backends in the dashboard
+
+**Status: TODO; needs its own design.** A backend card shows the `mcp.json`
+fields `type` and `url`. For a stdio backend it shows `type` and `command`
+only; which of `args`, `env`, and `cwd` to show, and how, is undecided.
 
 ## 8. References
 

@@ -33,6 +33,7 @@ const createMcpUpstreamBackend = (
 	epoch: 0,
 	configError: false,
 	protocolError: false,
+	probing: false,
 	reconnectAttempts: 0,
 	healthCheckReady: false,
 	healthCheckFailures: 0,
@@ -77,11 +78,14 @@ const createMcpUpstreamConnections = (
 	const isConnectionBlocked = (backend: McpUpstreamBackend): boolean =>
 		backend.configError || backend.protocolError;
 
+	const isActive = (backend: McpUpstreamBackend): boolean =>
+		backend.serverConfig.enabled || backend.probing;
+
 	const isCurrentConnectionAttempt = (
 		backend: McpUpstreamBackend,
 		epoch: number,
 	): boolean => {
-		return !stopped && backend.serverConfig.enabled && backend.epoch === epoch;
+		return !stopped && isActive(backend) && backend.epoch === epoch;
 	};
 
 	const setMcpUpstreamStatus = (statusParams: {
@@ -90,24 +94,23 @@ const createMcpUpstreamConnections = (
 		error?: string;
 		errorState?: McpUpstreamErrorState;
 		actionRequired?: boolean;
-		preserveDetails?: boolean;
 	}): void => {
 		const backend = statusParams.backend;
 		const existing = backend.status;
-		const preserveDetails = statusParams.preserveDetails ?? true;
 		backend.status = {
 			serverName: backend.serverName,
 			protocolVersion: backend.protocolVersion,
 			...transportFields(backend.serverConfig),
 			enabled: backend.serverConfig.enabled,
 			enabledTools: backend.serverConfig.enabledTools ?? [],
+			availableTools: backend.serverConfig.availableTools ?? [],
 			connected: statusParams.connected,
 			error: statusParams.error,
 			errorState: statusParams.errorState,
 			actionRequired: statusParams.actionRequired,
-			implementation: preserveDetails ? existing?.implementation : undefined,
-			capabilities: preserveDetails ? existing?.capabilities : undefined,
-			instructions: preserveDetails ? existing?.instructions : undefined,
+			implementation: existing?.implementation,
+			capabilities: existing?.capabilities,
+			instructions: existing?.instructions,
 		};
 	};
 
@@ -189,7 +192,7 @@ const createMcpUpstreamConnections = (
 		backend: McpUpstreamBackend,
 		error: string,
 	): void => {
-		if (!backend.serverConfig.enabled) return;
+		if (!isActive(backend)) return;
 		const status = backend.status;
 		if (!status) {
 			setMcpUpstreamStatus({
@@ -283,7 +286,7 @@ const createMcpUpstreamConnections = (
 		backend: McpUpstreamBackend,
 		error: string,
 	): void => {
-		if (!backend.serverConfig.enabled) return;
+		if (!isActive(backend)) return;
 		backend.configError = true;
 		backend.healthCheckFailures = 0;
 		backend.healthCheckReady = false;
@@ -307,7 +310,7 @@ const createMcpUpstreamConnections = (
 	): Promise<boolean> => {
 		const serverName = backend.serverName;
 		if (stopped) return false;
-		if (!backend.serverConfig.enabled) return false;
+		if (!isActive(backend)) return false;
 		if (isConnectionBlocked(backend)) return false;
 		const connectionEpoch = backend.epoch;
 
@@ -351,6 +354,7 @@ const createMcpUpstreamConnections = (
 				...transportFields(serverConfig),
 				enabled: serverConfig.enabled,
 				enabledTools: serverConfig.enabledTools ?? [],
+				availableTools: serverConfig.availableTools ?? [],
 				connected: true,
 				errorState: undefined,
 				actionRequired: false,
@@ -545,16 +549,11 @@ const createMcpUpstreamConnections = (
 			backend.healthCheckReady = false;
 			backend.healthCheckFailures = 0;
 			backend.lastRequestTime = 0;
-			backend.tools = undefined;
-			backend.prompts = undefined;
-			backend.resources = undefined;
-			backend.resourceTemplates = undefined;
 			await closeMcpUpstreamConnection(backend, true);
 			setMcpUpstreamStatus({
 				backend,
 				connected: false,
 				actionRequired: false,
-				preserveDetails: false,
 			});
 			logger.info(`Disabled MCP upstream "${serverName}"`);
 			return;
@@ -569,22 +568,43 @@ const createMcpUpstreamConnections = (
 			logger.info(`Enabled MCP upstream "${serverName}"`);
 	};
 
+	const probe = async (backend: McpUpstreamBackend): Promise<void> => {
+		const epoch = backend.epoch;
+		backend.probing = true;
+		try {
+			if (await connectToMcpUpstream(backend)) await refreshCatalog(backend);
+		} finally {
+			backend.probing = false;
+		}
+		if (backend.epoch !== epoch) return;
+		await closeMcpUpstreamConnection(backend);
+		setMcpUpstreamStatus({
+			backend,
+			connected: false,
+			error: backend.status?.error,
+			errorState: backend.status?.errorState,
+			actionRequired: backend.status?.actionRequired,
+		});
+	};
+
 	const initialize = async (): Promise<void> => {
 		stopped = false;
-		const enabledBackends = Array.from(backends.values()).filter((backend) => {
-			if (backend.serverConfig.enabled) return true;
+		const allBackends = Array.from(backends.values());
+		for (const backend of allBackends)
 			setMcpUpstreamStatus({
 				backend,
 				connected: false,
 				actionRequired: false,
 			});
-			return false;
-		});
-		const results = await Promise.allSettled(enabledBackends.map(bringUp));
+		const results = await Promise.allSettled(
+			allBackends.map((backend) =>
+				backend.serverConfig.enabled ? bringUp(backend) : probe(backend),
+			),
+		);
 		results.forEach((result, index) => {
 			if (result.status === 'fulfilled') return;
 			logger.warn(
-				`MCP upstream "${enabledBackends[index]?.serverName}" connection failed: ${result.reason}`,
+				`MCP upstream "${allBackends[index]?.serverName}" connection failed: ${result.reason}`,
 			);
 		});
 		if (!stopped) healthChecks.startHealthChecks();
@@ -632,6 +652,7 @@ const createMcpUpstreamConnections = (
 							...backend.status,
 							enabled: backend.serverConfig.enabled,
 							enabledTools: backend.serverConfig.enabledTools ?? [],
+							availableTools: backend.serverConfig.availableTools ?? [],
 						},
 					]
 				: [],

@@ -3,7 +3,6 @@ import {
 	useEffect,
 	useEffectEvent,
 	useId,
-	useMemo,
 	useRef,
 	useState,
 } from 'react';
@@ -16,7 +15,7 @@ import {
 	type TrafficRecord,
 	trafficPageType,
 } from '@/shared/ui_api';
-import { fetchJson } from '@/ui/api/client';
+import { getJson } from '@/ui/api/client';
 import {
 	Card,
 	CardContent,
@@ -35,22 +34,43 @@ type BackendEntry = {
 	errorsOnly: boolean;
 };
 
-type TrafficEventType = 'success' | 'error' | 'validation';
+const DEBUG_LIMIT = 20;
+
+const trafficQuery = (params: {
+	page: number;
+	errorsOnly: boolean;
+	backend?: string;
+	method?: string;
+}): URLSearchParams => {
+	const query = new URLSearchParams({
+		limit: String(DEBUG_LIMIT),
+		offset: String(params.page * DEBUG_LIMIT),
+	});
+	if (params.errorsOnly) query.set('errorsOnly', '1');
+	if (params.backend) query.set('backend', params.backend);
+	if (params.method) query.set('method', params.method);
+	return query;
+};
+
+const EVENT_TYPE_BADGES = {
+	success: {
+		label: 'traffic.type.success',
+		className: 'border-emerald-400/35 bg-emerald-500/15 text-emerald-200',
+	},
+	error: {
+		label: 'traffic.type.error',
+		className: 'border-rose-400/35 bg-rose-500/15 text-rose-200',
+	},
+	validation_error: {
+		label: 'traffic.type.validation',
+		className: 'border-amber-300/35 bg-amber-500/15 text-amber-200',
+	},
+} as const;
 
 const getRelatedMethod = (record: TrafficRecord): string => {
 	if (record.relatedMethod) return record.relatedMethod;
 	if (record.method) return record.method;
 	return '—';
-};
-
-const getEventType = (record: TrafficRecord): TrafficEventType => {
-	if (record.eventType === 'validation_error') {
-		return 'validation';
-	}
-	if (record.eventType === 'error') {
-		return 'error';
-	}
-	return 'success';
 };
 
 const TrafficTable = ({ records }: { records: TrafficRecord[] }) => {
@@ -72,23 +92,11 @@ const TrafficTable = ({ records }: { records: TrafficRecord[] }) => {
 							<div className="font-medium min-w-40 flex-1 truncate">
 								{record.peer}
 							</div>
-							<div>
-								{getEventType(record) === 'validation' ? (
-									<span className="rounded border border-amber-300/35 bg-amber-500/15 px-2 py-1 text-amber-200 text-xs">
-										{t('traffic.type.validation')}
-									</span>
-								) : null}
-								{getEventType(record) === 'error' ? (
-									<span className="rounded border border-rose-400/35 bg-rose-500/15 px-2 py-1 text-rose-200 text-xs">
-										{t('traffic.type.error')}
-									</span>
-								) : null}
-								{getEventType(record) === 'success' ? (
-									<span className="rounded border border-emerald-400/35 bg-emerald-500/15 px-2 py-1 text-emerald-200 text-xs">
-										{t('traffic.type.success')}
-									</span>
-								) : null}
-							</div>
+							<span
+								className={`rounded border px-2 py-1 text-xs ${EVENT_TYPE_BADGES[record.eventType].className}`}
+							>
+								{t(EVENT_TYPE_BADGES[record.eventType].label)}
+							</span>
 						</div>
 						<div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
 							<span>{record.protocolVersion ?? '—'}</span>
@@ -204,16 +212,11 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 		Record<string, BackendEntry>
 	>({});
 	const [debugError, setDebugError] = useState<string | null>(null);
-	const debugLimit = 20;
 
 	const loadDebugSummary = useCallback(async () => {
 		try {
 			setDebugError(null);
-			const data = overviewResponseType.assert(
-				await fetchJson('/api/overview', {
-					cache: 'no-store',
-				}),
-			);
+			const data = overviewResponseType.assert(await getJson('/api/overview'));
 			const nextEntries: Record<string, BackendEntry> = {};
 			data.backends.forEach((entry) => {
 				nextEntries[entry.serverName] = {
@@ -237,14 +240,12 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 		async (page: number, errorsOnly: boolean) => {
 			const generation = ++clientRequest.current;
 			try {
-				const offset = page * debugLimit;
-				const errorsOnlyParam = errorsOnly ? '&errorsOnly=1' : '';
 				const data = trafficPageType.assert(
-					await fetchJson(
-						`/api/debug/client?limit=${debugLimit}&offset=${offset}${errorsOnlyParam}`,
-						{
-							cache: 'no-store',
-						},
+					await getJson(
+						`/api/debug/client?${trafficQuery({
+							page,
+							errorsOnly,
+						})}`,
 					),
 				);
 				if (generation !== clientRequest.current) return;
@@ -269,18 +270,14 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 			const generation = (backendRequests.current.get(backend) ?? 0) + 1;
 			backendRequests.current.set(backend, generation);
 			try {
-				const offset = page * debugLimit;
-				const methodParam =
-					method && method.trim() !== ''
-						? `&method=${encodeURIComponent(method)}`
-						: '';
-				const errorsOnlyParam = errorsOnly ? '&errorsOnly=1' : '';
 				const data = backendTrafficResponseType.assert(
-					await fetchJson(
-						`/api/debug/backend?backend=${encodeURIComponent(backend)}&limit=${debugLimit}&offset=${offset}${methodParam}${errorsOnlyParam}`,
-						{
-							cache: 'no-store',
-						},
+					await getJson(
+						`/api/debug/backend?${trafficQuery({
+							page,
+							errorsOnly: errorsOnly ?? false,
+							backend,
+							method: method?.trim(),
+						})}`,
 					),
 				);
 				if (generation !== backendRequests.current.get(backend)) return;
@@ -309,13 +306,7 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 		[],
 	);
 
-	const backendList = useMemo(
-		() =>
-			Object.values(backendEntries).sort((a, b) =>
-				a.name.localeCompare(b.name),
-			),
-		[backendEntries],
-	);
+	const backendList = Object.values(backendEntries);
 	const backendName = selectedBackend || backendList[0]?.name || '';
 	const reloadActiveTab = () => {
 		if (activeTab === 'client') {
@@ -439,7 +430,7 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 						<TrafficTable records={debugClient?.records ?? []} />
 						<PaginationControls
 							page={clientPage}
-							limit={debugLimit}
+							limit={DEBUG_LIMIT}
 							total={debugClient?.total ?? 0}
 							onPageChange={(page) =>
 								void loadClientPage(page, clientErrorsOnly)
@@ -542,7 +533,7 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 										<TrafficTable records={entry.data?.records ?? []} />
 										<PaginationControls
 											page={entry.page}
-											limit={debugLimit}
+											limit={DEBUG_LIMIT}
 											total={entry.data?.total ?? 0}
 											onPageChange={(next) =>
 												void loadBackendPage(

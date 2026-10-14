@@ -108,7 +108,7 @@ const createHandlers = (params: CreateHandlersParams) => {
 
 	const listPrompts = (): ListPromptsResult => {
 		const prompts: ListPromptsResult['prompts'] = [];
-		const allPrompts = mcpUpstreamManager.listAllPrompts();
+		const allPrompts = mcpUpstreamManager.listEnabledPrompts();
 
 		for (const [serverName, serverPromptsResult] of allPrompts) {
 			for (const prompt of serverPromptsResult.prompts) {
@@ -128,7 +128,7 @@ const createHandlers = (params: CreateHandlersParams) => {
 
 	const listResources = (): ListResourcesResult => {
 		const resources: ListResourcesResult['resources'] = [];
-		const allResources = mcpUpstreamManager.listAllResources();
+		const allResources = mcpUpstreamManager.listEnabledResources();
 
 		for (const [serverName, serverResourcesResult] of allResources) {
 			for (const resource of serverResourcesResult.resources) {
@@ -152,7 +152,7 @@ const createHandlers = (params: CreateHandlersParams) => {
 		for (const [
 			serverName,
 			result,
-		] of mcpUpstreamManager.listAllResourceTemplates())
+		] of mcpUpstreamManager.listEnabledResourceTemplates())
 			for (const resourceTemplate of result.resourceTemplates)
 				resourceTemplates.push(
 					namespaceResourceTemplate({

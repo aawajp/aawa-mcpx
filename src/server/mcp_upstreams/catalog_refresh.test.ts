@@ -162,7 +162,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 					).status,
 				).toBe(200);
 				expect(names('other')).toEqual(['keep', 'off', 'added']);
-				expect(names('disabled')).toBeUndefined();
+				expect(names('disabled')).toEqual(['keep', 'remove', 'off']);
 				if (transport === 'http' && version === CURRENT_PROTOCOL_VERSION) {
 					// An earlier request can contain stale data even while in flight.
 					// The button must wait for it and then make another backend request.
@@ -188,8 +188,8 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 						manager.listAllTools().get('selected')?.tools[0]?.description,
 					).toBe('Changed during refresh');
 				}
-				// Reconnecting clears the cache, but persisted discovery still lets
-				// the next fetch prune removed tools rather than reject configuration.
+				// Re-enabling fetches the catalog again; persisted discovery lets
+				// that fetch prune removed tools rather than reject configuration.
 				await manager.toggleBackend({
 					serverName: 'selected',
 					enabled: false,
@@ -293,7 +293,7 @@ test('2026-07-28 lists go stale on their own and refresh only for the request ta
 	try {
 		await manager.initialize();
 		expect(
-			manager.listAllResourceTemplates().get('a')?.resourceTemplates,
+			manager.listEnabledResourceTemplates().get('a')?.resourceTemplates,
 		).toEqual([
 			{
 				name: 'logs',

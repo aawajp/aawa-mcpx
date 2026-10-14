@@ -80,24 +80,36 @@ const startServer = async (
 		const rawResources = mcpUpstreamManager.listAllResources();
 		const statuses = mcpUpstreamManager.getStatuses();
 
-		const backends = statuses.map((status) => ({
-			...status,
-			tools:
-				rawTools.get(status.serverName) ??
-				({
-					tools: [],
-				} satisfies ListToolsResult),
-			prompts:
-				rawPrompts.get(status.serverName) ??
-				({
-					prompts: [],
-				} satisfies ListPromptsResult),
-			resources:
-				rawResources.get(status.serverName) ??
-				({
-					resources: [],
-				} satisfies ListResourcesResult),
-		}));
+		const byName = (a: string, b: string) =>
+			a.localeCompare(b, undefined, {
+				sensitivity: 'base',
+			});
+		const backends = statuses
+			.toSorted((a, b) => byName(a.serverName, b.serverName))
+			.map((status) => {
+				const tools = rawTools.get(status.serverName);
+				return {
+					...status,
+					tools: tools
+						? {
+								...tools,
+								tools: tools.tools.toSorted((a, b) => byName(a.name, b.name)),
+							}
+						: ({
+								tools: [],
+							} satisfies ListToolsResult),
+					prompts:
+						rawPrompts.get(status.serverName) ??
+						({
+							prompts: [],
+						} satisfies ListPromptsResult),
+					resources:
+						rawResources.get(status.serverName) ??
+						({
+							resources: [],
+						} satisfies ListResourcesResult),
+				};
+			});
 		const clients = clientActivity.list();
 
 		return {

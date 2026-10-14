@@ -77,19 +77,11 @@ const createUiRoutes = (params: CreateUiRoutesParams) => {
 		serverName: string,
 		toolName?: string,
 	): Response | undefined => {
-		if (
-			!mcpUpstreamManager
-				.getStatuses()
-				.some((status) => status.serverName === serverName)
-		)
-			return jsonError(404, `Unknown MCP upstream "${serverName}"`);
-		if (
-			toolName !== undefined &&
-			!mcpUpstreamManager
-				.listAllTools()
-				.get(serverName)
-				?.tools.some((tool) => tool.name === toolName)
-		)
+		const status = mcpUpstreamManager
+			.getStatuses()
+			.find((status) => status.serverName === serverName);
+		if (!status) return jsonError(404, `Unknown MCP upstream "${serverName}"`);
+		if (toolName !== undefined && !status.availableTools.includes(toolName))
 			return jsonError(
 				404,
 				`Unknown tool "${toolName}" on MCP upstream "${serverName}"`,
@@ -155,17 +147,12 @@ const createUiRoutes = (params: CreateUiRoutesParams) => {
 				const missing = findMissing(body.serverName, body.toolName);
 				if (missing) return missing;
 				try {
-					const enabledTools = await mcpUpstreamManager.toggleTool({
+					await mcpUpstreamManager.toggleTool({
 						serverName: body.serverName,
 						toolName: body.toolName,
 						enabled: body.enabled,
 					});
-					return Response.json({
-						serverName: body.serverName,
-						toolName: body.toolName,
-						enabled: body.enabled,
-						enabledTools,
-					});
+					return Response.json(buildOverview());
 				} catch (err) {
 					logger.error(`Toggle tool error: ${errorMessage(err)}`);
 					return jsonError(500, errorMessage(err));
@@ -185,7 +172,7 @@ const createUiRoutes = (params: CreateUiRoutesParams) => {
 				if (missing) return missing;
 				try {
 					await mcpUpstreamManager.toggleBackend(body);
-					return Response.json(body);
+					return Response.json(buildOverview());
 				} catch (err) {
 					logger.error(`Toggle backend error: ${errorMessage(err)}`);
 					return jsonError(500, errorMessage(err));

@@ -16,4 +16,18 @@ const fetchJson = async (
 	);
 };
 
-export { fetchJson };
+const getJson = (input: string): Promise<unknown> =>
+	fetchJson(input, {
+		cache: 'no-store',
+	});
+
+const postJson = (input: string, body: unknown): Promise<unknown> =>
+	fetchJson(input, {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json',
+		},
+		body: JSON.stringify(body),
+	});
+
+export { getJson, postJson };

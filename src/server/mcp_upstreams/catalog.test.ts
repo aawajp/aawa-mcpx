@@ -168,3 +168,84 @@ test('lists a backend does not advertise are never requested', async () => {
 	expect(server.resources).toBeUndefined();
 	expect(statusErrors).toBe(0);
 });
+
+test('MCP lists skip disabled backends and backends with a configuration error', () => {
+	const createBackend = (serverName: string, enabled: boolean) => {
+		const backend = createMcpUpstreamBackend({
+			serverName,
+			serverConfig: {
+				type: 'http',
+				url: `http://127.0.0.1/${serverName}`,
+				enabled,
+				timeout: 10_000,
+				trafficLimit: 1,
+			},
+		});
+		backend.tools = {
+			tools: [
+				{
+					name: 'alpha',
+					inputSchema: {
+						type: 'object',
+					},
+				},
+			],
+		};
+		backend.prompts = {
+			prompts: [
+				{
+					name: 'greet',
+				},
+			],
+		};
+		backend.resources = {
+			resources: [
+				{
+					name: 'example',
+					uri: 'file:///example',
+				},
+			],
+		};
+		backend.resourceTemplates = {
+			resourceTemplates: [
+				{
+					name: 'logs',
+					uriTemplate: 'file:///logs/{name}',
+				},
+			],
+		};
+		return backend;
+	};
+	const broken = createBackend('broken', true);
+	broken.configError = true;
+	const backends = new Map(
+		[createBackend('ok', true), createBackend('off', false), broken].map(
+			(backend) => [backend.serverName, backend],
+		),
+	);
+	const catalog = createMcpUpstreamCatalog({
+		attemptReconnect: async () => undefined,
+		configPath: path.join(root, 'mcp.json'),
+		backends,
+		config: {
+			mcpServers: Object.fromEntries(
+				[...backends.values()].map((backend) => [
+					backend.serverName,
+					backend.serverConfig,
+				]),
+			),
+		},
+		markMcpUpstreamConfigurationError: () => undefined,
+		setMcpUpstreamStatusError: () => undefined,
+		waitForRateLimit: async () => undefined,
+	});
+
+	const all = ['ok', 'off', 'broken'];
+	expect([...catalog.listAllTools().keys()]).toEqual(all);
+	expect([...catalog.listAllPrompts().keys()]).toEqual(all);
+	expect([...catalog.listAllResources().keys()]).toEqual(all);
+	expect([...catalog.listEnabledTools().keys()]).toEqual(['ok']);
+	expect([...catalog.listEnabledPrompts().keys()]).toEqual(['ok']);
+	expect([...catalog.listEnabledResources().keys()]).toEqual(['ok']);
+	expect([...catalog.listEnabledResourceTemplates().keys()]).toEqual(['ok']);
+});

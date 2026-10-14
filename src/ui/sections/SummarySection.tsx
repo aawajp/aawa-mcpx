@@ -1,3 +1,5 @@
+import { flushSync } from 'react-dom';
+
 import type { OverviewResponse } from '@/shared/ui_api';
 import {
 	Card,
@@ -6,15 +8,39 @@ import {
 	CardHeader,
 	CardTitle,
 } from '@/ui/base_components/card';
+import { BackendRefreshButton } from '@/ui/components/BackendRefreshButton';
+import { BackendToggleButton } from '@/ui/components/BackendToggleButton';
+import { EnabledToolCount } from '@/ui/components/EnabledToolCount';
 import { StatusBadge } from '@/ui/components/StatusBadge';
 import { t } from '@/ui/i18n';
 
+const CELL = 'border-y border-muted px-1 py-1';
+
+const SUMMARY_COLUMNS = [
+	{
+		label: 'backends.column.name',
+		className: 'text-left',
+	},
+	{
+		label: 'backends.column.enabledTools',
+		className: 'text-right',
+	},
+	{
+		label: 'backends.column.status',
+		className: 'text-center',
+	},
+	{
+		label: 'backends.column.toggle',
+		className: 'text-center',
+	},
+] as const;
+
 type Props = {
 	overview: OverviewResponse | null;
-	onRefresh: () => void;
+	onRefresh: (serverName?: string) => void;
+	onShowBackends: () => void;
 	onToggleBackend: (params: { serverName: string; enabled: boolean }) => void;
 	isBackendPending: (serverName: string) => boolean;
-	status: 'idle' | 'loading' | 'error' | 'ready';
 	isRefreshing: boolean;
 	error?: string | null;
 };
@@ -22,48 +48,39 @@ type Props = {
 const SummarySection = ({
 	overview,
 	onRefresh,
+	onShowBackends,
 	onToggleBackend,
 	isBackendPending,
-	status,
 	isRefreshing,
 	error,
 }: Props) => {
-	const sortedBackends = overview?.backends
-		? [...overview.backends].sort((a, b) =>
-				a.serverName.localeCompare(b.serverName, undefined, {
-					sensitivity: 'base',
-				}),
-			)
-		: [];
-	const connectedCount =
-		overview?.backends.filter((b) => b.connected).length ?? 0;
-	const totalBackends = sortedBackends.length;
+	const backends = overview?.backends ?? [];
+	const connectedCount = backends.filter((b) => b.connected).length;
 
 	return (
-		<div className="grid gap-4 sm:grid-cols-2">
-			<Card className="w-full">
-				<CardHeader className="pb-2">
-					<CardTitle>{t('backends.title')}</CardTitle>
-					<CardDescription>{t('backends.subtitle')}</CardDescription>
-				</CardHeader>
-				<CardContent className="space-y-3 w-full">
-					<div className="flex items-center justify-between gap-3">
-						<div className="flex items-baseline gap-2">
-							<span className="text-3xl font-semibold">{connectedCount}</span>
-							<span className="text-muted-foreground">
-								/ {totalBackends} {t('backends.onlineSuffix')}
-							</span>
+		<div className="grid gap-4 sm:grid-cols-[2fr_1fr]">
+			<Card className="w-full gap-2 py-3">
+				<CardContent className="space-y-2 w-full px-4">
+					<div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+						<div className="flex items-baseline gap-3">
+							<CardTitle>{t('backends.title')}</CardTitle>
+							<div className="flex items-baseline gap-1">
+								<span className="font-semibold">{connectedCount}</span>
+								<span className="text-muted-foreground">
+									/ {backends.length} {t('backends.onlineSuffix')}
+								</span>
+							</div>
 						</div>
-						<div className="flex items-center gap-2">
+						<div className="flex items-center gap-2 text-sm">
 							<button
 								type="button"
-								onClick={onRefresh}
-								disabled={isRefreshing || status === 'loading'}
-								className="inline-flex items-center rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted transition"
+								onClick={() => onRefresh()}
+								disabled={isRefreshing}
+								className="inline-flex items-center rounded-md border px-2.5 py-0.5 leading-tight font-medium hover:bg-muted transition"
 							>
-								{t('backends.refresh')}
+								{t('backends.refreshAll')}
 							</button>
-							{isRefreshing || status === 'loading' ? (
+							{isRefreshing ? (
 								<span className="text-xs text-muted-foreground">
 									{t('backends.loading')}
 								</span>
@@ -74,51 +91,65 @@ const SummarySection = ({
 						</div>
 					</div>
 					<div className="space-y-2 w-full">
-						{sortedBackends.length ? (
-							<ul className="space-y-2">
-								{sortedBackends.map((backend) => (
-									<li
-										key={backend.serverName}
-										className="flex items-start justify-between gap-2 rounded border border-muted px-3 py-2 w-full"
-									>
-										<div className="min-w-0">
-											<div className="backend-name text-base leading-tight truncate">
-												{backend.serverName}
-											</div>
-											{!backend.enabled && backend.enabledTools.length > 0 ? (
-												<div className="mt-1 text-xs text-amber-200">
-													{t('backends.inactiveTools')}:{' '}
-													{backend.enabledTools.length}
-												</div>
-											) : null}
-										</div>
-										<div className="flex shrink-0 items-center gap-2">
-											<StatusBadge
-												connected={backend.connected}
-												enabled={backend.enabled}
-											/>
-											<button
-												type="button"
-												disabled={isBackendPending(backend.serverName)}
-												onClick={() =>
-													onToggleBackend({
-														serverName: backend.serverName,
-														enabled: !backend.enabled,
-													})
-												}
-												aria-pressed={backend.enabled}
-												className="inline-flex items-center rounded-md border px-2 py-1 text-xs font-medium transition hover:bg-muted disabled:cursor-wait disabled:opacity-50"
+						{backends.length ? (
+							<table className="w-full border-separate border-spacing-y-1 text-sm">
+								<thead className="text-muted-foreground">
+									<tr>
+										{SUMMARY_COLUMNS.map((column) => (
+											<th
+												key={column.label}
+												className={`whitespace-nowrap px-1 font-normal first:pl-3 last:pr-3 ${column.className}`}
 											>
-												{isBackendPending(backend.serverName)
-													? t('backends.updating')
-													: backend.enabled
-														? t('backends.disable')
-														: t('backends.enable')}
-											</button>
-										</div>
-									</li>
-								))}
-							</ul>
+												{t(column.label)}
+											</th>
+										))}
+										<th />
+									</tr>
+								</thead>
+								<tbody>
+									{backends.map((backend) => (
+										<tr key={backend.serverName}>
+											<td
+												className={`${CELL} w-full max-w-0 rounded-l border-l pl-3`}
+											>
+												<a
+													href={`#${encodeURIComponent(backend.serverName)}`}
+													onClick={() => flushSync(onShowBackends)}
+													className="backend-name block truncate text-base leading-tight"
+												>
+													{backend.serverName}
+												</a>
+											</td>
+											<td className={`${CELL} text-right`}>
+												<EnabledToolCount backend={backend} />
+											</td>
+											<td className={`${CELL} text-center`}>
+												<StatusBadge
+													connected={backend.connected}
+													error={backend.error}
+													enabled={backend.enabled}
+												/>
+											</td>
+											<td className={`${CELL} text-center`}>
+												<BackendToggleButton
+													backend={backend}
+													isPending={isBackendPending(backend.serverName)}
+													onToggle={onToggleBackend}
+												/>
+											</td>
+											<td
+												className={`${CELL} rounded-r border-r pr-3 text-center`}
+											>
+												<BackendRefreshButton
+													backend={backend}
+													isRefreshing={isRefreshing}
+													onRefresh={onRefresh}
+												/>
+											</td>
+										</tr>
+									))}
+								</tbody>
+							</table>
 						) : (
 							<p className="text-sm text-muted-foreground">
 								{t('backends.none')}
@@ -127,20 +158,20 @@ const SummarySection = ({
 					</div>
 				</CardContent>
 			</Card>
-			<Card>
-				<CardHeader className="pb-2">
+			<Card className="gap-2 py-3">
+				<CardHeader className="gap-0.5 px-4">
 					<CardTitle>{t('protocol.title')}</CardTitle>
 					<CardDescription>{t('protocol.subtitle')}</CardDescription>
 				</CardHeader>
-				<CardContent className="space-y-2 w-full">
-					<div className="text-2xl font-semibold">
+				<CardContent className="space-y-2 w-full px-4">
+					<div className="font-semibold">
 						{overview?.supportedProtocolVersions?.map((version) => (
 							<div key={version}>{version}</div>
 						)) ?? '—'}
 					</div>
 					<div className="space-y-1 text-sm">
 						<div className="font-semibold">{t('protocol.apisTitle')}</div>
-						<ul className="list-disc space-y-1 pl-5 text-sm">
+						<ul className="list-disc space-y-1 pl-5">
 							<li>
 								<a
 									className="text-sky-300 hover:text-cyan-200 hover:underline"

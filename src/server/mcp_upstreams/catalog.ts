@@ -160,8 +160,7 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 			return false;
 		}
 		// A backend may be disabled or reconnected while a request is in flight.
-		const isCurrent = (): boolean =>
-			server.serverConfig.enabled && server.client === client;
+		const isCurrent = (): boolean => server.client === client;
 		try {
 			await waitForRateLimit(server);
 			if (!isCurrent()) return false;
@@ -376,17 +375,28 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 		return result;
 	};
 
+	// MCP clients see only enabled backends without a configuration error.
+	const collectEnabled = <T>(
+		select: (backend: McpUpstreamBackend) => T | undefined,
+	): Map<string, T> =>
+		collect((backend) =>
+			backend.serverConfig.enabled && !backend.configError
+				? select(backend)
+				: undefined,
+		);
+
 	const listAllTools = (): McpUpstreamToolsMap =>
 		collect((backend) => backend.tools);
 
+	const listAllPrompts = (): McpUpstreamPromptsMap =>
+		collect((backend) => backend.prompts);
+
+	const listAllResources = (): McpUpstreamResourcesMap =>
+		collect((backend) => backend.resources);
+
 	const listEnabledTools = (): McpUpstreamToolsMap =>
-		collect((backend) => {
+		collectEnabled((backend) => {
 			if (!backend.tools) return undefined;
-			if (backend.configError)
-				return {
-					...backend.tools,
-					tools: [],
-				};
 			const enabledSet = new Set(getEnabledTools(backend));
 			return {
 				...backend.tools,
@@ -401,14 +411,14 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 			};
 		});
 
-	const listAllPrompts = (): McpUpstreamPromptsMap =>
-		collect((backend) => backend.prompts);
+	const listEnabledPrompts = (): McpUpstreamPromptsMap =>
+		collectEnabled((backend) => backend.prompts);
 
-	const listAllResources = (): McpUpstreamResourcesMap =>
-		collect((backend) => backend.resources);
+	const listEnabledResources = (): McpUpstreamResourcesMap =>
+		collectEnabled((backend) => backend.resources);
 
-	const listAllResourceTemplates = (): McpUpstreamResourceTemplatesMap =>
-		collect((backend) => backend.resourceTemplates);
+	const listEnabledResourceTemplates = (): McpUpstreamResourceTemplatesMap =>
+		collectEnabled((backend) => backend.resourceTemplates);
 
 	const getEnabledTools = (catalogParams: { serverName: string }): string[] => {
 		const backend = backends.get(catalogParams.serverName);
@@ -450,8 +460,7 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 				`MCP upstream "${catalogParams.serverName}" is not available`,
 			);
 		}
-		const tools = server.tools?.tools ?? [];
-		const toolNames = getToolNames(tools);
+		const toolNames = server.serverConfig.availableTools ?? [];
 		if (!toolNames.includes(catalogParams.toolName)) {
 			throw new Error(
 				`Tool "${catalogParams.toolName}" is not available on MCP upstream "${catalogParams.serverName}"`,
@@ -506,8 +515,10 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 		getEnabledTools,
 		listAllPrompts,
 		listAllResources,
-		listAllResourceTemplates,
 		listAllTools,
+		listEnabledPrompts,
+		listEnabledResources,
+		listEnabledResourceTemplates,
 		listEnabledTools,
 		getEnabledTool,
 		toggleTool,

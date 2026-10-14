@@ -108,6 +108,7 @@ type McpUpstreamStatusBase = {
 	protocolVersion?: string;
 	enabled: boolean;
 	enabledTools: string[];
+	availableTools: string[];
 	connected: boolean;
 	error?: string;
 	errorState?: McpUpstreamErrorState;
@@ -187,6 +188,8 @@ type McpUpstreamBackend = McpUpstreamServer & {
 	// Either error stops reconnects until the operator acts.
 	configError: boolean;
 	protocolError: boolean;
+	// A disabled backend is contacted once at startup for the dashboard.
+	probing: boolean;
 	reconnect?: PendingAttempt<void>;
 	reconnectTimer?: Timer;
 	reconnectAttempts: number;
@@ -220,7 +223,9 @@ type McpUpstreamManager = {
 	listEnabledTools: () => McpUpstreamToolsMap;
 	listAllPrompts: () => McpUpstreamPromptsMap;
 	listAllResources: () => McpUpstreamResourcesMap;
-	listAllResourceTemplates: () => McpUpstreamResourceTemplatesMap;
+	listEnabledPrompts: () => McpUpstreamPromptsMap;
+	listEnabledResources: () => McpUpstreamResourcesMap;
+	listEnabledResourceTemplates: () => McpUpstreamResourceTemplatesMap;
 	getEnabledTools: (params: { serverName: string }) => string[];
 	toggleBackend: (params: ToggleBackendParams) => Promise<void>;
 	toggleTool: (params: ToggleToolParams) => Promise<string[]>;

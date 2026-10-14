@@ -79,8 +79,12 @@
 		accent-color: #22d3ee;
 	}
 
+	button {
+		border-color: rgba(56, 189, 248, 0.35);
+	}
+
 	button:hover:enabled {
-		border-color: rgba(56, 189, 248, 0.45);
+		border-color: rgba(56, 189, 248, 0.55);
 	}
 
 	[data-slot='card'] {
@@ -179,7 +183,7 @@ body::after {
 	content: '';
 	display: block;
 	height: 1px;
-	margin-top: 0.2rem;
+	margin-top: 0.1rem;
 	background: linear-gradient(
 		90deg,
 		rgba(96, 165, 250, 0.62),

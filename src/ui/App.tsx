@@ -1,12 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { errorMessage } from '@/shared/common';
-import {
-	type OverviewResponse,
-	overviewResponseType,
-	toggleToolResponseType,
-} from '@/shared/ui_api';
-import { fetchJson } from '@/ui/api/client';
+import { type OverviewResponse, overviewResponseType } from '@/shared/ui_api';
+import { postJson } from '@/ui/api/client';
 import { t } from '@/ui/i18n';
 import { BackendsSection } from '@/ui/sections/BackendsSection';
 import { BackendTesterSection } from '@/ui/sections/BackendTesterSection';
@@ -14,33 +10,25 @@ import { ClientsSection } from '@/ui/sections/ClientsSection';
 import { DebugPage } from '@/ui/sections/DebugPage';
 import { SummarySection } from '@/ui/sections/SummarySection';
 
-type LoadState = 'idle' | 'loading' | 'error' | 'ready';
 type MainTab = 'tester' | 'backends' | 'clients';
+const MAIN_TABS: MainTab[] = ['backends', 'clients', 'tester'];
 const MAIN_TAB_STORAGE_KEY = 'aawa-mcpx-main-tab';
 const EVENT_STREAM_RETRY_MS = 5000;
-// Server and tool names may contain any character; JSON keeps the pair unambiguous.
-const toolKey = (serverName: string, toolName: string): string =>
-	JSON.stringify([serverName, toolName]);
+const REFRESH_KEY = 'refresh';
+// Server and tool names may contain any character; JSON keeps the key unambiguous.
+const pendingKey = (...names: string[]): string => JSON.stringify(names);
 
-const isMainTab = (value: string | null): value is MainTab => {
-	return value === 'backends' || value === 'clients' || value === 'tester';
-};
+const isMainTab = (value: string | null): value is MainTab =>
+	MAIN_TABS.some((tab) => tab === value);
+
+const resolveRoute = (): 'main' | 'debug' =>
+	window.location.pathname.startsWith('/debug') ? 'debug' : 'main';
 
 export default function App() {
-	const resolveRoute = useCallback((): 'main' | 'debug' => {
-		if (window.location.pathname.startsWith('/debug')) {
-			return 'debug';
-		}
-		return 'main';
-	}, []);
-
 	const [overview, setOverview] = useState<OverviewResponse | null>(null);
-	const [status, setStatus] = useState<LoadState>('idle');
-	const [isRefreshing, setIsRefreshing] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [streamError, setStreamError] = useState<string | null>(null);
 	const [mainTab, setMainTab] = useState<MainTab>(() => {
-		if (typeof window === 'undefined') return 'backends';
 		try {
 			const stored = window.localStorage.getItem(MAIN_TAB_STORAGE_KEY);
 			return isMainTab(stored) ? stored : 'backends';
@@ -48,133 +36,40 @@ export default function App() {
 			return 'backends';
 		}
 	});
-	const [pendingBackends, setPendingBackends] = useState<
-		Record<string, boolean>
-	>({});
-	const [pendingTools, setPendingTools] = useState<Record<string, boolean>>({});
-	const [route, setRoute] = useState<'main' | 'debug'>(() => {
-		if (typeof window === 'undefined') return 'main';
-		return resolveRoute();
-	});
+	const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
+	const [route, setRoute] = useState(resolveRoute);
 
-	const refresh = useCallback(
-		async (options?: { force?: boolean; serverName?: string }) => {
-			setStatus('loading');
+	const runAction = useCallback(
+		async (key: string, path: string, body: unknown) => {
+			setPending((current) => new Set(current).add(key));
 			setError(null);
-			// SSE snapshots may arrive during the fetch; keep buttons busy until
-			// the explicit backend refresh finishes.
-			if (options?.force) setIsRefreshing(true);
 			try {
-				const data = options?.force
-					? await fetchJson('/api/backends/refresh', {
-							method: 'POST',
-							headers: {
-								'Content-Type': 'application/json',
-							},
-							body: JSON.stringify({
-								serverName: options.serverName,
-							}),
-						})
-					: await fetchJson('/api/overview', {
-							method: 'GET',
-						});
-				setOverview(overviewResponseType.assert(data));
-				setStatus('ready');
+				setOverview(overviewResponseType.assert(await postJson(path, body)));
 			} catch (err) {
 				setError(errorMessage(err));
-				setStatus('error');
 			} finally {
-				if (options?.force) setIsRefreshing(false);
+				setPending((current) => {
+					const next = new Set(current);
+					next.delete(key);
+					return next;
+				});
 			}
 		},
 		[],
 	);
-
-	const toggleBackend = useCallback(
-		async (params: { serverName: string; enabled: boolean }) => {
-			setPendingBackends((current) => ({
-				...current,
-				[params.serverName]: true,
-			}));
-			setError(null);
-			try {
-				await fetchJson('/api/backends/toggle', {
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-					},
-					body: JSON.stringify(params),
-				});
-				await refresh();
-			} catch (err) {
-				setError(errorMessage(err));
-				setStatus('error');
-			} finally {
-				setPendingBackends((current) => ({
-					...current,
-					[params.serverName]: false,
-				}));
-			}
-		},
-		[refresh],
-	);
-
-	useEffect(() => {
-		if (route !== 'main') {
-			return;
-		}
-		void refresh();
-	}, [refresh, route]);
-
-	const toggleTool = useCallback(
-		async (params: {
-			serverName: string;
-			toolName: string;
-			enabled: boolean;
-		}) => {
-			const key = toolKey(params.serverName, params.toolName);
-			setPendingTools((current) => ({
-				...current,
-				[key]: true,
-			}));
-			setError(null);
-			try {
-				const { enabledTools } = toggleToolResponseType.assert(
-					await fetchJson('/api/tools/toggle', {
-						method: 'POST',
-						headers: {
-							'Content-Type': 'application/json',
-						},
-						body: JSON.stringify(params),
-					}),
-				);
-				setOverview((current) => {
-					if (!current) {
-						return current;
-					}
-					return {
-						...current,
-						backends: current.backends.map((backend) =>
-							backend.serverName === params.serverName
-								? {
-										...backend,
-										enabledTools,
-									}
-								: backend,
-						),
-					};
-				});
-			} catch (err) {
-				setError(errorMessage(err));
-			} finally {
-				setPendingTools((current) => ({
-					...current,
-					[key]: false,
-				}));
-			}
-		},
-		[],
-	);
+	const refreshBackends = (serverName?: string) =>
+		void runAction(REFRESH_KEY, '/api/backends/refresh', {
+			serverName,
+		});
+	const isRefreshing = pending.has(REFRESH_KEY);
+	const toggleBackend = (params: { serverName: string; enabled: boolean }) =>
+		void runAction(
+			pendingKey(params.serverName),
+			'/api/backends/toggle',
+			params,
+		);
+	const isBackendPending = (serverName: string) =>
+		pending.has(pendingKey(serverName));
 
 	useEffect(() => {
 		if (route !== 'main') {
@@ -189,7 +84,6 @@ export default function App() {
 					const payload = JSON.parse(event.data) as unknown;
 					const data = overviewResponseType.assert(payload);
 					setOverview(data);
-					setStatus('ready');
 					setStreamError(null);
 				} catch (err) {
 					setStreamError(errorMessage(err));
@@ -211,22 +105,12 @@ export default function App() {
 	}, [route]);
 
 	useEffect(() => {
-		const syncRoute = () => {
-			const current = resolveRoute();
-			setRoute((currentRoute) => {
-				if (currentRoute === current) {
-					return currentRoute;
-				}
-				return current;
-			});
-		};
-
-		syncRoute();
+		const syncRoute = () => setRoute(resolveRoute());
 		window.addEventListener('popstate', syncRoute);
 		return () => {
 			window.removeEventListener('popstate', syncRoute);
 		};
-	}, [resolveRoute]);
+	}, []);
 
 	const navigate = useCallback((target: 'main' | 'debug') => {
 		setRoute(target);
@@ -243,71 +127,46 @@ export default function App() {
 		} catch {}
 	}, []);
 
-	const tabClassName = useCallback(
-		(tab: MainTab): string => {
-			const base =
-				'inline-flex items-center rounded-md border px-3 py-2 text-sm font-medium transition';
-			if (mainTab === tab) {
-				return `${base} border-sky-400/60 bg-sky-500/20 text-sky-100 shadow-sm`;
-			}
-			return `${base} hover:bg-muted`;
-		},
-		[mainTab],
-	);
+	const tabClassName = (tab: MainTab): string => {
+		const base =
+			'inline-flex items-center rounded-md border px-3 py-2 text-sm font-medium transition';
+		if (mainTab === tab) {
+			return `${base} border-sky-400/60 bg-sky-500/20 text-sky-100 shadow-sm`;
+		}
+		return `${base} hover:bg-muted`;
+	};
 
 	return (
 		<>
 			{route === 'debug' ? (
 				<DebugPage onNavigate={navigate} />
 			) : (
-				<div className="app-shell container mx-auto max-w-6xl p-6 space-y-6">
-					<header className="space-y-2">
-						<div>
-							<h1 className="text-3xl font-bold">{t('app.title')}</h1>
-							<p className="text-muted-foreground">{t('app.subtitle')}</p>
-						</div>
+				<div className="app-shell container mx-auto max-w-6xl p-4 space-y-4">
+					<header>
+						<h1 className="text-3xl font-bold">{t('app.title')}</h1>
 					</header>
 
 					<SummarySection
 						overview={overview}
-						onRefresh={() =>
-							void refresh({
-								force: true,
-							})
-						}
-						onToggleBackend={(params) => void toggleBackend(params)}
-						isBackendPending={(serverName) =>
-							pendingBackends[serverName] === true
-						}
-						status={status}
+						onRefresh={refreshBackends}
+						onShowBackends={() => selectMainTab('backends')}
+						onToggleBackend={toggleBackend}
+						isBackendPending={isBackendPending}
 						isRefreshing={isRefreshing}
 						error={error ?? streamError}
 					/>
 					<div className="flex items-center gap-2">
-						<button
-							type="button"
-							onClick={() => selectMainTab('backends')}
-							className={tabClassName('backends')}
-							aria-pressed={mainTab === 'backends'}
-						>
-							{t('main.tab.backends')}
-						</button>
-						<button
-							type="button"
-							onClick={() => selectMainTab('clients')}
-							className={tabClassName('clients')}
-							aria-pressed={mainTab === 'clients'}
-						>
-							{t('main.tab.clients')}
-						</button>
-						<button
-							type="button"
-							onClick={() => selectMainTab('tester')}
-							className={tabClassName('tester')}
-							aria-pressed={mainTab === 'tester'}
-						>
-							{t('main.tab.tester')}
-						</button>
+						{MAIN_TABS.map((tab) => (
+							<button
+								key={tab}
+								type="button"
+								onClick={() => selectMainTab(tab)}
+								className={tabClassName(tab)}
+								aria-pressed={mainTab === tab}
+							>
+								{t(`main.tab.${tab}`)}
+							</button>
+						))}
 						<button
 							type="button"
 							onClick={() => navigate('debug')}
@@ -326,16 +185,19 @@ export default function App() {
 					{mainTab === 'backends' ? (
 						<BackendsSection
 							backends={overview?.backends ?? []}
-							onRefresh={(serverName) =>
-								void refresh({
-									force: true,
-									serverName,
-								})
-							}
+							onRefresh={refreshBackends}
 							isRefreshing={isRefreshing}
-							onToggleTool={(params) => void toggleTool(params)}
+							onToggleBackend={toggleBackend}
+							isBackendPending={isBackendPending}
+							onToggleTool={(params) =>
+								void runAction(
+									pendingKey(params.serverName, params.toolName),
+									'/api/tools/toggle',
+									params,
+								)
+							}
 							isToolPending={(serverName, toolName) =>
-								pendingTools[toolKey(serverName, toolName)] === true
+								pending.has(pendingKey(serverName, toolName))
 							}
 						/>
 					) : null}

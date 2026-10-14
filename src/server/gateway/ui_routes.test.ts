@@ -5,29 +5,21 @@ import type { TrafficStore } from '@/server/traffic_store';
 
 import { expect, test } from 'bun:test';
 
-const catalogOf = (serverName: string, toolNames: string[] = []) => ({
+const catalogOf = (serverName: string, availableTools: string[] = []) => ({
 	getStatuses: () => [
 		{
 			serverName,
+			availableTools,
 		},
 	],
-	listAllTools: () =>
-		new Map([
-			[
-				serverName,
-				{
-					tools: toolNames.map((name) => ({
-						name,
-					})),
-				},
-			],
-		]),
 });
 
-test('dashboard toggles name the backend and tool as they are', async () => {
+test('dashboard toggles name the backend and tool as they are and return the overview', async () => {
 	let toggled: unknown;
 	const routes = createUiRoutes({
-		buildOverview: () => ({}),
+		buildOverview: () => ({
+			toggled,
+		}),
 		mcpUpstreamManager: {
 			...catalogOf('backend__one_', ['_echo']),
 			async toggleTool(params: unknown): Promise<string[]> {
@@ -54,8 +46,7 @@ test('dashboard toggles name the backend and tool as they are', async () => {
 	expect(response.status).toBe(200);
 	expect(toggled).toEqual(params);
 	expect(await response.json()).toEqual({
-		...params,
-		enabledTools: ['_echo'],
+		toggled: params,
 	});
 	// A namespaced name alone no longer identifies the tool.
 	expect(

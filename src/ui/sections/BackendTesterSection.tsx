@@ -2,7 +2,7 @@ import { type SubmitEvent, useEffect, useMemo, useState } from 'react';
 
 import { errorMessage } from '@/shared/common';
 import type { McpUpstreamStatus, Tool } from '@/shared/ui_api';
-import { fetchJson } from '@/ui/api/client';
+import { postJson } from '@/ui/api/client';
 import { Button } from '@/ui/base_components/button';
 import {
 	Card,
@@ -165,55 +165,16 @@ const BackendTesterSection = ({ backends }: Props) => {
 	const [running, setRunning] = useState(false);
 	const [runError, setRunError] = useState<string | null>(null);
 	const [result, setResult] = useState<unknown>(null);
-	const sortedBackends = useMemo(() => {
-		return backends
-			.filter((backend) => backend.enabled)
-			.sort((a, b) =>
-				a.serverName.localeCompare(b.serverName, undefined, {
-					sensitivity: 'base',
-				}),
-			);
-	}, [backends]);
-
-	useEffect(() => {
-		if (sortedBackends.length === 0) {
-			setSelectedBackend('');
-			return;
-		}
-		const exists = sortedBackends.some(
-			(backend) => backend.serverName === selectedBackend,
-		);
-		if (!exists) {
-			setSelectedBackend(sortedBackends[0]?.serverName ?? '');
-		}
-	}, [sortedBackends, selectedBackend]);
-
+	const enabledBackends = backends.filter((backend) => backend.enabled);
 	const currentBackend =
-		sortedBackends.find((backend) => backend.serverName === selectedBackend) ??
+		enabledBackends.find((backend) => backend.serverName === selectedBackend) ??
+		enabledBackends[0] ??
 		null;
-	const tools = useMemo(() => {
-		const backendTools = currentBackend?.tools.tools ?? [];
-		return backendTools
-			.filter((item) => currentBackend?.enabledTools.includes(item.name))
-			.sort((a, b) =>
-				a.name.localeCompare(b.name, undefined, {
-					sensitivity: 'base',
-				}),
-			);
-	}, [currentBackend]);
-
-	useEffect(() => {
-		if (tools.length === 0) {
-			setSelectedTool('');
-			return;
-		}
-		const exists = tools.some((tool) => tool.name === selectedTool);
-		if (!exists) {
-			setSelectedTool(tools[0]?.name ?? '');
-		}
-	}, [tools, selectedTool]);
-
-	const tool = tools.find((item) => item.name === selectedTool) ?? null;
+	const tools = (currentBackend?.tools.tools ?? []).filter((item) =>
+		currentBackend?.enabledTools.includes(item.name),
+	);
+	const tool =
+		tools.find((item) => item.name === selectedTool) ?? tools[0] ?? null;
 	const fields = useMemo(() => getToolFields(tool), [tool]);
 
 	useEffect(() => {
@@ -306,16 +267,10 @@ const BackendTesterSection = ({ backends }: Props) => {
 		setRunError(null);
 		setResult(null);
 		try {
-			const payload = (await fetchJson('/api/tools/call', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-				},
-				body: JSON.stringify({
-					serverName: currentBackend.serverName,
-					toolName: tool.name,
-					arguments: args,
-				}),
+			const payload = (await postJson('/api/tools/call', {
+				serverName: currentBackend.serverName,
+				toolName: tool.name,
+				arguments: args,
 			})) as {
 				result?: unknown;
 			};
@@ -334,7 +289,7 @@ const BackendTesterSection = ({ backends }: Props) => {
 				<CardDescription>{t('tester.subtitle')}</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-4">
-				{sortedBackends.length === 0 ? (
+				{enabledBackends.length === 0 ? (
 					<p className="text-sm text-muted-foreground">
 						{t('tester.noBackends')}
 					</p>
@@ -346,11 +301,11 @@ const BackendTesterSection = ({ backends }: Props) => {
 									{t('tester.backend')}
 								</span>
 								<select
-									value={selectedBackend}
+									value={currentBackend?.serverName ?? ''}
 									onChange={(event) => setSelectedBackend(event.target.value)}
 									className="w-full rounded-md border bg-background px-3 py-2 text-sm"
 								>
-									{sortedBackends.map((backend) => (
+									{enabledBackends.map((backend) => (
 										<option key={backend.serverName} value={backend.serverName}>
 											{backend.serverName}
 										</option>
@@ -360,7 +315,7 @@ const BackendTesterSection = ({ backends }: Props) => {
 							<label className="space-y-1">
 								<span className="text-sm font-medium">{t('tester.tool')}</span>
 								<select
-									value={selectedTool}
+									value={tool?.name ?? ''}
 									onChange={(event) => setSelectedTool(event.target.value)}
 									className="w-full rounded-md border bg-background px-3 py-2 text-sm"
 									disabled={tools.length === 0}

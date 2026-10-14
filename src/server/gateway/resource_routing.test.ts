@@ -129,7 +129,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 							},
 						]),
 					),
-				listAllPrompts: () =>
+				listEnabledPrompts: () =>
 					new Map(
 						[...servers.keys()].map((name) => [
 							name,
@@ -142,7 +142,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 							},
 						]),
 					),
-				listAllResources: () =>
+				listEnabledResources: () =>
 					new Map(
 						[...servers.keys()].map((name) => [
 							name,
@@ -156,7 +156,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 							},
 						]),
 					),
-				listAllResourceTemplates: () =>
+				listEnabledResourceTemplates: () =>
 					new Map(
 						[...servers.keys()].map((name) => [
 							name,

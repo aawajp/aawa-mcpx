@@ -85,7 +85,7 @@ Stdio backend:
 | `env` | stdio | Literal environment variables for the process; of the gateway's own environment only `HOME`, `PATH`, `SHELL`, `USER`, `LOGNAME`, `TMPDIR`, `SystemRoot` and `TEMP` are passed on |
 | `cwd` | stdio | Working directory for the process |
 | `timeout` | Both | Request timeout in ms; default `10000` |
-| `enabled` | Both | Connect and expose the backend; default `true` |
+| `enabled` | Both | Keep the backend connected and expose it; default `true`. A disabled backend is contacted once at startup so the dashboard can show its details |
 | `trafficLimit` | Both | Requests per second to the backend (integer), including catalog fetches and health probes; default `1` |
 | `enabledTools` | Both | Tools exposed to clients; if omitted, every tool from the first fetch is exposed |
 | `availableTools` | Both | Discovered tools; managed by the gateway, do not edit |
@@ -160,11 +160,12 @@ ambiguous are escaped; see [namespaces](/DESIGN.md#38-namespaces-and-resource-ro
 ## Dashboard
 
 Open `http://localhost:<PORT>/`. The summary at the top lists backends with
-their status and **Enable**/**Disable** buttons, plus a **Refresh** for all
-backends. Refresh re-fetches catalogs and, for `2026-07-28` backends, server
-info, capabilities, and instructions. Below it are three tabs:
+their enabled and total tool counts, status, **Enable**/**Disable**, and
+**Refresh** buttons, plus
+**Refresh all**. Clicking a backend name opens its card in the Backends tab. Refreshing re-fetches catalogs and, for `2026-07-28` backends,
+server info, capabilities, and instructions. Below it are three tabs:
 
-- **Backends** (default view): each backend's tools, prompts, and resources, a per-backend **Refresh**, and **Expose to clients** toggles for tools.
+- **Backends** (default view): each backend's prompts, resources, and tools, a per-backend **Refresh**, and **Expose to clients** toggles for tools. A disabled backend shows what it last reported.
 - **Client**: clients grouped by reported name and version, with first and last activity and latest protocol.
 - **Tester**: call an exposed tool through a form generated from its input schema. Object, array, `anyOf`, and untyped arguments are entered as JSON.
 

@@ -268,19 +268,21 @@ test('backend lifecycle preserves tool exposure state', async () => {
 		const startupDisabled = requireStatus(
 			startupDisabledManager.getStatuses()[0],
 		);
-		expect(disabledState(startupDisabled)).toEqual({
+		expect(startupDisabled).toMatchObject({
 			enabled: false,
 			enabledTools: ['alpha'],
+			availableTools: ['alpha', 'beta'],
 			connected: false,
-			error: undefined,
-			errorState: undefined,
 			actionRequired: false,
-			implementation: undefined,
-			capabilities: undefined,
-			instructions: undefined,
 		});
-		expect(startupDisabledManager.listAllTools().size).toBe(0);
-		expect(methods).toEqual([]);
+		expect(startupDisabled.error).toBeUndefined();
+		expect(startupDisabled.implementation).toBeDefined();
+		expect(
+			toolNames(startupDisabledManager.listAllTools().get('mock')?.tools ?? []),
+		).toEqual(['alpha', 'beta']);
+		expect(startupDisabledManager.listEnabledTools().size).toBe(0);
+		expect(methods).toContain('tools/list');
+		methods.length = 0;
 		await startupDisabledManager.disconnect();
 		startupDisabledManager = null;
 
@@ -371,6 +373,7 @@ test('backend lifecycle preserves tool exposure state', async () => {
 				'\t',
 			)}\n`,
 		);
+		const connectedStatus = requireStatus(runtimeManager.getStatuses()[0]);
 		await runtimeManager.toggleBackend({
 			serverName: 'mock',
 			enabled: false,
@@ -383,11 +386,19 @@ test('backend lifecycle preserves tool exposure state', async () => {
 		expect(afterDisable.enabled).toBe(false);
 		expect(afterDisable.enabledTools).toEqual(beforeDisable.enabledTools);
 		expect(afterDisable.availableTools).toEqual(beforeDisable.availableTools);
-		expect(runtimeManager.listAllTools().size).toBe(0);
+		expect(
+			toolNames(runtimeManager.listAllTools().get('mock')?.tools ?? []),
+		).toEqual(['alpha', 'beta']);
+		expect(runtimeManager.listEnabledTools().size).toBe(0);
+		expect(runtimeManager.listEnabledPrompts().size).toBe(0);
 		const runtimeDisabled = requireStatus(runtimeManager.getStatuses()[0]);
-		expect(disabledState(runtimeDisabled)).toEqual(
-			disabledState(startupDisabled),
-		);
+		expect(disabledState(runtimeDisabled)).toEqual({
+			...disabledState(connectedStatus),
+			enabled: false,
+			connected: false,
+		});
+		expect(runtimeDisabled.implementation).toBeDefined();
+		expect(runtimeDisabled.availableTools).toEqual(['alpha', 'beta']);
 
 		const barrier = createInitializeBarrier();
 		initializeBarrier = barrier;
@@ -404,10 +415,10 @@ test('backend lifecycle preserves tool exposure state', async () => {
 		await staleEnable;
 		expect(requireMockServer(await readConfig()).enabled).toBe(false);
 		expect(runtimeManager.getStatuses()[0]?.connected).toBe(false);
-		expect(runtimeManager.listAllTools().size).toBe(0);
+		expect(runtimeManager.listEnabledTools().size).toBe(0);
 		expect(
 			disabledState(requireStatus(runtimeManager.getStatuses()[0])),
-		).toEqual(disabledState(startupDisabled));
+		).toEqual(disabledState(runtimeDisabled));
 
 		await runtimeManager.toggleBackend({
 			serverName: 'mock',
@@ -544,6 +555,56 @@ test('a refresh pending across a reconnect does not leave an empty catalog', asy
 	} finally {
 		await manager.disconnect();
 		mockServer.stop(true);
+		await rm(testRoot, {
+			recursive: true,
+			force: true,
+		});
+	}
+});
+
+test('every configured backend has a status as soon as startup begins', async () => {
+	const testRoot = await mkdtemp(path.join(tmpdir(), 'mcpx-startup-'));
+	const warn = spyOn(logger, 'warn').mockImplementation(() => undefined);
+	const error = spyOn(logger, 'error').mockImplementation(() => undefined);
+	const backend = (enabled: boolean) => ({
+		type: 'http',
+		url: 'http://127.0.0.1:1/mcp',
+		enabled,
+	});
+	const manager = createMcpUpstreamManager({
+		config: mcpConfigType.assert({
+			mcpServers: {
+				first: backend(true),
+				second: backend(false),
+			},
+		}),
+		configPath: path.join(testRoot, 'mcp.json'),
+	});
+	try {
+		const initialization = manager.initialize();
+		expect(
+			manager.getStatuses().map((status) => ({
+				serverName: status.serverName,
+				connected: status.connected,
+				error: status.error,
+			})),
+		).toEqual([
+			{
+				serverName: 'first',
+				connected: false,
+				error: undefined,
+			},
+			{
+				serverName: 'second',
+				connected: false,
+				error: undefined,
+			},
+		]);
+		await initialization;
+	} finally {
+		await manager.disconnect();
+		warn.mockRestore();
+		error.mockRestore();
 		await rm(testRoot, {
 			recursive: true,
 			force: true,
