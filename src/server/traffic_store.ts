@@ -4,33 +4,15 @@ import path from 'node:path';
 import { logger } from '@/server/logger';
 import { errorMessage } from '@/shared/common';
 import { recordOf } from '@/shared/mcp_protocol';
+import type { TrafficPage, TrafficRecord } from '@/shared/ui_api';
 
 import { Database } from 'bun:sqlite';
 
 // Only the newest records are kept, so a long run cannot fill the disk.
 const MAX_TRAFFIC_RECORDS = 10_000;
 
-type TrafficKind = 'client' | 'backend';
-type TrafficEventType = 'success' | 'error' | 'validation_error';
-
-type TrafficRecord = {
-	protocolVersion?: string;
-	id: number;
-	kind: TrafficKind;
-	peer: string;
-	method?: string;
-	relatedMethod?: string;
-	eventType: TrafficEventType;
-	request: unknown;
-	response: unknown;
-	isError: boolean;
-	createdAt: number;
-};
-
-type TrafficQueryResult = {
-	records: TrafficRecord[];
-	total: number;
-};
+type TrafficKind = TrafficRecord['kind'];
+type TrafficEventType = TrafficRecord['eventType'];
 
 type LogClientTrafficParams = {
 	protocolVersion?: string;
@@ -55,14 +37,14 @@ type TrafficStore = {
 		limit: number;
 		offset: number;
 		errorsOnly?: boolean;
-	}) => TrafficQueryResult;
+	}) => TrafficPage;
 	getBackendTraffic: (params: {
 		backend: string;
 		method?: string;
 		limit: number;
 		offset: number;
 		errorsOnly?: boolean;
-	}) => TrafficQueryResult;
+	}) => TrafficPage;
 };
 
 const safeParse = (value: string): unknown => {
@@ -230,7 +212,7 @@ const createTrafficStore = (dbPath: string): TrafficStore => {
 		limit: number;
 		offset: number;
 		errorsOnly?: boolean;
-	}): TrafficQueryResult => {
+	}): TrafficPage => {
 		const conditions = ['kind = ?'];
 		const bindings: Array<string | number> = [params.kind];
 		if (params.backend !== undefined) {
@@ -283,11 +265,5 @@ const createTrafficStore = (dbPath: string): TrafficStore => {
 	};
 };
 
-export type {
-	LogBackendTrafficParams,
-	LogClientTrafficParams,
-	TrafficQueryResult,
-	TrafficRecord,
-	TrafficStore,
-};
+export type { LogBackendTrafficParams, LogClientTrafficParams, TrafficStore };
 export { createTrafficStore, MAX_TRAFFIC_RECORDS };

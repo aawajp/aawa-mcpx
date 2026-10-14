@@ -44,15 +44,13 @@ import type { SchemaIssue } from '@/server/mcp_upstreams/json_schema';
 import type { TrafficStore } from '@/server/traffic_store';
 import type { HeaderParameter, ProtocolVersion } from '@/shared/mcp_protocol';
 import type { ToolCallResult } from '@/shared/mcp_results';
+import type { McpUpstreamStatus } from '@/shared/ui_api';
 
 type CreateMcpUpstreamManagerParams = {
 	config: McpConfig;
 	configPath: string;
 	trafficStore?: TrafficStore;
 };
-
-type ServerCapabilitiesInfo = ReturnType<Client['getServerCapabilities']>;
-type ImplementationInfo = ReturnType<Client['getServerVersion']>;
 
 // A tool MCP clients may see and call, with the rules the catalog compiled
 // when it fetched the tool.
@@ -100,38 +98,7 @@ type ToggleBackendParams = {
 	enabled: boolean;
 };
 
-type McpUpstreamErrorState =
-	| 'runtime'
-	| 'configuration'
-	| 'protocol'
-	| 'authentication';
-
-type McpUpstreamStatusBase = {
-	serverName: string;
-	protocolVersion?: string;
-	enabled: boolean;
-	enabledTools: string[];
-	availableTools: string[];
-	connected: boolean;
-	error?: string;
-	errorState?: McpUpstreamErrorState;
-	actionRequired?: boolean;
-	implementation?: ImplementationInfo;
-	capabilities?: ServerCapabilitiesInfo;
-	instructions?: string;
-};
-
-type McpUpstreamStatus = McpUpstreamStatusBase &
-	(
-		| {
-				type: 'http';
-				url: string;
-		  }
-		| {
-				type: 'stdio';
-				command: string;
-		  }
-	);
+type McpUpstreamErrorState = NonNullable<McpUpstreamStatus['errorState']>;
 
 type McpUpstreamServer = {
 	serverName: string;
@@ -260,7 +227,6 @@ export type {
 	McpUpstreamResourceTemplates,
 	McpUpstreamResourceTemplatesMap,
 	McpUpstreamServer,
-	McpUpstreamStatus,
 	McpUpstreamTools,
 	McpUpstreamToolsMap,
 	OnValidationError,

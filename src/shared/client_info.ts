@@ -5,11 +5,7 @@ const clientInfoType = type({
 	version: 'string',
 	'title?': 'string',
 });
-type ClientInfo = {
-	name: string;
-	version: string;
-	title?: string;
-};
+type ClientInfo = typeof clientInfoType.infer;
 
 const parseClientInfo = (value: unknown): ClientInfo | undefined => {
 	if (!clientInfoType.allows(value)) return undefined;
@@ -25,4 +21,4 @@ const parseClientInfo = (value: unknown): ClientInfo | undefined => {
 };
 
 export type { ClientInfo };
-export { parseClientInfo };
+export { clientInfoType, parseClientInfo };

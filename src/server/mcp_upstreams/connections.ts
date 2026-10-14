@@ -9,12 +9,12 @@ import type {
 	McpUpstreamBackend,
 	McpUpstreamErrorState,
 	McpUpstreamServer,
-	McpUpstreamStatus,
 	OnValidationError,
 } from '@/server/mcp_upstreams/types';
 import type { TrafficStore } from '@/server/traffic_store';
 import { errorMessage } from '@/shared/common';
 import { SUPPORTED_PROTOCOL_VERSIONS } from '@/shared/mcp_protocol';
+import type { McpUpstreamStatus } from '@/shared/ui_api';
 
 const RECONNECT_INITIAL_DELAY_MS = 5000;
 const RECONNECT_MAX_DELAY_MS = 60_000;

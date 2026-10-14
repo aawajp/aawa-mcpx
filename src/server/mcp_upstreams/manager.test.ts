@@ -10,7 +10,7 @@ import {
 import { logger } from '@/server/logger';
 import { createMcpUpstreamManager } from '@/server/mcp_upstreams/manager';
 import { ProtocolClient } from '@/server/mcp_upstreams/protocol_client';
-import type { McpUpstreamStatus } from '@/server/mcp_upstreams/types';
+import type { McpUpstreamStatus } from '@/shared/ui_api';
 
 import { expect, spyOn, test } from 'bun:test';
 

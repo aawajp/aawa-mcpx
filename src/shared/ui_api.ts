@@ -1,5 +1,6 @@
 import { type } from 'arktype';
 
+import { clientInfoType } from '@/shared/client_info';
 import {
 	listPromptsResultType,
 	listResourcesResultType,
@@ -17,13 +18,6 @@ const implementationInfoType = type({
 });
 
 const capabilitiesInfoType = type('Record<string, unknown>');
-
-const clientInfoType = type({
-	name: 'string',
-	'title?': 'string',
-	version: 'string',
-	'[string]': 'unknown',
-});
 
 const clientActivityType = type({
 	client: clientInfoType,
@@ -45,10 +39,6 @@ const backendStatusSharedFields = {
 	'implementation?': implementationInfoType,
 	'capabilities?': capabilitiesInfoType,
 	'instructions?': 'string',
-	tools: listToolsResultType,
-	prompts: listPromptsResultType,
-	resources: listResourcesResultType,
-	'[string]': 'unknown',
 } as const;
 
 const backendStatusType = type(
@@ -65,10 +55,17 @@ const backendStatusType = type(
 	},
 );
 
+// The dashboard shows each backend's status with its catalogs.
+const backendOverviewType = backendStatusType.and({
+	tools: listToolsResultType,
+	prompts: listPromptsResultType,
+	resources: listResourcesResultType,
+});
+
 const overviewResponseType = type({
 	'protocolVersion?': 'string',
 	'supportedProtocolVersions?': 'string[]',
-	backends: backendStatusType.array(),
+	backends: backendOverviewType.array(),
 	clients: clientActivityType.array(),
 	'[string]': 'unknown',
 });
@@ -90,32 +87,29 @@ const trafficRecordType = type({
 	request: 'unknown',
 	response: 'unknown',
 	createdAt: 'number.integer',
-	'[string]': 'unknown',
 });
 
 const trafficPageType = type({
 	records: trafficRecordType.array(),
 	total: 'number.integer >= 0',
-	'[string]': 'unknown',
 });
 
-const backendTrafficResponseType = type({
+const backendTrafficResponseType = trafficPageType.and({
 	backend: 'string',
 	'method?': 'string',
 	'errorsOnly?': 'boolean',
-	records: trafficRecordType.array(),
-	total: 'number.integer >= 0',
-	'[string]': 'unknown',
 });
 
 type Tool = typeof toolType.infer;
 type McpUpstreamStatus = typeof backendStatusType.infer;
+type BackendOverview = typeof backendOverviewType.infer;
 type ClientActivity = typeof clientActivityType.infer;
 type OverviewResponse = typeof overviewResponseType.infer;
 type TrafficRecord = typeof trafficRecordType.infer;
 type TrafficPage = typeof trafficPageType.infer;
 
 export type {
+	BackendOverview,
 	ClientActivity,
 	McpUpstreamStatus,
 	OverviewResponse,

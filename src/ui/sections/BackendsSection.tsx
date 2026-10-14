@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 
-import type { McpUpstreamStatus } from '@/shared/ui_api';
+import type { BackendOverview, McpUpstreamStatus } from '@/shared/ui_api';
 import {
 	Card,
 	CardContent,
@@ -47,7 +47,7 @@ const backendEndpoint = (
 };
 
 type Props = {
-	backends: McpUpstreamStatus[];
+	backends: BackendOverview[];
 	onRefresh: (serverName: string) => void;
 	isRefreshing: boolean;
 	onToggleBackend: (params: { serverName: string; enabled: boolean }) => void;

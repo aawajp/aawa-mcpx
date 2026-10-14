@@ -1,7 +1,7 @@
 import { type SubmitEvent, useEffect, useMemo, useState } from 'react';
 
 import { errorMessage } from '@/shared/common';
-import type { McpUpstreamStatus, Tool } from '@/shared/ui_api';
+import type { BackendOverview, Tool } from '@/shared/ui_api';
 import { postJson } from '@/ui/api/client';
 import { Button } from '@/ui/base_components/button';
 import {
@@ -29,7 +29,7 @@ type ToolField = {
 };
 
 type Props = {
-	backends: McpUpstreamStatus[];
+	backends: BackendOverview[];
 };
 
 const asRecord = (value: unknown): Record<string, unknown> | null => {

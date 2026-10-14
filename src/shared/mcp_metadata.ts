@@ -1,11 +1,12 @@
 import { type } from 'arktype';
 
+import { clientInfoType } from '@/shared/client_info';
 import {
 	CLIENT_CAPABILITIES_META,
 	CLIENT_INFO_META,
 	PROTOCOL_VERSION_META,
 } from '@/shared/mcp_protocol';
-import { jsonObjectType } from '@/shared/mcp_schemas';
+import { iconType, jsonObjectType } from '@/shared/mcp_schemas';
 
 // The 2026 schema adds extensions and removes legacy roots.listChanged. Known
 // capability fields are checked; unknown fields remain available to extensions.
@@ -48,21 +49,14 @@ const legacyRequestMetadataType = type({
 const requestMetadataType = type({
 	[PROTOCOL_VERSION_META]: 'string',
 	[CLIENT_CAPABILITIES_META]: clientCapabilitiesType,
-	[`${CLIENT_INFO_META}?`]: type({
-		name: 'string',
-		version: 'string',
-		'title?': 'string',
-		'description?': 'string',
-		'websiteUrl?': 'string.url',
-		'icons?': type({
-			src: 'string.url',
-			'mimeType?': 'string',
-			'sizes?': 'string[]',
-			'theme?': "'light' | 'dark'",
+	[`${CLIENT_INFO_META}?`]: clientInfoType
+		.and({
+			'description?': 'string',
+			'websiteUrl?': 'string.url',
+			'icons?': iconType.array(),
 			'[string]': 'unknown',
-		}).array(),
-		'[string]': 'unknown',
-	}).and(jsonObjectType),
+		})
+		.and(jsonObjectType),
 	'io.modelcontextprotocol/logLevel?':
 		"'debug' | 'info' | 'notice' | 'warning' | 'error' | 'critical' | 'alert' | 'emergency'",
 	'progressToken?': 'string | number.integer',

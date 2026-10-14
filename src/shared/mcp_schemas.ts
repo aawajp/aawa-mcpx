@@ -104,6 +104,14 @@ const annotationsType = type({
 	'[string]': 'unknown',
 }).and(jsonObjectType);
 
+const iconType = type({
+	src: 'string.url',
+	'mimeType?': 'string',
+	'sizes?': 'string[]',
+	'theme?': "'light' | 'dark'",
+	'[string]': 'unknown',
+});
+
 const contentMetadata = {
 	'annotations?': annotationsType,
 	'_meta?': jsonObjectType,
@@ -143,13 +151,7 @@ const toolContentType = type({
 		'description?': 'string',
 		'mimeType?': 'string',
 		'size?': 'number',
-		'icons?': type({
-			src: 'string.url',
-			'mimeType?': 'string',
-			'sizes?': 'string[]',
-			'theme?': "'light' | 'dark'",
-			'[string]': 'unknown',
-		}).array(),
+		'icons?': iconType.array(),
 		...contentMetadata,
 	})
 	.or({
@@ -193,6 +195,7 @@ const pingResultType = type({
 export {
 	callToolResultType,
 	getPromptResultType,
+	iconType,
 	jsonObjectType,
 	jsonRpcResponseType,
 	listPromptsResultType,
