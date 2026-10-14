@@ -8,6 +8,7 @@ import { BackendRpcError } from '@/server/mcp_upstreams/protocol_client';
 import { createToolResultNormalizer } from '@/server/mcp_upstreams/tool_result';
 import type {
 	CallToolParams,
+	Client,
 	GetPromptParams,
 	McpUpstreamBackend,
 	ReadResourceParams,
@@ -50,23 +51,53 @@ const createMcpUpstreamOperations = (
 	const { getBackend, trafficStore, waitForRateLimit } = params;
 	const normalizeToolResult = createToolResultNormalizer();
 
-	const callTool = async (
-		callParams: CallToolParams,
-	): Promise<ToolCallResult> => {
-		const { args } = callParams;
-		const { serverName, tool, validateInput, headerParameters } =
-			callParams.tool;
-		callParams.signal?.throwIfAborted();
-		// The catalog lookup that produced the tool checked that its backend is
-		// enabled; only the connection can be missing.
+	// The enabled, connected backend a request goes to.
+	const connectedBackend = (serverName: string, signal?: AbortSignal) => {
+		signal?.throwIfAborted();
 		const server = getBackend(serverName);
 		const client = server?.client;
+		if (!server?.serverConfig.enabled)
+			throw new BackendRpcError(
+				`MCP upstream "${serverName}" is unknown or disabled`,
+				-32602,
+			);
 		if (!client)
 			throw new BackendRpcError(
 				`MCP upstream "${serverName}" is not available`,
 				-32603,
 			);
+		return {
+			server,
+			client,
+		};
+	};
 
+	// Sends one request after the backend's rate limit and logs its traffic.
+	const send = async <T>(params: {
+		server: McpUpstreamBackend;
+		client: Client;
+		method: string;
+		request: unknown;
+		signal?: AbortSignal;
+		invoke: () => Promise<T>;
+	}): Promise<T> => {
+		await waitForRateLimit(params.server, params.signal);
+		params.signal?.throwIfAborted();
+		return wrapBackendFailure(params.server.serverName, params.signal, () =>
+			runLoggedRequest({
+				...params,
+				trafficStore,
+			}),
+		);
+	};
+
+	const callTool = async (
+		callParams: CallToolParams,
+	): Promise<ToolCallResult> => {
+		const { args, signal } = callParams;
+		const { serverName, tool, validateInput, headerParameters } =
+			callParams.tool;
+		const { server, client } = connectedBackend(serverName, signal);
 		// The catalog compiled the schema once. Both dashboard and MCP calls
 		// validate their arguments here exactly once, before any backend work.
 		const inputIssue = validateInput(args);
@@ -83,125 +114,84 @@ const createMcpUpstreamOperations = (
 				throw new BackendRpcError(message, -32602);
 			return toolErrorResult(message);
 		}
-		await waitForRateLimit(server, callParams.signal);
-		callParams.signal?.throwIfAborted();
-		return wrapBackendFailure(serverName, callParams.signal, async () => {
-			const result = await runLoggedRequest<ToolCallResult>({
-				signal: callParams.signal,
-				server,
-				client,
-				method: `tools/call:${tool.name}`,
-				request: args,
-				invoke: () =>
-					client.callTool(
-						{
-							name: tool.name,
-							arguments: args,
-							_meta: callParams.metadata,
-						},
-						{
-							mirroredHeaders: callParams.mirroredHeaders,
-							headerParameters,
-							signal: callParams.signal,
-						},
-					),
-				trafficStore,
-			});
-			return normalizeToolResult(result, tool.outputSchema, {
-				backend: serverName,
-				tool: tool.name,
-				protocolVersion: client.protocolVersion,
-			});
+		const result = await send({
+			server,
+			client,
+			method: `tools/call:${tool.name}`,
+			request: args,
+			signal,
+			invoke: () =>
+				client.callTool(
+					{
+						name: tool.name,
+						arguments: args,
+						_meta: callParams.metadata,
+					},
+					{
+						mirroredHeaders: callParams.mirroredHeaders,
+						headerParameters,
+						signal,
+					},
+				),
+		});
+		return normalizeToolResult(result, tool.outputSchema, {
+			backend: serverName,
+			tool: tool.name,
+			protocolVersion: client.protocolVersion,
 		});
 	};
 
 	const getPrompt = async (
 		promptParams: GetPromptParams,
 	): Promise<GetPromptResult> => {
-		const { serverName, promptName, args } = promptParams;
-		promptParams.signal?.throwIfAborted();
-		const server = getBackend(serverName);
-		const client = server?.client;
-		if (!server?.serverConfig.enabled)
-			throw new BackendRpcError(
-				`MCP upstream "${serverName}" is unknown or disabled`,
-				-32602,
-			);
-		if (!client)
-			throw new BackendRpcError(
-				`MCP upstream "${serverName}" is not available`,
-				-32603,
-			);
-
-		await waitForRateLimit(server, promptParams.signal);
-		promptParams.signal?.throwIfAborted();
-		return wrapBackendFailure(serverName, promptParams.signal, () =>
-			runLoggedRequest<GetPromptResult>({
-				signal: promptParams.signal,
-				server,
-				client,
-				method: `prompts/get:${promptName}`,
-				request: args,
-				invoke: () =>
-					client.getPrompt(
-						{
-							name: promptName,
-							arguments: args,
-							_meta: promptParams.metadata,
-						},
-						{
-							mirroredHeaders: promptParams.mirroredHeaders,
-							signal: promptParams.signal,
-						},
-					),
-				trafficStore,
-			}),
-		);
+		const { serverName, promptName, args, signal } = promptParams;
+		const { server, client } = connectedBackend(serverName, signal);
+		return send({
+			server,
+			client,
+			method: `prompts/get:${promptName}`,
+			request: args,
+			signal,
+			invoke: () =>
+				client.getPrompt(
+					{
+						name: promptName,
+						arguments: args,
+						_meta: promptParams.metadata,
+					},
+					{
+						mirroredHeaders: promptParams.mirroredHeaders,
+						signal,
+					},
+				),
+		});
 	};
 
 	const readResource = async (
 		resourceParams: ReadResourceParams,
 	): Promise<ReadResourceResult> => {
-		const { serverName, uri } = resourceParams;
-		resourceParams.signal?.throwIfAborted();
-		const server = getBackend(serverName);
-		const client = server?.client;
-		if (!server?.serverConfig.enabled)
-			throw new BackendRpcError(
-				`MCP upstream "${serverName}" is unknown or disabled`,
-				-32602,
-			);
-		if (!client)
-			throw new BackendRpcError(
-				`MCP upstream "${serverName}" is not available`,
-				-32603,
-			);
-
-		await waitForRateLimit(server, resourceParams.signal);
-		resourceParams.signal?.throwIfAborted();
-		return wrapBackendFailure(serverName, resourceParams.signal, () =>
-			runLoggedRequest<ReadResourceResult>({
-				signal: resourceParams.signal,
-				server,
-				client,
-				method: `resources/read:${uri}`,
-				request: {
-					uri,
-				},
-				invoke: () =>
-					client.readResource(
-						{
-							uri,
-							_meta: resourceParams.metadata,
-						},
-						{
-							mirroredHeaders: resourceParams.mirroredHeaders,
-							signal: resourceParams.signal,
-						},
-					),
-				trafficStore,
-			}),
-		);
+		const { serverName, uri, signal } = resourceParams;
+		const { server, client } = connectedBackend(serverName, signal);
+		return send({
+			server,
+			client,
+			method: `resources/read:${uri}`,
+			request: {
+				uri,
+			},
+			signal,
+			invoke: () =>
+				client.readResource(
+					{
+						uri,
+						_meta: resourceParams.metadata,
+					},
+					{
+						mirroredHeaders: resourceParams.mirroredHeaders,
+						signal,
+					},
+				),
+		});
 	};
 
 	return {

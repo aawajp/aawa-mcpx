@@ -24,6 +24,7 @@ Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 #### Changed
 
+- Share one backend request path for tool calls, prompts, and resource reads.
 - Simplify the backend protocol client.
 - Define each shared type and schema once.
 - Resolve each tool once per call; a call to a tool hidden for an unusable
