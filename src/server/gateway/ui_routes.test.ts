@@ -141,13 +141,16 @@ test('dashboard API errors are JSON with the reason and a client status', async 
 			async toggleTool(): Promise<string[]> {
 				throw new Error('Config write failed');
 			},
-			async callTool(params: { toolName: string }) {
-				throw params.toolName === 'disabled'
-					? new BackendRpcError(
-							'Tool "disabled" is unknown or disabled',
-							-32602,
-						)
-					: new BackendRpcError('Backend exploded', -32603);
+			getEnabledTool(params: { toolName: string }) {
+				if (params.toolName === 'disabled')
+					throw new BackendRpcError(
+						'Tool "disabled" is unknown or disabled',
+						-32602,
+					);
+				return params;
+			},
+			async callTool() {
+				throw new BackendRpcError('Backend exploded', -32603);
 			},
 		} as unknown as McpUpstreamManager,
 		shutdownSignal: new AbortController().signal,

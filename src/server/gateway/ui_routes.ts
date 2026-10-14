@@ -200,8 +200,10 @@ const createUiRoutes = (params: CreateUiRoutesParams) => {
 				if (missing) return missing;
 				try {
 					const result = await mcpUpstreamManager.callTool({
-						serverName: body.serverName,
-						toolName: body.toolName,
+						tool: mcpUpstreamManager.getEnabledTool({
+							serverName: body.serverName,
+							toolName: body.toolName,
+						}),
 						args: body.arguments ?? {},
 					});
 					return Response.json({

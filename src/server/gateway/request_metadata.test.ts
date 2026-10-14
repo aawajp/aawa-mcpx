@@ -1,5 +1,6 @@
 import { createHandlers } from '@/server/gateway/mcp_handlers';
 import { createMcpRequestRouter } from '@/server/gateway/mcp_request_router';
+import { enabledTools, toolLookup } from '@/server/gateway/route_fixture';
 import { createMcpUpstreamBackend } from '@/server/mcp_upstreams/connections';
 import { createInputSchemaCompiler } from '@/server/mcp_upstreams/input_schema';
 import { createMcpUpstreamOperations } from '@/server/mcp_upstreams/method_calls';
@@ -47,42 +48,27 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 			if ('issue' in compiled) throw new Error(compiled.issue.detail);
 			const validate = mock(compiled.validate);
 			const operations = createMcpUpstreamOperations({
-				getEnabledTool: ({ toolName }) =>
-					toolName === 'echo'
-						? {
-								tool: {
-									name: 'echo',
-									inputSchema: {
-										type: 'object',
-									},
-								},
-								inputValidator: {
-									validate,
-								},
-							}
-						: undefined,
 				getBackend: () => ({
 					...createMcpUpstreamBackend(server),
 					client,
 				}),
 				waitForRateLimit: async () => undefined,
 			});
+			const tools = [
+				{
+					serverName: 'backend',
+					tool: {
+						name: 'echo',
+						inputSchema,
+					},
+					validateInput: validate,
+					headerParameters: [],
+				},
+			];
 			const manager = {
 				...operations,
-				listEnabledTools: () =>
-					new Map([
-						[
-							'backend',
-							{
-								tools: [
-									{
-										name: 'echo',
-										inputSchema,
-									},
-								],
-							},
-						],
-					]),
+				listEnabledTools: () => tools,
+				getEnabledTool: toolLookup(tools),
 			} as unknown as McpUpstreamManager;
 			const route = createMcpRequestRouter({
 				handlers: createHandlers({
@@ -250,9 +236,18 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 		const callTool = mock(async (_params: CallToolParams) => ({
 			content: [],
 		}));
+		const tools = enabledTools('backend', [
+			{
+				name: 'echo',
+				inputSchema: {
+					type: 'object',
+				},
+			},
+		]);
 		const manager = {
 			callTool,
-			listEnabledTools: () => new Map(),
+			listEnabledTools: () => tools,
+			getEnabledTool: toolLookup(tools),
 		} as unknown as McpUpstreamManager;
 		const route = createMcpRequestRouter({
 			handlers: createHandlers({

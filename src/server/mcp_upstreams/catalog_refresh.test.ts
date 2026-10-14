@@ -138,8 +138,8 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 				expect(
 					manager
 						.listEnabledTools()
-						.get('selected')
-						?.tools.map((tool) => tool.name),
+						.filter(({ serverName }) => serverName === 'selected')
+						.map(({ tool }) => tool.name),
 				).toEqual(['keep']);
 				const persisted = mcpConfigType.assert(
 					await Bun.file(path.join(root, 'mcp.json')).json(),

@@ -180,7 +180,6 @@ const createMcpUpstreamManager = (
 	};
 
 	const operations = createMcpUpstreamOperations({
-		getEnabledTool: catalog.getEnabledTool,
 		getBackend: connections.getBackend,
 		trafficStore,
 		waitForRateLimit: connections.waitForRateLimit,
@@ -211,6 +210,7 @@ const createMcpUpstreamManager = (
 		disconnect: connections.disconnect,
 		listAllTools: catalog.listAllTools,
 		listEnabledTools: catalog.listEnabledTools,
+		getEnabledTool: catalog.getEnabledTool,
 		listAllPrompts: catalog.listAllPrompts,
 		listAllResources: catalog.listAllResources,
 		listEnabledPrompts: catalog.listEnabledPrompts,

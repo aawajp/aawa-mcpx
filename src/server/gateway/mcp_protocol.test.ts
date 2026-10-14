@@ -1,6 +1,11 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types';
 
-import { createRouteFixture, mcpPost } from '@/server/gateway/route_fixture';
+import {
+	createRouteFixture,
+	enabledTools,
+	mcpPost,
+	toolLookup,
+} from '@/server/gateway/route_fixture';
 import { createOutputSchemaValidator } from '@/server/mcp_upstreams/output_schema';
 import { BackendRpcError } from '@/server/mcp_upstreams/protocol_client';
 import { createToolResultNormalizer } from '@/server/mcp_upstreams/tool_result';
@@ -31,21 +36,16 @@ const fixture = () => {
 	};
 	const manager = {
 		listEnabledTools: () =>
-			new Map([
-				[
-					'backend',
-					{
-						tools: [
-							{
-								name: 'echo',
-								inputSchema: {
-									type: 'object',
-								},
-							},
-						],
+			enabledTools('backend', [
+				{
+					name: 'echo',
+					inputSchema: {
+						type: 'object',
 					},
-				],
+				},
 			]),
+		getEnabledTool: (params: { serverName: string; toolName: string }) =>
+			toolLookup(manager.listEnabledTools())(params),
 		callTool: async (params: { args: Record<string, unknown> }) => ({
 			content: [
 				{
@@ -307,21 +307,14 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 		};
 		let outputSchema: unknown = schema;
 		manager.listEnabledTools = () =>
-			new Map([
-				[
-					'backend',
-					{
-						tools: [
-							{
-								name: 'echo',
-								inputSchema: {
-									type: 'object',
-								},
-								outputSchema: outputSchema as Tool['outputSchema'],
-							},
-						],
+			enabledTools('backend', [
+				{
+					name: 'echo',
+					inputSchema: {
+						type: 'object',
 					},
-				],
+					outputSchema: outputSchema as Tool['outputSchema'],
+				},
 			]);
 		let backendResult: ToolCallResult = {
 			content: [],
@@ -837,18 +830,11 @@ test('modern mirrors use refreshed rules exactly once and reject recognized surp
 		},
 	};
 	manager.listEnabledTools = () =>
-		new Map([
-			[
-				'backend',
-				{
-					tools: [
-						{
-							name: 'echo',
-							inputSchema: schema,
-						},
-					],
-				},
-			],
+		enabledTools('backend', [
+			{
+				name: 'echo',
+				inputSchema: schema,
+			},
 		]);
 	manager.refreshStaleCatalogs = async () => {
 		schema = {
@@ -974,32 +960,25 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 		const invoke = mock(manager.callTool);
 		manager.callTool = invoke;
 		manager.listEnabledTools = () =>
-			new Map([
-				[
-					'backend',
-					{
-						tools: [
-							{
-								name: 'echo',
-								inputSchema: {
-									type: 'object',
-								},
-							},
-							{
-								name: 'bad',
-								inputSchema: {
-									type: 'object',
-									properties: {
-										value: {
-											type: 'number',
-											'x-mcp-header': 'Value',
-										},
-									},
-								},
-							},
-						],
+			enabledTools('backend', [
+				{
+					name: 'echo',
+					inputSchema: {
+						type: 'object',
 					},
-				],
+				},
+				{
+					name: 'bad',
+					inputSchema: {
+						type: 'object',
+						properties: {
+							value: {
+								type: 'number',
+								'x-mcp-header': 'Value',
+							},
+						},
+					},
+				},
 			]);
 		let session: string | null = null;
 		const send = (method: string, params: Record<string, unknown> = {}) => {

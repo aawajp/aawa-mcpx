@@ -1,7 +1,7 @@
 import { createHandlers } from '@/server/gateway/mcp_handlers';
 import { createMcpRequestRouter } from '@/server/gateway/mcp_request_router';
+import { enabledTools, toolLookup } from '@/server/gateway/route_fixture';
 import { createMcpUpstreamBackend } from '@/server/mcp_upstreams/connections';
-import { createInputSchemaCompiler } from '@/server/mcp_upstreams/input_schema';
 import { createMcpUpstreamOperations } from '@/server/mcp_upstreams/method_calls';
 import { ProtocolClient } from '@/server/mcp_upstreams/protocol_client';
 import { startFixtureBackend } from '@/server/mcp_upstreams/protocol_fixture';
@@ -79,21 +79,16 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 			const inputSchema = {
 				type: 'object' as const,
 			};
-			const compiled = createInputSchemaCompiler()(inputSchema);
+			const tools = [...servers.keys()].flatMap((name) =>
+				enabledTools(name, [
+					{
+						name: 'echo',
+						inputSchema,
+					},
+				]),
+			);
 			const rateLimit = mock(async () => undefined);
 			const operations = createMcpUpstreamOperations({
-				getEnabledTool: ({ toolName }) =>
-					toolName === 'echo'
-						? {
-								tool: {
-									name: 'echo',
-									inputSchema: {
-										type: 'object',
-									},
-								},
-								inputValidator: compiled,
-							}
-						: undefined,
 				getBackend: (name) => {
 					const existing = servers.get(name);
 					if (existing)
@@ -115,20 +110,8 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 			});
 			const manager = {
 				...operations,
-				listEnabledTools: () =>
-					new Map(
-						[...servers.keys()].map((name) => [
-							name,
-							{
-								tools: [
-									{
-										name: 'echo',
-										inputSchema,
-									},
-								],
-							},
-						]),
-					),
+				listEnabledTools: () => tools,
+				getEnabledTool: toolLookup(tools),
 				listEnabledPrompts: () =>
 					new Map(
 						[...servers.keys()].map((name) => [

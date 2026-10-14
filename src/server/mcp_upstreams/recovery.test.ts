@@ -336,7 +336,6 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 							mode: 'hang',
 						},
 					},
-					undefined,
 					{
 						timeout: 20,
 					},

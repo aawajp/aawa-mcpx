@@ -241,8 +241,10 @@ HTTP 400 / `-32020`. Notifications and responses on this path return HTTP 400 / 
 carry between requests, and stay separate from backend capabilities: the gateway
 advertises only features it implements.
 
-Tool `x-mcp-header` rules compile once per catalog schema, and failures are cached
-the same way. Stale catalogs refresh before public header checks. A tool with invalid
+The catalog compiles each tool's `x-mcp-header` rules once when it fetches the
+tool, failures included. A call resolves its tool once and uses those rules for
+both the public header check and the backend hop. Stale catalogs refresh before
+public header checks. A tool with invalid
 annotations is hidden from 2026 HTTP clients, with a warning, but stays in the
 catalog and in `enabledTools`. When the backend itself is a 2026 HTTP backend,
 calls to that tool fail before reaching it, because its headers cannot be built.
@@ -363,12 +365,13 @@ The shared MCP/dashboard call path:
 ### 4.2 Input schemas and arguments
 
 Every supported revision requires `inputSchema.type: "object"`. Catalog fetches
-validate and compile input schemas once, including failed compilation results;
-MCP calls and dashboard tests reuse those validators for one argument-validation
-pass before rate limiting or dispatch. Input mismatches never reach backends.
+validate and compile input schemas once; MCP calls and dashboard tests reuse
+those validators for one argument-validation pass before rate limiting or
+dispatch. Input mismatches never reach backends.
 
-Unusable schemas hide only the affected tool from MCP catalogs and block its
-calls, with a warning. Raw dashboard definitions and exposure settings remain,
+Unusable schemas hide only the affected tool from MCP catalogs, with a warning.
+One rule decides which tools MCP clients see and call, so a call to a hidden
+tool returns `-32602` like an unknown one. Raw dashboard definitions and exposure settings remain,
 so a refresh restores the tool after its schema is repaired.
 
 Malformed call parameters return JSON-RPC `-32602` in every revision. Objects that
@@ -464,8 +467,7 @@ is preserved only for [2025-11-25](https://modelcontextprotocol.io/specification
 For `tools/call`, `prompts/get`, and `resources/read`, transport and
 malformed-result failures become `-32603` RPC errors: HTTP 200 for 2025 clients,
 HTTP 500 for 2026 clients. Prompt messages and resource contents are validated
-like tool content blocks. An exposed tool with an unusable input schema also
-returns `-32603`.
+like tool content blocks.
 
 Ordinary 2025 RPC errors keep HTTP 200. Gateway-generated transport errors use
 JSON-RPC `-32600` with these HTTP statuses: missing session 400, unknown session

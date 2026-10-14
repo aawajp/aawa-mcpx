@@ -71,29 +71,20 @@ type HeaderParameter = {
 	path: string[];
 	type: string;
 };
-const toolHeaderParameters = (schema: unknown): HeaderParameter[] => {
+// Header rules for a tool's arguments, or the reason its annotations are
+// invalid. The catalog compiles them once per fetched tool.
+const toolHeaderParameters = (schema: unknown): HeaderParameter[] | Error => {
 	const object = recordOf(schema);
 	if (!object) return [];
-	const cached = headerRules.get(object);
-	if (cached instanceof Error) throw cached;
-	if (cached) return cached;
 	try {
-		const parameters = compileToolHeaderParameters(object);
-		headerRules.set(object, parameters);
-		return parameters;
+		return compileToolHeaderParameters(object);
 	} catch (error) {
-		const issue =
-			error instanceof Error
-				? error
-				: new Error('Invalid x-mcp-header annotation');
-		headerRules.set(object, issue);
-		throw issue;
+		return error instanceof Error
+			? error
+			: new Error('Invalid x-mcp-header annotation');
 	}
 };
 
-// Catalog fetch compiles these rules, including failures. Schema identity survives
-// namespacing; both HTTP hops reuse them until a refresh replaces the schema object.
-const headerRules = new WeakMap<object, HeaderParameter[] | Error>();
 const schemaMaps = new Set([
 	'properties',
 	'patternProperties',
@@ -210,7 +201,7 @@ const validateToolHeaders = (
 const protocolHeaders = (
 	method: string,
 	params: Record<string, unknown>,
-	schema?: unknown,
+	parameters: HeaderParameter[] = [],
 ): Headers => {
 	const headers = new Headers({
 		'MCP-Protocol-Version': CURRENT_PROTOCOL_VERSION,
@@ -223,7 +214,7 @@ const protocolHeaders = (
 	)
 		headers.set('Mcp-Name', encodeHeaderValue(name));
 	if (method !== 'tools/call') return headers;
-	for (const parameter of toolHeaderParameters(schema)) {
+	for (const parameter of parameters) {
 		let value: unknown = params.arguments;
 		for (const key of parameter.path) value = recordOf(value)?.[key];
 		if (value === undefined || value === null) continue;
@@ -241,7 +232,7 @@ const protocolHeaders = (
 	return headers;
 };
 
-export type { ProtocolVersion };
+export type { HeaderParameter, ProtocolVersion };
 export {
 	CACHEABLE_METHODS,
 	CLIENT_CAPABILITIES_META,

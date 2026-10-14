@@ -169,7 +169,7 @@ test('lists a backend does not advertise are never requested', async () => {
 	expect(statusErrors).toBe(0);
 });
 
-test('MCP lists skip disabled backends and backends with a configuration error', () => {
+test('MCP lists and tool lookups skip disabled backends and backends with a configuration error', async () => {
 	const createBackend = (serverName: string, enabled: boolean) => {
 		const backend = createMcpUpstreamBackend({
 			serverName,
@@ -181,16 +181,21 @@ test('MCP lists skip disabled backends and backends with a configuration error',
 				trafficLimit: 1,
 			},
 		});
-		backend.tools = {
-			tools: [
-				{
-					name: 'alpha',
-					inputSchema: {
-						type: 'object',
+		backend.client = {
+			getServerCapabilities: () => ({
+				tools: {},
+			}),
+			listTools: async () => ({
+				tools: [
+					{
+						name: 'alpha',
+						inputSchema: {
+							type: 'object',
+						},
 					},
-				},
-			],
-		};
+				],
+			}),
+		} as unknown as Client;
 		backend.prompts = {
 			prompts: [
 				{
@@ -240,11 +245,33 @@ test('MCP lists skip disabled backends and backends with a configuration error',
 		waitForRateLimit: async () => undefined,
 	});
 
+	// Fetching compiles each tool; a fetch clears configError when enabledTools
+	// is valid, so mark the broken backend afterwards.
+	for (const backend of backends.values()) await catalog.fetchTools(backend);
+	broken.configError = true;
+
 	const all = ['ok', 'off', 'broken'];
 	expect([...catalog.listAllTools().keys()]).toEqual(all);
 	expect([...catalog.listAllPrompts().keys()]).toEqual(all);
 	expect([...catalog.listAllResources().keys()]).toEqual(all);
-	expect([...catalog.listEnabledTools().keys()]).toEqual(['ok']);
+	expect(
+		catalog
+			.listEnabledTools()
+			.map(({ serverName, tool }) => `${serverName}/${tool.name}`),
+	).toEqual(['ok/alpha']);
+	expect(
+		catalog.getEnabledTool({
+			serverName: 'ok',
+			toolName: 'alpha',
+		}).tool.name,
+	).toBe('alpha');
+	for (const serverName of ['off', 'broken', 'missing'])
+		expect(() =>
+			catalog.getEnabledTool({
+				serverName,
+				toolName: 'alpha',
+			}),
+		).toThrow('is unknown or disabled');
 	expect([...catalog.listEnabledPrompts().keys()]).toEqual(['ok']);
 	expect([...catalog.listEnabledResources().keys()]).toEqual(['ok']);
 	expect([...catalog.listEnabledResourceTemplates().keys()]).toEqual(['ok']);

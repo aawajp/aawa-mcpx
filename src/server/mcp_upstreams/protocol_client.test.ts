@@ -1,6 +1,7 @@
 import { createHandlers } from '@/server/gateway/mcp_handlers';
 import { createMcpRequestRouter } from '@/server/gateway/mcp_request_router';
 import { createMcpSessionManager } from '@/server/gateway/mcp_session';
+import { enabledTools, toolLookup } from '@/server/gateway/route_fixture';
 import { logger } from '@/server/logger';
 import {
 	BackendRpcError,
@@ -12,7 +13,10 @@ import {
 	fixtureReply,
 	startFixtureBackend,
 } from '@/server/mcp_upstreams/protocol_fixture';
-import type { McpUpstreamManager } from '@/server/mcp_upstreams/types';
+import type {
+	CallToolParams,
+	McpUpstreamManager,
+} from '@/server/mcp_upstreams/types';
 import {
 	CLIENT_CAPABILITIES_META,
 	CURRENT_PROTOCOL_VERSION,
@@ -20,6 +24,7 @@ import {
 	protocolHeaders,
 	recordOf,
 	SUPPORTED_PROTOCOL_VERSIONS,
+	toolHeaderParameters,
 } from '@/shared/mcp_protocol';
 
 import { expect, mock, spyOn, test } from 'bun:test';
@@ -115,8 +120,13 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 			'Mcp-Param-Opaque': 'forward me',
 		};
 		try {
-			const tools = (await client.listTools()).tools;
+			let tools = (await client.listTools()).tools;
 			expect(tools.map((tool) => tool.name)).toEqual(['echo', 'bad']);
+			// The catalog compiles each tool's header rules; calls pass them in.
+			const headerParameters = (name: string) =>
+				toolHeaderParameters(
+					tools.find((tool) => tool.name === name)?.inputSchema,
+				);
 			await client.callTool(
 				{
 					name: 'echo',
@@ -126,9 +136,9 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 						flag: false,
 					},
 				},
-				undefined,
 				{
 					mirroredHeaders,
+					headerParameters: headerParameters('echo'),
 				},
 			);
 			await client.callTool(
@@ -138,13 +148,13 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 						text: null,
 					},
 				},
-				undefined,
 				{
 					mirroredHeaders,
+					headerParameters: headerParameters('echo'),
 				},
 			);
 			headerName = 'Updated';
-			await client.listTools();
+			tools = (await client.listTools()).tools;
 			await client.callTool(
 				{
 					name: 'echo',
@@ -152,12 +162,12 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 						text: 'new',
 					},
 				},
-				undefined,
 				{
 					mirroredHeaders: {
 						'Mcp-Param-Updated': 'stale',
 						'Mcp-Param-Opaque': 'forward me',
 					},
+					headerParameters: headerParameters('echo'),
 				},
 			);
 			await client.getPrompt(
@@ -222,12 +232,17 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 				expect(calls[2]?.headers.get('Mcp-Param-Updated')).toBe('new');
 				expect(calls[2]?.headers.has('Mcp-Param-Text')).toBe(false);
 				await expect(
-					client.callTool({
-						name: 'bad',
-						arguments: {
-							value: 1,
+					client.callTool(
+						{
+							name: 'bad',
+							arguments: {
+								value: 1,
+							},
 						},
-					}),
+						{
+							headerParameters: headerParameters('bad'),
+						},
+					),
 				).rejects.toThrow('Invalid x-mcp-header annotation');
 				expect(
 					received.filter(({ message }) => message.method === 'tools/call'),
@@ -310,7 +325,6 @@ test('caller cancellation does not invalidate a healthy connection', async () =>
 				{
 					name: 'echo',
 				},
-				undefined,
 				{
 					signal: controller.signal,
 				},
@@ -675,15 +689,21 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 			try {
 				await client.connect();
 				expect(client.protocolVersion).toBe(version);
-				expect((await client.listTools()).tools[0]?.name).toBe('echo');
+				const [echo] = (await client.listTools()).tools;
+				expect(echo?.name).toBe('echo');
 				expect(
 					(
-						await client.callTool({
-							name: 'echo',
-							arguments: {
-								text: 'Hello, 世界',
+						await client.callTool(
+							{
+								name: 'echo',
+								arguments: {
+									text: 'Hello, 世界',
+								},
 							},
-						})
+							{
+								headerParameters: toolHeaderParameters(echo?.inputSchema),
+							},
+						)
 					).content,
 				).toEqual([
 					{
@@ -708,22 +728,25 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 					).contents,
 				).toHaveLength(1);
 				await client.ping();
-				const tools = await client.listTools();
+				const tools = enabledTools('fixture', (await client.listTools()).tools);
 				const sessions = createMcpSessionManager({
 					maxSessionsPerClient: 10,
 					protocolHeaderName: 'MCP-Protocol-Version',
 					supportedProtocolVersions: SUPPORTED_PROTOCOL_VERSIONS,
 				});
 				const manager = {
-					listEnabledTools: () => new Map([['fixture', tools]]),
-					callTool: (params: {
-						toolName: string;
-						args: Record<string, unknown>;
-					}) =>
-						client.callTool({
-							name: params.toolName,
-							arguments: params.args,
-						}),
+					listEnabledTools: () => tools,
+					getEnabledTool: toolLookup(tools),
+					callTool: (params: CallToolParams) =>
+						client.callTool(
+							{
+								name: params.tool.tool.name,
+								arguments: params.args,
+							},
+							{
+								headerParameters: params.tool.headerParameters,
+							},
+						),
 				} as unknown as McpUpstreamManager;
 				const route = createMcpRequestRouter({
 					handlers: createHandlers({
@@ -732,6 +755,10 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 					requireSession: sessions.requireSession,
 					handleInitialize: sessions.handleInitialize,
 				});
+				// Modern public HTTP mirrors the annotated argument in a header.
+				const mirroredHeaders = {
+					'Mcp-Param-Text': encodeHeaderValue('Hello, 世界'),
+				};
 				for (const externalVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 					const initial =
 						externalVersion === CURRENT_PROTOCOL_VERSION
@@ -766,6 +793,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 						{
 							sessionId: initial?.sessionId,
 							protocolVersion: externalVersion,
+							mirroredHeaders,
 						},
 					);
 					expect(
@@ -819,6 +847,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 							{
 								sessionId: initial?.sessionId,
 								protocolVersion: externalVersion,
+								mirroredHeaders,
 							},
 						);
 						const result =

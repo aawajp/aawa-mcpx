@@ -33,8 +33,7 @@ test('header values round-trip Unicode, whitespace, sentinels, BOM, and long str
 		expect(() => decodeHeaderValue(value)).toThrow();
 });
 
-test('header rules compile once per schema object, including failures, and ignore instance data', () => {
-	let reads = 0;
+test('header rules ignore instance data and report invalid annotations', () => {
 	const schema = {
 		type: 'object',
 		properties: {
@@ -43,10 +42,7 @@ test('header rules compile once per schema object, including failures, and ignor
 				properties: {
 					value: {
 						type: 'string',
-						get 'x-mcp-header'() {
-							reads++;
-							return 'Value';
-						},
+						'x-mcp-header': 'Value',
 					},
 				},
 			},
@@ -55,59 +51,39 @@ test('header rules compile once per schema object, including failures, and ignor
 			'x-mcp-header': 'literal instance data',
 		},
 	};
-	const first = toolHeaderParameters(schema);
-	expect(first).toEqual([
+	const rules = toolHeaderParameters(schema);
+	expect(rules).toEqual([
 		{
 			name: 'Value',
 			path: ['nested', 'value'],
 			type: 'string',
 		},
 	]);
-	const compiledReads = reads;
-	for (let index = 0; index < 3; index++) {
-		expect(toolHeaderParameters(schema)).toBe(first);
-		expect(
-			protocolHeaders(
-				'tools/call',
-				{
-					name: 'echo',
-					arguments: {
-						nested: {
-							value: 'works',
-						},
+	if (rules instanceof Error) throw rules;
+	expect(
+		protocolHeaders(
+			'tools/call',
+			{
+				name: 'echo',
+				arguments: {
+					nested: {
+						value: 'works',
 					},
 				},
-				schema,
-			).get('Mcp-Param-Value'),
-		).toBe('works');
-	}
-	expect(reads).toBe(compiledReads);
-	let badReads = 0;
-	const invalid = {
-		properties: {
-			value: {
-				type: 'number',
-				get 'x-mcp-header'() {
-					badReads++;
-					return 'Value';
-				},
 			},
-		},
-	};
-	expect(() => toolHeaderParameters(invalid)).toThrow();
-	const rejectedReads = badReads;
-	expect(() => toolHeaderParameters(invalid)).toThrow();
-	expect(badReads).toBe(rejectedReads);
+			rules,
+		).get('Mcp-Param-Value'),
+	).toBe('works');
 	expect(
 		toolHeaderParameters({
 			properties: {
 				value: {
-					type: 'string',
-					'x-mcp-header': 'Updated',
+					type: 'number',
+					'x-mcp-header': 'Value',
 				},
 			},
-		})[0]?.name,
-	).toBe('Updated');
+		}),
+	).toBeInstanceOf(Error);
 });
 
 test('only static primitive property paths are valid header sources', () => {
@@ -192,7 +168,7 @@ test('only static primitive property paths are valid header sources', () => {
 			},
 		},
 	])
-		expect(() => toolHeaderParameters(schema)).toThrow();
+		expect(toolHeaderParameters(schema)).toBeInstanceOf(Error);
 });
 
 test('recognized mirrors compare decoded values, safe integers, and omitted/null parameters', () => {
@@ -217,15 +193,16 @@ test('recognized mirrors compare decoded values, safe integers, and omitted/null
 		text: '\ufeffこんにちは',
 		flag: false,
 	};
+	const rules = toolHeaderParameters(schema);
+	if (rules instanceof Error) throw rules;
 	const headers = protocolHeaders(
 		'tools/call',
 		{
 			name: 'echo',
 			arguments: args,
 		},
-		schema,
+		rules,
 	);
-	const rules = toolHeaderParameters(schema);
 	headers.set('Mcp-Param-Count', '42.0');
 	headers.set('Mcp-Param-Unknown', 'opaque');
 	expect(validateToolHeaders(headers, args, rules)).toBeUndefined();

@@ -10,7 +10,7 @@ import { saveToolState } from '@/server/config/loader';
 import type { McpConfig } from '@/server/config/schema';
 import { logger } from '@/server/logger';
 import { createInputSchemaCompiler } from '@/server/mcp_upstreams/input_schema';
-import type { CompiledSchema } from '@/server/mcp_upstreams/json_schema';
+import { BackendRpcError } from '@/server/mcp_upstreams/protocol_client';
 import type {
 	Client,
 	EnabledTool,
@@ -81,7 +81,10 @@ const isMethodNotFoundError = (error: unknown): boolean => {
 
 const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 	const compileInputSchema = createInputSchemaCompiler();
-	const inputValidators = new WeakMap<Tool, CompiledSchema>();
+	const compiledTools = new WeakMap<
+		Tool,
+		Pick<EnabledTool, 'validateInput' | 'headerParameters'>
+	>();
 	const {
 		attemptReconnect,
 		backends,
@@ -212,28 +215,8 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 		tools: Tool[],
 	): void => {
 		for (const tool of tools) {
-			// Both modern HTTP hops need these rules. Cache successes and failures
-			// once per fetched schema; the tool stays in the catalog, and these
-			// annotations do not invalidate either 2025 contract.
-			try {
-				toolHeaderParameters(tool.inputSchema);
-			} catch (error) {
-				logger.warn(
-					JSON.stringify({
-						message:
-							'Tool header annotations are invalid; tool unavailable over modern HTTP',
-						context: {
-							backend: server.serverName,
-							tool: tool.name,
-							protocolVersion: client.protocolVersion,
-						},
-						error: errorMessage(error),
-					}),
-				);
-			}
 			const compiled = compileInputSchema(tool.inputSchema);
-			inputValidators.set(tool, compiled);
-			if ('issue' in compiled)
+			if ('issue' in compiled) {
 				logger.warn(
 					JSON.stringify({
 						message:
@@ -246,6 +229,29 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 						error: compiled.issue,
 					}),
 				);
+				continue;
+			}
+			// Both modern HTTP hops need these rules. A tool with invalid annotations
+			// stays in the catalog; these annotations do not invalidate either 2025
+			// contract.
+			const headerParameters = toolHeaderParameters(tool.inputSchema);
+			if (headerParameters instanceof Error)
+				logger.warn(
+					JSON.stringify({
+						message:
+							'Tool header annotations are invalid; tool unavailable over modern HTTP',
+						context: {
+							backend: server.serverName,
+							tool: tool.name,
+							protocolVersion: client.protocolVersion,
+						},
+						error: errorMessage(headerParameters),
+					}),
+				);
+			compiledTools.set(tool, {
+				validateInput: compiled.validate,
+				headerParameters,
+			});
 		}
 	};
 
@@ -376,14 +382,13 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 	};
 
 	// MCP clients see only enabled backends without a configuration error.
+	const isExposed = (backend: McpUpstreamBackend): boolean =>
+		backend.serverConfig.enabled && !backend.configError;
+
 	const collectEnabled = <T>(
 		select: (backend: McpUpstreamBackend) => T | undefined,
 	): Map<string, T> =>
-		collect((backend) =>
-			backend.serverConfig.enabled && !backend.configError
-				? select(backend)
-				: undefined,
-		);
+		collect((backend) => (isExposed(backend) ? select(backend) : undefined));
 
 	const listAllTools = (): McpUpstreamToolsMap =>
 		collect((backend) => backend.tools);
@@ -394,22 +399,33 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 	const listAllResources = (): McpUpstreamResourcesMap =>
 		collect((backend) => backend.resources);
 
-	const listEnabledTools = (): McpUpstreamToolsMap =>
-		collectEnabled((backend) => {
-			if (!backend.tools) return undefined;
-			const enabledSet = new Set(getEnabledTools(backend));
-			return {
-				...backend.tools,
-				tools: backend.tools.tools.filter((tool) => {
-					const compiled = inputValidators.get(tool);
-					return (
-						enabledSet.has(tool.name) &&
-						compiled !== undefined &&
-						'validate' in compiled
-					);
-				}),
-			};
-		});
+	// The one rule for which tools MCP clients may see and call: the backend is
+	// exposed, enabledTools allows the tool, and its input schema compiled.
+	const enabledTool = (
+		backend: McpUpstreamBackend,
+		tool: Tool,
+	): EnabledTool | undefined => {
+		const enabledTools = backend.serverConfig.enabledTools;
+		const compiled = compiledTools.get(tool);
+		if (
+			!isExposed(backend) ||
+			!compiled ||
+			(enabledTools && !enabledTools.includes(tool.name))
+		)
+			return undefined;
+		return {
+			serverName: backend.serverName,
+			tool,
+			...compiled,
+		};
+	};
+
+	const listEnabledTools = (): EnabledTool[] =>
+		Array.from(backends.values()).flatMap((backend) =>
+			(backend.tools?.tools ?? []).flatMap(
+				(tool) => enabledTool(backend, tool) ?? [],
+			),
+		);
 
 	const listEnabledPrompts = (): McpUpstreamPromptsMap =>
 		collectEnabled((backend) => backend.prompts);
@@ -431,24 +447,25 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 		);
 	};
 
-	// A call needs the enabled tool and its compiled input schema: one lookup.
 	const getEnabledTool = (catalogParams: {
 		serverName: string;
 		toolName: string;
-	}): EnabledTool | undefined => {
-		const backend = backends.get(catalogParams.serverName);
-		const enabledTools = backend?.serverConfig.enabledTools;
-		if (enabledTools && !enabledTools.includes(catalogParams.toolName))
-			return undefined;
-		const tool = backend?.tools?.tools.find(
-			(tool) => tool.name === catalogParams.toolName,
-		);
-		return (
-			tool && {
-				tool,
-				inputValidator: inputValidators.get(tool),
-			}
-		);
+	}): EnabledTool => {
+		const { serverName, toolName } = catalogParams;
+		const backend = backends.get(serverName);
+		if (!backend?.serverConfig.enabled)
+			throw new BackendRpcError(
+				`MCP upstream "${serverName}" is unknown or disabled`,
+				-32602,
+			);
+		const tool = backend.tools?.tools.find((tool) => tool.name === toolName);
+		const enabled = tool && enabledTool(backend, tool);
+		if (!enabled)
+			throw new BackendRpcError(
+				`Tool "${toolName}" is unknown or disabled on MCP upstream "${serverName}"`,
+				-32602,
+			);
+		return enabled;
 	};
 
 	const toggleTool = async (

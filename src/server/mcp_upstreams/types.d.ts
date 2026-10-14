@@ -40,9 +40,9 @@ import type {
 } from '@modelcontextprotocol/sdk/types';
 
 import type { McpConfig, McpServerConfig } from '@/server/config/schema';
-import type { CompiledSchema } from '@/server/mcp_upstreams/json_schema';
+import type { SchemaIssue } from '@/server/mcp_upstreams/json_schema';
 import type { TrafficStore } from '@/server/traffic_store';
-import type { ProtocolVersion } from '@/shared/mcp_protocol';
+import type { HeaderParameter, ProtocolVersion } from '@/shared/mcp_protocol';
 import type { ToolCallResult } from '@/shared/mcp_results';
 
 type CreateMcpUpstreamManagerParams = {
@@ -54,14 +54,17 @@ type CreateMcpUpstreamManagerParams = {
 type ServerCapabilitiesInfo = ReturnType<Client['getServerCapabilities']>;
 type ImplementationInfo = ReturnType<Client['getServerVersion']>;
 
+// A tool MCP clients may see and call, with the rules the catalog compiled
+// when it fetched the tool.
 type EnabledTool = {
+	serverName: string;
 	tool: Tool;
-	inputValidator?: CompiledSchema;
+	validateInput: (value: unknown) => SchemaIssue | undefined;
+	headerParameters: HeaderParameter[] | Error;
 };
 
 type CallToolParams = {
-	serverName: string;
-	toolName: string;
+	tool: EnabledTool;
 	args: Record<string, unknown>;
 	metadata?: Record<string, unknown>;
 	clientProtocolVersion?: ProtocolVersion;
@@ -220,7 +223,11 @@ type McpUpstreamManager = {
 	initialize: () => Promise<void>;
 	disconnect: () => Promise<void>;
 	listAllTools: () => McpUpstreamToolsMap;
-	listEnabledTools: () => McpUpstreamToolsMap;
+	listEnabledTools: () => EnabledTool[];
+	getEnabledTool: (params: {
+		serverName: string;
+		toolName: string;
+	}) => EnabledTool;
 	listAllPrompts: () => McpUpstreamPromptsMap;
 	listAllResources: () => McpUpstreamResourcesMap;
 	listEnabledPrompts: () => McpUpstreamPromptsMap;

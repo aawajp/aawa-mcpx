@@ -132,7 +132,6 @@ const startServer = async (
 				onRequestMetadata: (_metadata, client) => {
 					clientActivity.observe(client, CURRENT_PROTOCOL_VERSION);
 				},
-				getToolSchema: (name) => handlers.findTool(name)?.inputSchema,
 				initialization,
 				mcpSessions,
 				routeRequest,

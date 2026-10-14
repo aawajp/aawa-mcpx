@@ -1,6 +1,10 @@
-import { createRouteFixture, mcpPost } from '@/server/gateway/route_fixture';
+import {
+	createRouteFixture,
+	enabledTools,
+	mcpPost,
+	toolLookup,
+} from '@/server/gateway/route_fixture';
 import { createMcpUpstreamBackend } from '@/server/mcp_upstreams/connections';
-import { createInputSchemaCompiler } from '@/server/mcp_upstreams/input_schema';
 import { createMcpUpstreamOperations } from '@/server/mcp_upstreams/method_calls';
 import { ProtocolClient } from '@/server/mcp_upstreams/protocol_client';
 import { startFixtureBackend } from '@/server/mcp_upstreams/protocol_fixture';
@@ -21,6 +25,15 @@ import {
 } from '@/shared/mcp_protocol';
 
 import { expect, mock, test } from 'bun:test';
+
+const echoTool = enabledTools('backend', [
+	{
+		name: 'echo',
+		inputSchema: {
+			type: 'object',
+		},
+	},
+]);
 
 const until = async (
 	condition: () => boolean | Promise<boolean>,
@@ -179,32 +192,17 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 			const client = new ProtocolClient(server, backendVersion);
 			const recovery = mock(() => undefined);
 			client.ontransporterror = recovery;
-			const compiled = createInputSchemaCompiler()({
-				type: 'object',
-			});
-			if ('issue' in compiled) throw new Error(compiled.issue.detail);
 			const operations = createMcpUpstreamOperations({
 				getBackend: () => ({
 					...createMcpUpstreamBackend(server),
 					client,
 				}),
-				getEnabledTool: ({ toolName }) =>
-					toolName === 'echo'
-						? {
-								tool: {
-									name: 'echo',
-									inputSchema: {
-										type: 'object',
-									},
-								},
-								inputValidator: compiled,
-							}
-						: undefined,
 				waitForRateLimit: async () => undefined,
 			});
 			const manager = {
 				...operations,
-				listEnabledTools: () => new Map(),
+				listEnabledTools: () => [],
+				getEnabledTool: toolLookup(echoTool),
 			} as unknown as McpUpstreamManager;
 			const { route, send, initialize } = gateway(manager);
 			const events = async (): Promise<Record<string, unknown>[]> => {
@@ -412,7 +410,8 @@ for (const version of ['2025-06-18', '2025-11-25'] as const)
 		});
 		const { route, send, initialize } = gateway({
 			callTool,
-			listEnabledTools: () => new Map(),
+			listEnabledTools: () => [],
+			getEnabledTool: toolLookup(echoTool),
 		} as unknown as McpUpstreamManager);
 		const first = await initialize(version);
 		const second = await initialize(version);
@@ -542,7 +541,8 @@ test('a real modern HTTP disconnect aborts backend dispatch', async () => {
 				content: [],
 			};
 		},
-		listEnabledTools: () => new Map(),
+		listEnabledTools: () => [],
+		getEnabledTool: toolLookup(echoTool),
 	} as unknown as McpUpstreamManager);
 	const server = Bun.serve({
 		port: 0,

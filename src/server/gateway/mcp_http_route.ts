@@ -27,8 +27,6 @@ import {
 	PROTOCOL_VERSION_META,
 	recordOf,
 	SUPPORTED_PROTOCOL_VERSIONS,
-	toolHeaderParameters,
-	validateToolHeaders,
 } from '@/shared/mcp_protocol';
 
 type ClientTrafficEntry = Parameters<TrafficStore['logClientTraffic']>[0] & {
@@ -71,7 +69,6 @@ type CreateMcpHttpRouteParams = {
 	trafficStore: TrafficStore;
 	// MCP requests wait for backend initialization and fail if it fails.
 	initialization?: Promise<void>;
-	getToolSchema?: (name: string) => unknown;
 	onRequestMetadata?: (
 		metadata: Record<string, unknown>,
 		client?: ClientInfo,
@@ -523,31 +520,6 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 							}),
 						);
 						return fail(-32603, 'Internal server error');
-					}
-				}
-				// Header rules were compiled at catalog fetch. Compare values directly
-				// without encoding the body and decoding it again on every request.
-				if (message.method === 'tools/call') {
-					const name = String(bodyParams?.name);
-					const schema = params.getToolSchema?.(name);
-					let rules: ReturnType<typeof toolHeaderParameters>;
-					try {
-						rules = toolHeaderParameters(schema);
-					} catch {
-						return fail(
-							-32602,
-							`Tool "${name}" has invalid HTTP header annotations`,
-						);
-					}
-					try {
-						const issue = validateToolHeaders(
-							request.headers,
-							bodyParams?.arguments,
-							rules,
-						);
-						if (issue) return fail(-32020, issue);
-					} catch {
-						return fail(-32020, 'Invalid mirrored tool parameter');
 					}
 				}
 				// Metadata is already validated; activity tracking needs no second

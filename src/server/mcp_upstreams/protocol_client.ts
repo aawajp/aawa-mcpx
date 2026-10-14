@@ -18,6 +18,7 @@ import {
 	CLIENT_INFO_META,
 	CURRENT_PROTOCOL_VERSION,
 	GATEWAY_INFO,
+	type HeaderParameter,
 	isProtocolVersion,
 	PROTOCOL_VERSION_META,
 	type ProtocolVersion,
@@ -26,7 +27,6 @@ import {
 	requiresInitialization,
 	SERVER_INFO_META,
 	SUPPORTED_PROTOCOL_VERSIONS,
-	toolHeaderParameters,
 } from '@/shared/mcp_protocol';
 import type { ToolCallResult } from '@/shared/mcp_results';
 import {
@@ -44,6 +44,8 @@ type RequestOptions = {
 	timeout?: number;
 	signal?: AbortSignal;
 	mirroredHeaders?: Record<string, string>;
+	// The called tool's header rules; only tools/call has them.
+	headerParameters?: HeaderParameter[] | Error;
 };
 const STDIO_LINE_LIMIT = 8 * 1024 * 1024;
 // Each shutdown step waits this long for a stdio backend to exit.
@@ -118,7 +120,6 @@ class ProtocolClient {
 		}
 	>();
 	private controllers = new Set<AbortController>();
-	private tools = new Map<string, unknown>();
 	private closed: boolean = false;
 	private negotiationMethod = 'transport';
 
@@ -463,14 +464,14 @@ class ProtocolClient {
 	private async send(
 		message: Record<string, unknown>,
 		signal: AbortSignal,
-		mirroredHeaders?: Record<string, string>,
+		options: RequestOptions = {},
 	): Promise<unknown> {
 		if (signal.aborted) throw new BackendTransportError(signal.reason);
 		const config = this.server.serverConfig;
 		if (config.type === 'stdio') return this.sendStdio(message, signal);
 		const response = await fetch(config.url, {
 			method: 'POST',
-			headers: this.httpHeaders(config.headers, message, mirroredHeaders),
+			headers: this.httpHeaders(config.headers, message, options),
 			body: JSON.stringify(message),
 			signal,
 		}).catch((error: unknown) => {
@@ -564,7 +565,7 @@ class ProtocolClient {
 	private httpHeaders(
 		configured: Record<string, string> | undefined,
 		message: Record<string, unknown>,
-		mirroredHeaders?: Record<string, string>,
+		options: RequestOptions = {},
 	): Headers {
 		const headers = new Headers(configured);
 		// These fields belong to this RPC, never to static backend configuration.
@@ -583,18 +584,17 @@ class ProtocolClient {
 		if (this.protocolVersion === CURRENT_PROTOCOL_VERSION) {
 			// Preserve unrecognized mirrors on a modern HTTP hop. Recognized ones
 			// below are rebuilt from this backend's schema and the translated body.
-			for (const [name, value] of Object.entries(mirroredHeaders ?? {}))
+			for (const [name, value] of Object.entries(options.mirroredHeaders ?? {}))
 				if (name.toLowerCase().startsWith('mcp-param-'))
 					headers.set(name, value);
-			const params = recordOf(message.params) ?? {};
-			const schema = this.tools.get(String(params.name));
-			if (message.method === 'tools/call')
-				for (const parameter of toolHeaderParameters(schema))
-					headers.delete(`Mcp-Param-${parameter.name}`);
+			const parameters = options.headerParameters ?? [];
+			if (parameters instanceof Error) throw parameters;
+			for (const parameter of parameters)
+				headers.delete(`Mcp-Param-${parameter.name}`);
 			for (const [name, value] of protocolHeaders(
 				String(message.method),
-				params,
-				schema,
+				recordOf(message.params) ?? {},
+				parameters,
 			))
 				headers.set(name, value);
 		} else {
@@ -822,7 +822,7 @@ class ProtocolClient {
 					params: bodyParams,
 				},
 				signal,
-				options.mirroredHeaders,
+				options,
 			);
 			// A transport or provider may finish after cancellation. Never accept
 			// that result or update connection health for an abandoned operation.
@@ -991,18 +991,12 @@ class ProtocolClient {
 		params: Record<string, unknown> = {},
 		options?: RequestOptions,
 	): Promise<ListToolsResult> {
-		const result = (await this.list(
+		return (await this.list(
 			'tools/list',
 			'tools',
 			params,
 			options,
 		)) as ListToolsResult;
-		// Tools with invalid header annotations stay listed, so exposure state
-		// keeps them. Calls fail when their headers are built.
-		this.tools.clear();
-		for (const tool of result.tools)
-			this.tools.set(tool.name, tool.inputSchema);
-		return result;
 	}
 	async listPrompts(
 		params: Record<string, unknown> = {},
@@ -1043,7 +1037,6 @@ class ProtocolClient {
 			arguments?: Record<string, unknown>;
 			_meta?: Record<string, unknown>;
 		},
-		_schema?: unknown,
 		options?: RequestOptions,
 	): Promise<ToolCallResult> {
 		return (await this.rpc('tools/call', params, options)) as ToolCallResult;

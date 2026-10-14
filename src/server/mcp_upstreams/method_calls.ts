@@ -8,7 +8,6 @@ import { BackendRpcError } from '@/server/mcp_upstreams/protocol_client';
 import { createToolResultNormalizer } from '@/server/mcp_upstreams/tool_result';
 import type {
 	CallToolParams,
-	EnabledTool,
 	GetPromptParams,
 	McpUpstreamBackend,
 	ReadResourceParams,
@@ -18,10 +17,6 @@ import { errorMessage } from '@/shared/common';
 import { type ToolCallResult, toolErrorResult } from '@/shared/mcp_results';
 
 type CreateMcpUpstreamOperationsParams = {
-	getEnabledTool: (params: {
-		serverName: string;
-		toolName: string;
-	}) => EnabledTool | undefined;
 	getBackend: (serverName: string) => McpUpstreamBackend | undefined;
 	trafficStore?: TrafficStore;
 	waitForRateLimit: (
@@ -52,54 +47,36 @@ const wrapBackendFailure = async <T>(
 const createMcpUpstreamOperations = (
 	params: CreateMcpUpstreamOperationsParams,
 ) => {
-	const { getEnabledTool, getBackend, trafficStore, waitForRateLimit } = params;
+	const { getBackend, trafficStore, waitForRateLimit } = params;
 	const normalizeToolResult = createToolResultNormalizer();
 
 	const callTool = async (
 		callParams: CallToolParams,
 	): Promise<ToolCallResult> => {
-		const { serverName, toolName, args } = callParams;
+		const { args } = callParams;
+		const { serverName, tool, validateInput, headerParameters } =
+			callParams.tool;
 		callParams.signal?.throwIfAborted();
+		// The catalog lookup that produced the tool checked that its backend is
+		// enabled; only the connection can be missing.
 		const server = getBackend(serverName);
 		const client = server?.client;
-		if (!server?.serverConfig.enabled)
-			throw new BackendRpcError(
-				`MCP upstream "${serverName}" is unknown or disabled`,
-				-32602,
-			);
 		if (!client)
 			throw new BackendRpcError(
 				`MCP upstream "${serverName}" is not available`,
 				-32603,
 			);
-		const enabled = getEnabledTool({
-			serverName,
-			toolName,
-		});
-		if (!enabled) {
-			throw new BackendRpcError(
-				`Tool "${toolName}" is unknown or disabled on MCP upstream "${serverName}"`,
-				-32602,
-			);
-		}
 
-		// Catalog refresh compiled the schema once. Both dashboard and MCP calls
+		// The catalog compiled the schema once. Both dashboard and MCP calls
 		// validate their arguments here exactly once, before any backend work.
-		const { tool, inputValidator } = enabled;
-		if (!inputValidator || 'issue' in inputValidator) {
-			throw new BackendRpcError(
-				`Tool "${toolName}" input schema is unusable: ${inputValidator && 'issue' in inputValidator ? inputValidator.issue.detail : 'No validated catalog schema'}`,
-				-32603,
-			);
-		}
-		const inputIssue = inputValidator.validate(args);
+		const inputIssue = validateInput(args);
 		if (inputIssue) {
 			if (inputIssue.reason !== 'schema_mismatch')
 				throw new BackendRpcError(
 					`Input validation unavailable: ${inputIssue.detail}`,
 					-32603,
 				);
-			const message = `Invalid arguments for tool "${toolName}": ${inputIssue.detail}`;
+			const message = `Invalid arguments for tool "${tool.name}": ${inputIssue.detail}`;
 			// June lists invalid arguments as protocol errors. November and modern
 			// MCP report input validation failures as actionable tool errors.
 			if (callParams.clientProtocolVersion === '2025-06-18')
@@ -113,19 +90,19 @@ const createMcpUpstreamOperations = (
 				signal: callParams.signal,
 				server,
 				client,
-				method: `tools/call:${toolName}`,
+				method: `tools/call:${tool.name}`,
 				request: args,
 				invoke: () =>
 					client.callTool(
 						{
-							name: toolName,
+							name: tool.name,
 							arguments: args,
 							_meta: callParams.metadata,
 						},
-						undefined,
 						{
 							timeout: server.serverConfig.timeout,
 							mirroredHeaders: callParams.mirroredHeaders,
+							headerParameters,
 							signal: callParams.signal,
 						},
 					),
@@ -133,7 +110,7 @@ const createMcpUpstreamOperations = (
 			});
 			return normalizeToolResult(result, tool.outputSchema, {
 				backend: serverName,
-				tool: toolName,
+				tool: tool.name,
 				protocolVersion: client.protocolVersion,
 			});
 		});

@@ -1,6 +1,7 @@
 import { createHandlers } from '@/server/gateway/mcp_handlers';
 import { createMcpRequestRouter } from '@/server/gateway/mcp_request_router';
 import { createMcpSessionManager } from '@/server/gateway/mcp_session';
+import { enabledTools, toolLookup } from '@/server/gateway/route_fixture';
 import {
 	BackendRpcError,
 	ProtocolClient,
@@ -120,7 +121,6 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 								omitId,
 							},
 						},
-						undefined,
 						{
 							timeout: 200,
 						},
@@ -219,9 +219,18 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 					protocolHeaderName: 'MCP-Protocol-Version',
 					supportedProtocolVersions: SUPPORTED_PROTOCOL_VERSIONS,
 				});
+				const tools = enabledTools('fixture', [
+					{
+						name: 'echo',
+						inputSchema: {
+							type: 'object',
+						},
+					},
+				]);
 				const manager = {
 					callTool: () => callResult(validResult),
-					listEnabledTools: () => new Map(),
+					listEnabledTools: () => tools,
+					getEnabledTool: toolLookup(tools),
 				} as unknown as McpUpstreamManager;
 				const route = createMcpRequestRouter({
 					handlers: createHandlers({

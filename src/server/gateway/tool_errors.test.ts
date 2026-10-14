@@ -1,4 +1,9 @@
-import { createRouteFixture, mcpPost } from '@/server/gateway/route_fixture';
+import {
+	createRouteFixture,
+	enabledTools,
+	mcpPost,
+	toolLookup,
+} from '@/server/gateway/route_fixture';
 import { logger } from '@/server/logger';
 import { createMcpUpstreamBackend } from '@/server/mcp_upstreams/connections';
 import { createInputSchemaCompiler } from '@/server/mcp_upstreams/input_schema';
@@ -47,7 +52,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 			};
 			const client = new ProtocolClient(server, backendVersion);
 			const inputSchema = {
-				type: 'object',
+				type: 'object' as const,
 				properties: {
 					count: {
 						type: 'integer',
@@ -62,49 +67,26 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 			const log = spyOn(logger, 'error').mockImplementation(() => undefined);
 			const rateLimit = mock(async () => undefined);
 			const operations = createMcpUpstreamOperations({
-				getBackend: (name) =>
-					name === 'missing'
-						? undefined
-						: {
-								...createMcpUpstreamBackend({
-									...server,
-									serverConfig: {
-										...server.serverConfig,
-										enabled: name !== 'disabled',
-									},
-								}),
-								client: name === 'fixture' ? client : undefined,
-							},
-				getEnabledTool: ({ toolName }) =>
-					toolName === 'echo'
-						? {
-								tool: {
-									name: 'echo',
-									inputSchema: {
-										type: 'object',
-									},
-								},
-								inputValidator: compiled,
-							}
-						: undefined,
+				getBackend: (name) => ({
+					...createMcpUpstreamBackend(server),
+					client: name === 'fixture' ? client : undefined,
+				}),
 				waitForRateLimit: rateLimit,
 			});
+			// A down backend can still own a tool when the call starts.
+			const tools = ['fixture', 'down'].map((serverName) => ({
+				serverName,
+				tool: {
+					name: 'echo',
+					inputSchema,
+				},
+				validateInput: (value: unknown) => compiled.validate(value),
+				headerParameters: [],
+			}));
 			const manager = {
 				...operations,
-				listEnabledTools: () =>
-					new Map([
-						[
-							'fixture',
-							{
-								tools: [
-									{
-										name: 'echo',
-										inputSchema,
-									},
-								],
-							},
-						],
-					]),
+				listEnabledTools: () => tools,
+				getEnabledTool: toolLookup(tools),
 			} as unknown as McpUpstreamManager;
 			const { route } = createRouteFixture(manager);
 			try {
@@ -392,8 +374,17 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 
 for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 	test(`${version}: unexpected gateway and HTTP handler failures use internal error`, async () => {
+		const tools = enabledTools('fixture', [
+			{
+				name: 'echo',
+				inputSchema: {
+					type: 'object',
+				},
+			},
+		]);
 		const manager = {
-			listEnabledTools: () => new Map(),
+			listEnabledTools: () => tools,
+			getEnabledTool: toolLookup(tools),
 			callTool: async () => {
 				throw new Error('Unexpected dispatcher error');
 			},
@@ -488,12 +479,11 @@ test('malformed prompt and resource results are JSON-RPC errors for every client
 			...createMcpUpstreamBackend(server),
 			client,
 		}),
-		getEnabledTool: () => undefined,
 		waitForRateLimit: async () => undefined,
 	});
 	const manager = {
 		...operations,
-		listEnabledTools: () => new Map(),
+		listEnabledTools: () => [],
 	} as unknown as McpUpstreamManager;
 	const { route } = createRouteFixture(manager);
 	try {

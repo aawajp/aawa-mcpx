@@ -5,7 +5,6 @@ import type {
 	ListResourceTemplatesResult,
 	ListToolsResult,
 	ReadResourceResult,
-	Tool,
 } from '@modelcontextprotocol/sdk/types';
 
 import {
@@ -16,7 +15,10 @@ import {
 } from '@/server/gateway/mcp_namespaces';
 import { logger } from '@/server/logger';
 import { BackendRpcError } from '@/server/mcp_upstreams/protocol_client';
-import type { McpUpstreamManager } from '@/server/mcp_upstreams/types';
+import type {
+	EnabledTool,
+	McpUpstreamManager,
+} from '@/server/mcp_upstreams/types';
 import { errorMessage } from '@/shared/common';
 import {
 	addResourcePrefix,
@@ -28,7 +30,6 @@ import {
 import {
 	CURRENT_PROTOCOL_VERSION,
 	type ProtocolVersion,
-	toolHeaderParameters,
 } from '@/shared/mcp_protocol';
 import type { ToolCallResult } from '@/shared/mcp_results';
 
@@ -37,7 +38,7 @@ type CreateHandlersParams = {
 };
 
 type CallToolHandlerParams = {
-	name: string;
+	tool: EnabledTool;
 	args: Record<string, unknown>;
 	metadata?: Record<string, unknown>;
 	clientProtocolVersion?: ProtocolVersion;
@@ -63,47 +64,37 @@ type ReadResourceHandlerParams = {
 const createHandlers = (params: CreateHandlersParams) => {
 	const { mcpUpstreamManager } = params;
 
+	// Modern HTTP clients cannot call a tool with invalid header annotations.
 	const listTools = (
 		clientProtocolVersion?: ProtocolVersion,
-	): ListToolsResult => {
-		const tools: ListToolsResult['tools'] = [];
-		const allTools = mcpUpstreamManager.listEnabledTools();
+	): ListToolsResult => ({
+		tools: mcpUpstreamManager
+			.listEnabledTools()
+			.filter(
+				({ headerParameters }) =>
+					clientProtocolVersion !== CURRENT_PROTOCOL_VERSION ||
+					!(headerParameters instanceof Error),
+			)
+			.map(({ serverName, tool }) =>
+				namespaceTool({
+					serverName,
+					tool,
+				}),
+			),
+	});
 
-		for (const [serverName, serverToolsResult] of allTools) {
-			for (const tool of serverToolsResult.tools) {
-				if (clientProtocolVersion === CURRENT_PROTOCOL_VERSION) {
-					try {
-						toolHeaderParameters(tool.inputSchema);
-					} catch {
-						continue;
-					}
-				}
-				tools.push(
-					namespaceTool({
-						serverName,
-						tool,
-					}),
-				);
-			}
-		}
-
-		return {
-			tools,
-		};
-	};
-
-	// The enabled tool behind a namespaced name, without building the catalog.
-	const findTool = (name: string): Tool | undefined => {
+	// The enabled tool behind a namespaced name; a client error otherwise.
+	const resolveTool = (name: string): EnabledTool => {
 		let parsed: ParsePrefixResult;
 		try {
 			parsed = parsePrefix(name);
-		} catch {
-			return undefined;
+		} catch (error) {
+			throw new BackendRpcError(errorMessage(error), -32602);
 		}
-		return mcpUpstreamManager
-			.listEnabledTools()
-			.get(parsed.serverName)
-			?.tools.find((tool) => tool.name === parsed.originalName);
+		return mcpUpstreamManager.getEnabledTool({
+			serverName: parsed.serverName,
+			toolName: parsed.originalName,
+		});
 	};
 
 	const listPrompts = (): ListPromptsResult => {
@@ -168,19 +159,11 @@ const createHandlers = (params: CreateHandlersParams) => {
 	const callTool = async (
 		request: CallToolHandlerParams,
 	): Promise<ToolCallResult> => {
-		const { name, args } = request;
-
-		let parsed: ParsePrefixResult;
-		try {
-			parsed = parsePrefix(name);
-		} catch (err) {
-			throw new BackendRpcError(errorMessage(err), -32602);
-		}
-
+		const { tool, args } = request;
+		const { serverName } = tool;
 		try {
 			const result = await mcpUpstreamManager.callTool({
-				serverName: parsed.serverName,
-				toolName: parsed.originalName,
+				tool,
 				args,
 				metadata: request.metadata,
 				clientProtocolVersion: request.clientProtocolVersion,
@@ -196,7 +179,7 @@ const createHandlers = (params: CreateHandlersParams) => {
 						return {
 							...block,
 							uri: addResourcePrefix({
-								serverName: parsed.serverName,
+								serverName,
 								uri: block.uri,
 							}),
 						};
@@ -206,7 +189,7 @@ const createHandlers = (params: CreateHandlersParams) => {
 							resource: {
 								...block.resource,
 								uri: addResourcePrefix({
-									serverName: parsed.serverName,
+									serverName,
 									uri: block.resource.uri,
 								}),
 							},
@@ -220,7 +203,8 @@ const createHandlers = (params: CreateHandlersParams) => {
 				JSON.stringify({
 					message: 'Gateway tool dispatch failed',
 					context: {
-						tool: name,
+						backend: serverName,
+						tool: tool.tool.name,
 					},
 					error: errorMessage(err),
 				}),
@@ -309,7 +293,7 @@ const createHandlers = (params: CreateHandlersParams) => {
 		listPrompts,
 		listResources,
 		listResourceTemplates,
-		findTool,
+		resolveTool,
 		callTool,
 		getPrompt,
 		readResource,

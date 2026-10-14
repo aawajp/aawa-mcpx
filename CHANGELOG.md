@@ -24,6 +24,8 @@ Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 #### Changed
 
+- Resolve each tool once per call; a call to a tool hidden for an unusable
+  input schema returns `-32602` like an unknown tool.
 - Define how to write changelog entries.
 - The dashboard is more compact: the summary cards, backend rows, buttons, and
   status badges use less padding and spacing, and use the default font size

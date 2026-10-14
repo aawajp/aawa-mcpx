@@ -280,7 +280,7 @@ test('backend lifecycle preserves tool exposure state', async () => {
 		expect(
 			toolNames(startupDisabledManager.listAllTools().get('mock')?.tools ?? []),
 		).toEqual(['alpha', 'beta']);
-		expect(startupDisabledManager.listEnabledTools().size).toBe(0);
+		expect(startupDisabledManager.listEnabledTools()).toEqual([]);
 		expect(methods).toContain('tools/list');
 		methods.length = 0;
 		await startupDisabledManager.disconnect();
@@ -301,14 +301,16 @@ test('backend lifecycle preserves tool exposure state', async () => {
 			toolNames(runtimeManager.listAllTools().get('mock')?.tools ?? []),
 		).toEqual(['alpha', 'beta']);
 		expect(
-			toolNames(runtimeManager.listEnabledTools().get('mock')?.tools ?? []),
+			runtimeManager.listEnabledTools().map(({ tool }) => tool.name),
 		).toEqual(['alpha']);
 
 		const beforeDisable = requireMockServer(await readConfig());
 		expect(
 			await runtimeManager.callTool({
-				serverName: 'mock',
-				toolName: 'alpha',
+				tool: runtimeManager.getEnabledTool({
+					serverName: 'mock',
+					toolName: 'alpha',
+				}),
 				args: {},
 			}),
 		).toEqual({
@@ -327,8 +329,10 @@ test('backend lifecycle preserves tool exposure state', async () => {
 		try {
 			expect(
 				await runtimeManager.callTool({
-					serverName: 'mock',
-					toolName: 'alpha',
+					tool: runtimeManager.getEnabledTool({
+						serverName: 'mock',
+						toolName: 'alpha',
+					}),
 					args: {},
 				}),
 			).toEqual({
@@ -389,7 +393,7 @@ test('backend lifecycle preserves tool exposure state', async () => {
 		expect(
 			toolNames(runtimeManager.listAllTools().get('mock')?.tools ?? []),
 		).toEqual(['alpha', 'beta']);
-		expect(runtimeManager.listEnabledTools().size).toBe(0);
+		expect(runtimeManager.listEnabledTools()).toEqual([]);
 		expect(runtimeManager.listEnabledPrompts().size).toBe(0);
 		const runtimeDisabled = requireStatus(runtimeManager.getStatuses()[0]);
 		expect(disabledState(runtimeDisabled)).toEqual({
@@ -415,7 +419,7 @@ test('backend lifecycle preserves tool exposure state', async () => {
 		await staleEnable;
 		expect(requireMockServer(await readConfig()).enabled).toBe(false);
 		expect(runtimeManager.getStatuses()[0]?.connected).toBe(false);
-		expect(runtimeManager.listEnabledTools().size).toBe(0);
+		expect(runtimeManager.listEnabledTools()).toEqual([]);
 		expect(
 			disabledState(requireStatus(runtimeManager.getStatuses()[0])),
 		).toEqual(disabledState(runtimeDisabled));
@@ -436,7 +440,7 @@ test('backend lifecycle preserves tool exposure state', async () => {
 			toolNames(runtimeManager.listAllTools().get('mock')?.tools ?? []),
 		).toEqual(['alpha', 'beta']);
 		expect(
-			toolNames(runtimeManager.listEnabledTools().get('mock')?.tools ?? []),
+			runtimeManager.listEnabledTools().map(({ tool }) => tool.name),
 		).toEqual(['alpha']);
 		expect(methods.filter((method) => method === 'initialize')).toHaveLength(3);
 		expect(

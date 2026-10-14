@@ -56,32 +56,29 @@ test('the shared call path validates arguments exactly once before backend work'
 			...createMcpUpstreamBackend(server),
 			client,
 		}),
-		getEnabledTool: ({ toolName }) =>
-			toolName === 'echo'
-				? {
-						tool: {
-							name: 'echo',
-							inputSchema: {
-								type: 'object',
-							},
-						},
-						inputValidator: compiled,
-					}
-				: undefined,
 		waitForRateLimit,
 	});
+	const tool = {
+		serverName: 'fixture',
+		tool: {
+			name: 'echo',
+			inputSchema: {
+				type: 'object' as const,
+			},
+		},
+		validateInput: (value: unknown) => compiled.validate(value),
+		headerParameters: [],
+	};
 	try {
 		await operations.callTool({
-			serverName: 'fixture',
-			toolName: 'echo',
+			tool,
 			args: {
 				count: 1,
 			},
 		});
 		for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 			const call = operations.callTool({
-				serverName: 'fixture',
-				toolName: 'echo',
+				tool,
 				args: {},
 				clientProtocolVersion: version,
 			});
@@ -208,8 +205,8 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 				expect(
 					manager
 						.listEnabledTools()
-						.get('fixture')
-						?.tools.map((tool) => tool.name),
+						.filter(({ serverName }) => serverName === 'fixture')
+						.map(({ tool }) => tool.name),
 				).toEqual(['echo']);
 				expect(
 					warn.mock.calls.filter(([message]) =>
@@ -336,11 +333,13 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 						expect(recordOf((await call(args)).payload)?.error).toMatchObject({
 							code: -32602,
 						});
+					// A tool hidden for an unusable schema is unknown to calls too.
 					for (let i = 0; i < badSchemas.length; i++)
 						expect(
 							recordOf((await call({}, `bad${i}`)).payload)?.error,
 						).toMatchObject({
-							code: -32603,
+							code: -32602,
+							message: `Tool "bad${i}" is unknown or disabled on MCP upstream "fixture"`,
 						});
 					expect(invoke.mock.calls).toHaveLength(sent);
 				}
@@ -396,8 +395,8 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 				expect(
 					manager
 						.listEnabledTools()
-						.get('fixture')
-						?.tools.map((tool) => tool.name),
+						.filter(({ serverName }) => serverName === 'fixture')
+						.map(({ tool }) => tool.name),
 				).toEqual(['echo', 'bad0']);
 				expect((await (await uiCall(valid)).json()).result).toMatchObject({
 					isError: true,
@@ -414,8 +413,10 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 				).not.toHaveProperty('isError');
 				expect(
 					await manager.callTool({
-						serverName: 'fixture',
-						toolName: 'bad0',
+						tool: manager.getEnabledTool({
+							serverName: 'fixture',
+							toolName: 'bad0',
+						}),
 						args: {},
 					}),
 				).not.toHaveProperty('isError');

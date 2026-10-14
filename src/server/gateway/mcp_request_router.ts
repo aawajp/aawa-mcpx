@@ -20,7 +20,9 @@ import {
 	recordOf,
 	SERVER_INFO_META,
 	SUPPORTED_PROTOCOL_VERSIONS,
+	validateToolHeaders,
 } from '@/shared/mcp_protocol';
+import type { ToolCallResult } from '@/shared/mcp_results';
 import { jsonObjectType } from '@/shared/mcp_schemas';
 
 const namedArgumentsParamsType = type({
@@ -69,6 +71,34 @@ const createInvalidParamsError = (
 ): RouteResult => {
 	return {
 		payload: rpcError(id, -32602, message),
+	};
+};
+
+// Both 2025 revisions require an object here; wrapping preserves scalar, array,
+// and null values returned by a 2026-07-28 backend. Do not use truthiness:
+// false, 0, an empty string, and null are real data. Union schemas also wrap
+// object values so every call matches the catalog wrapper; object-only schemas
+// and schema-free objects stay unchanged.
+const wrapStructuredContent = (
+	result: ToolCallResult,
+	outputSchema: unknown,
+): ToolCallResult => {
+	const structured = result.structuredContent;
+	if (
+		structured === undefined ||
+		!(
+			requiresOutputWrapper(outputSchema) ||
+			structured === null ||
+			typeof structured !== 'object' ||
+			Array.isArray(structured)
+		)
+	)
+		return result;
+	return {
+		...result,
+		structuredContent: {
+			value: structured,
+		},
 	};
 };
 
@@ -206,18 +236,52 @@ const createMcpRequestRouter = (
 						`Invalid ${request.method} params.`,
 					);
 				const callParams = request.params;
-				const args = {
-					name: callParams.name,
-					args: callParams.arguments ?? {},
+				const args = callParams.arguments ?? {};
+				const shared = {
+					args,
 					metadata: recordOf(callParams._meta),
 					mirroredHeaders,
 					signal,
-					clientProtocolVersion: clientVersion,
 				};
+				if (request.method === 'prompts/get')
+					return success(
+						await handlers.getPrompt({
+							...shared,
+							name: callParams.name,
+						}),
+					);
+				const tool = handlers.resolveTool(callParams.name);
+				if (usesRequestMetadata) {
+					// Modern HTTP mirrors annotated arguments in headers; they must match.
+					if (tool.headerParameters instanceof Error)
+						return createInvalidParamsError(
+							request.id,
+							`Tool "${callParams.name}" has invalid HTTP header annotations`,
+						);
+					let issue: string | undefined;
+					try {
+						issue = validateToolHeaders(
+							new Headers(mirroredHeaders),
+							args,
+							tool.headerParameters,
+						);
+					} catch {
+						issue = 'Invalid mirrored tool parameter';
+					}
+					if (issue)
+						return {
+							payload: rpcError(request.id, -32020, issue),
+						};
+				}
+				const result = await handlers.callTool({
+					...shared,
+					tool,
+					clientProtocolVersion: clientVersion,
+				});
 				return success(
-					await (request.method === 'tools/call'
-						? handlers.callTool(args)
-						: handlers.getPrompt(args)),
+					usesRequestMetadata
+						? result
+						: wrapStructuredContent(result, tool.tool.outputSchema),
 				);
 			}
 			case 'resources/read': {
@@ -315,27 +379,6 @@ const createMcpRequestRouter = (
 									},
 					);
 				}
-				const structured = sessionResult.structuredContent;
-				const outputSchema =
-					request.method === 'tools/call'
-						? handlers.findTool(String(recordOf(request.params)?.name))
-								?.outputSchema
-						: undefined;
-				// Both 2025 revisions require an object here; wrapping preserves scalar,
-				// array, and null values returned by a 2026-07-28 backend.
-				// Do not use truthiness: false, 0, an empty string, and null are real data.
-				// Union schemas also wrap object values so every call matches the catalog
-				// wrapper; object-only schemas and schema-free objects stay unchanged.
-				if (
-					structured !== undefined &&
-					(requiresOutputWrapper(outputSchema) ||
-						structured === null ||
-						typeof structured !== 'object' ||
-						Array.isArray(structured))
-				)
-					sessionResult.structuredContent = {
-						value: structured,
-					};
 				return {
 					...result,
 					payload: {
