@@ -675,6 +675,21 @@ limits. Today it can only enable or disable backends and tools.
 fields `type` and `url`. For a stdio backend it shows `type` and `command`
 only; which of `args`, `env`, and `cwd` to show, and how, is undecided.
 
+### 7.6 Linting gaps
+
+**Status: TODO; waiting for Bun's built-in linter in a stable release.** The
+`lint` script runs `bun check` and `biome check`. Neither reports uses of code
+marked `@deprecated` in JSDoc: `bun check` reports what `tsc` reports, and `tsc`
+leaves deprecation to editor suggestions. Biome's `noDeprecatedImports` flags
+imports of deprecated exports only, not calls such as `Database.exec` from
+`bun:sqlite`; a general rule is an open request
+([biomejs/biome#9580](https://github.com/biomejs/biome/discussions/9580)).
+Bun's built-in linter ([`bun lint`](https://bun.com/docs/lint)) has
+`@typescript-eslint/no-deprecated`, takes its types from `bun check`, and is
+configured in `bunfig.toml`. Once it is in a stable release, decide whether it
+replaces Biome's linter or runs alongside it, and turn on the rules Biome does
+not cover, starting with `@typescript-eslint/no-deprecated`.
+
 ## 8. References
 
 - Resource URI/read contracts: [2025-06-18](https://modelcontextprotocol.io/specification/2025-06-18/server/resources), [2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25/server/resources), [2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/server/resources). Tool resource links need not occur in catalogs: [2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25/server/tools#resource-links), [2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/server/tools#resource-links).
