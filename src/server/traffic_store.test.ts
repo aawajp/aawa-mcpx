@@ -151,7 +151,7 @@ test('a failed traffic write is logged and does not throw', async () => {
 		const dbPath = path.join(root, 'traffic.db');
 		const store = createTrafficStore(dbPath);
 		const db = new Database(dbPath);
-		db.exec('DROP TABLE traffic;');
+		db.run('DROP TABLE traffic;');
 		db.close();
 		expect(() =>
 			store.logClientTraffic({

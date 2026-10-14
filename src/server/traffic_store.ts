@@ -85,11 +85,11 @@ const createTrafficStore = (dbPath: string): TrafficStore => {
 		}
 	}
 	const db = new Database(dbPath);
-	db.exec('PRAGMA journal_mode = WAL;');
+	db.run('PRAGMA journal_mode = WAL;');
 	// Traffic is a debugging aid; WAL keeps it consistent without a sync per write.
-	db.exec('PRAGMA synchronous = NORMAL;');
-	db.exec('DROP TABLE IF EXISTS traffic;');
-	db.exec(`
+	db.run('PRAGMA synchronous = NORMAL;');
+	db.run('DROP TABLE IF EXISTS traffic;');
+	db.run(`
 		CREATE TABLE IF NOT EXISTS traffic (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			kind TEXT NOT NULL,
@@ -104,13 +104,13 @@ const createTrafficStore = (dbPath: string): TrafficStore => {
 			created_at INTEGER NOT NULL
 		);
 	`);
-	db.exec(
+	db.run(
 		'CREATE INDEX IF NOT EXISTS idx_traffic_kind_error_id ON traffic(kind, is_error, id DESC);',
 	);
-	db.exec(
+	db.run(
 		'CREATE INDEX IF NOT EXISTS idx_traffic_backend_peer_error_id ON traffic(kind, peer, is_error, id DESC);',
 	);
-	db.exec(
+	db.run(
 		'CREATE INDEX IF NOT EXISTS idx_traffic_backend_peer_method_error_id ON traffic(kind, peer, method, is_error, id DESC);',
 	);
 	const insertStmt = db.prepare(
