@@ -100,7 +100,6 @@ const createMcpUpstreamOperations = (
 							_meta: callParams.metadata,
 						},
 						{
-							timeout: server.serverConfig.timeout,
 							mirroredHeaders: callParams.mirroredHeaders,
 							headerParameters,
 							signal: callParams.signal,
@@ -151,7 +150,6 @@ const createMcpUpstreamOperations = (
 							_meta: promptParams.metadata,
 						},
 						{
-							timeout: server.serverConfig.timeout,
 							mirroredHeaders: promptParams.mirroredHeaders,
 							signal: promptParams.signal,
 						},
@@ -197,7 +195,6 @@ const createMcpUpstreamOperations = (
 							_meta: resourceParams.metadata,
 						},
 						{
-							timeout: server.serverConfig.timeout,
 							mirroredHeaders: resourceParams.mirroredHeaders,
 							signal: resourceParams.signal,
 						},

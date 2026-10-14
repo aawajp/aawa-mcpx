@@ -70,12 +70,43 @@ class BackendTransportError extends Error {
 	}
 }
 
+// An HTTP failure without a valid RPC error keeps only its status.
+const httpError = (status: number): BackendRpcError =>
+	new BackendRpcError(`Backend HTTP ${status}`, -32000, undefined, status);
+
+const isTransientStatus = (status: number): boolean =>
+	status === 408 || status === 429 || status >= 500;
+
 const isTransientBackendError = (error: unknown): boolean =>
 	error instanceof BackendTransportError ||
 	(error instanceof BackendRpcError &&
-		(error.status === 408 ||
-			error.status === 429 ||
-			(error.status ?? 0) >= 500));
+		error.status !== undefined &&
+		isTransientStatus(error.status));
+
+// The versions a discovery result offers; one that offers 2026-07-28 must also
+// report its capabilities.
+const discoveredVersions = (
+	details: Record<string, unknown>,
+	requireCurrent = false,
+): unknown[] => {
+	const versions = details.supportedVersions;
+	if (
+		!Array.isArray(versions) ||
+		(versions.includes(CURRENT_PROTOCOL_VERSION)
+			? !recordOf(details.capabilities)
+			: requireCurrent)
+	)
+		throw new Error('Invalid MCP 2026-07-28 discovery result');
+	return versions;
+};
+
+const cancelledNotification = (requestId: string | number) => ({
+	jsonrpc: '2.0',
+	method: 'notifications/cancelled',
+	params: {
+		requestId,
+	},
+});
 
 // An expired or wrong credential can be fixed without touching the gateway.
 const isAuthenticationError = (error: unknown): boolean =>
@@ -218,14 +249,8 @@ class ProtocolClient {
 			try {
 				this.protocolVersion = CURRENT_PROTOCOL_VERSION;
 				this.details = await this.rpc('server/discover');
-				const versions = this.details.supportedVersions;
-				if (!Array.isArray(versions))
-					throw new Error('Invalid MCP 2026-07-28 discovery result');
-				if (versions.includes(CURRENT_PROTOCOL_VERSION)) {
-					if (!recordOf(this.details.capabilities))
-						throw new Error('Invalid MCP 2026-07-28 discovery result');
-					return;
-				}
+				const versions = discoveredVersions(this.details);
+				if (versions.includes(CURRENT_PROTOCOL_VERSION)) return;
 				// A peer without 2026-07-28 may still offer a 2025 revision; a
 				// retained 2026-07-28 selection cannot change until restart.
 				offeredVersion = this.selected
@@ -515,15 +540,7 @@ class ProtocolClient {
 					// Both 2025 revisions forbid cancelling initialize. Shutdown also
 					// must not write to a process that is already being torn down.
 					if (!this.closed && message.method !== 'initialize')
-						child.stdin.write(
-							`${JSON.stringify({
-								jsonrpc: '2.0',
-								method: 'notifications/cancelled',
-								params: {
-									requestId: id,
-								},
-							})}\n`,
-						);
+						child.stdin.write(`${JSON.stringify(cancelledNotification(id))}\n`);
 				} catch (error) {
 					logger.warn(
 						JSON.stringify({
@@ -680,12 +697,7 @@ class ProtocolClient {
 			body = JSON.parse(text);
 		} catch {
 			if (response.ok) throw new Error('Invalid backend JSON response');
-			throw new BackendRpcError(
-				`Backend HTTP ${response.status}`,
-				-32000,
-				undefined,
-				response.status,
-			);
+			throw httpError(response.status);
 		}
 		const bodyRecord = recordOf(body);
 		// HTTP failures without an RPC envelope still carry status for recovery and
@@ -723,17 +735,8 @@ class ProtocolClient {
 					);
 				// A transient HTTP failure keeps its status even when its body is
 				// malformed. Never expose that body's unvalidated protocol code/data.
-				if (
-					response.status === 408 ||
-					response.status === 429 ||
-					response.status >= 500
-				)
-					throw new BackendRpcError(
-						`Backend HTTP ${response.status}`,
-						-32000,
-						undefined,
-						response.status,
-					);
+				if (isTransientStatus(response.status))
+					throw httpError(response.status);
 				throw error;
 			}
 			if (body.error)
@@ -745,12 +748,7 @@ class ProtocolClient {
 				);
 		}
 		if (!response.ok) {
-			throw new BackendRpcError(
-				`Backend HTTP ${response.status}`,
-				-32000,
-				undefined,
-				response.status,
-			);
+			throw httpError(response.status);
 		}
 		return body;
 	}
@@ -893,13 +891,7 @@ class ProtocolClient {
 				// using this hop's ID/session and a fresh, bounded signal. Modern HTTP
 				// cancels by closing the response stream, so no notification is sent.
 				void this.send(
-					{
-						jsonrpc: '2.0',
-						method: 'notifications/cancelled',
-						params: {
-							requestId: id,
-						},
-					},
+					cancelledNotification(id),
 					AbortSignal.timeout(1000),
 				).catch(() => undefined);
 			}
@@ -928,13 +920,7 @@ class ProtocolClient {
 	async rediscover(): Promise<void> {
 		if (this.protocolVersion !== CURRENT_PROTOCOL_VERSION) return;
 		const details = await this.rpc('server/discover');
-		const versions = details.supportedVersions;
-		if (
-			!Array.isArray(versions) ||
-			!versions.includes(CURRENT_PROTOCOL_VERSION) ||
-			!recordOf(details.capabilities)
-		)
-			throw new Error('Invalid MCP 2026-07-28 discovery result');
+		discoveredVersions(details, true);
 		this.details = details;
 	}
 

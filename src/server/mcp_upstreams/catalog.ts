@@ -299,13 +299,7 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 			save: (result) => {
 				server.tools = result;
 			},
-			fetch: (client) =>
-				client.listTools(
-					{},
-					{
-						timeout: server.serverConfig.timeout,
-					},
-				),
+			fetch: (client) => client.listTools(),
 			prepare: async (result, client) => {
 				compileTools(server, client, result.tools);
 				await initializeToolState({
@@ -324,13 +318,7 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 			save: (result) => {
 				server.prompts = result;
 			},
-			fetch: (client) =>
-				client.listPrompts(
-					{},
-					{
-						timeout: server.serverConfig.timeout,
-					},
-				),
+			fetch: (client) => client.listPrompts(),
 		});
 	const fetchResources = (server: McpUpstreamBackend): Promise<boolean> =>
 		fetchCatalog(server, {
@@ -340,13 +328,7 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 			save: (result) => {
 				server.resources = result;
 			},
-			fetch: (client) =>
-				client.listResources(
-					{},
-					{
-						timeout: server.serverConfig.timeout,
-					},
-				),
+			fetch: (client) => client.listResources(),
 		});
 
 	// Templates share the resources capability.
@@ -360,13 +342,7 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 			save: (result) => {
 				server.resourceTemplates = result;
 			},
-			fetch: (client) =>
-				client.listResourceTemplates(
-					{},
-					{
-						timeout: server.serverConfig.timeout,
-					},
-				),
+			fetch: (client) => client.listResourceTemplates(),
 		});
 
 	// Backends that have fetched the given catalog, in configuration order.
