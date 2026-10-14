@@ -308,7 +308,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 						});
 						if (version === CURRENT_PROTOCOL_VERSION) controller.abort();
 						else {
-							// A legacy disconnect must not cancel; an explicit notification does.
+							// A session HTTP disconnect must not cancel; an explicit notification does.
 							controller.abort();
 							await Bun.sleep(5);
 							expect(
@@ -518,7 +518,7 @@ test('cancelling during a shared catalog refresh prevents dispatch without cance
 	expect(callTool).not.toHaveBeenCalled();
 });
 
-test('a real modern HTTP disconnect aborts backend dispatch', async () => {
+test('a real 2026-07-28 HTTP disconnect aborts backend dispatch', async () => {
 	const observed = Promise.withResolvers<AbortSignal>();
 	const finished = Promise.withResolvers<void>();
 	const { route, send } = gateway({

@@ -99,7 +99,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 						tool('added'),
 					]),
 				);
-				// Passive snapshots never fetch. A modern peer's hour-long TTL also
+				// Passive snapshots never fetch. A 2026-07-28 peer's hour-long TTL also
 				// keeps automatic refresh from picking up this change prematurely.
 				await routes['/api/overview'].GET();
 				if (version === CURRENT_PROTOCOL_VERSION)

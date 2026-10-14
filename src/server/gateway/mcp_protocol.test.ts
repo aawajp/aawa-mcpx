@@ -672,7 +672,7 @@ test('2026-07-28 header failures, unsupported version, and irrelevant sessions',
 	]);
 });
 
-test('modern metadata validates per request without requiring or inheriting optional capabilities', async () => {
+test('request metadata validates per request without requiring or inheriting optional capabilities', async () => {
 	const { route, manager, refreshCount } = fixture();
 	const invoke = mock(manager.callTool);
 	manager.callTool = invoke;
@@ -838,7 +838,7 @@ test('modern metadata validates per request without requiring or inheriting opti
 	expect(invoke).not.toHaveBeenCalled();
 });
 
-test('modern mirrors use refreshed rules exactly once and reject recognized surplus headers', async () => {
+test('parameter mirrors use refreshed rules exactly once and reject recognized surplus headers', async () => {
 	const { route, manager, refreshCount } = fixture();
 	let schema: Tool['inputSchema'] = {
 		type: 'object',
@@ -975,7 +975,7 @@ test('modern mirrors use refreshed rules exactly once and reject recognized surp
 });
 
 for (const version of SUPPORTED_PROTOCOL_VERSIONS)
-	test(`${version}: malformed header annotations affect only modern public HTTP tools`, async () => {
+	test(`${version}: malformed header annotations affect only 2026-07-28 public HTTP tools`, async () => {
 		const { route, manager } = fixture();
 		const invoke = mock(manager.callTool);
 		manager.callTool = invoke;
@@ -1002,8 +1002,8 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 			]);
 		let session: string | null = null;
 		const send = (method: string, params: Record<string, unknown> = {}) => {
-			const modern = version === CURRENT_PROTOCOL_VERSION;
-			const body = modern
+			const usesRequestMetadata = version === CURRENT_PROTOCOL_VERSION;
+			const body = usesRequestMetadata
 				? {
 						...params,
 						_meta: {
@@ -1012,7 +1012,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 						},
 					}
 				: params;
-			const headers = modern
+			const headers = usesRequestMetadata
 				? protocolHeaders(method, body)
 				: new Headers({
 						'MCP-Protocol-Version': version,
@@ -1035,7 +1035,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 				await send('initialize', {
 					protocolVersion: version,
 					clientInfo: {
-						name: 'legacy',
+						name: 'session-client',
 						version: '1',
 					},
 				})

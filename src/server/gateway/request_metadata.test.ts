@@ -232,7 +232,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 		});
 
 for (const version of SUPPORTED_PROTOCOL_VERSIONS)
-	test(`${version}: unsupported options and malformed legacy metadata never invoke the backend`, async () => {
+	test(`${version}: unsupported options and malformed session metadata never invoke the backend`, async () => {
 		const callTool = mock(async (_params: CallToolParams) => ({
 			content: [],
 		}));

@@ -24,6 +24,8 @@ Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 #### Changed
 
+- Name protocol logic by mechanism and MCP revision instead of
+  "modern"/"legacy".
 - Share backend connection status helpers, and define catalog list methods and
   MCP header names once.
 - Name JSON-RPC and MCP error codes and the JSON-RPC version instead of

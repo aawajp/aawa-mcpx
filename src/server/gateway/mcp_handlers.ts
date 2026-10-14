@@ -84,7 +84,8 @@ const prefixResource = <T extends { uri: string }>(
 const createHandlers = (params: CreateHandlersParams) => {
 	const { mcpUpstreamManager } = params;
 
-	// Modern HTTP clients cannot call a tool with invalid header annotations.
+	// Since MCP 2026-07-28, clients cannot call a tool with invalid header
+	// annotations.
 	const listTools = (
 		clientProtocolVersion?: ProtocolVersion,
 	): ListToolsResult => ({

@@ -68,6 +68,10 @@ doc in the same change.
 - Import code through the `@/` alias, even from the same folder. Relative
   paths are only for non-code files such as JSON, CSS, and HTML; `bun lint`
   enforces this and the `src/ui`, `src/shared`, `src/server` import boundaries.
+- Name protocol logic by mechanism, such as `requiresInitialization(version)`,
+  never by era ("modern", "legacy") or a revision date. Source comments name
+  the MCP revision that introduced a rule, such as "MCP 2026-07-28 removed
+  sessions"; a revision never changes, so this does not go stale.
 - Use ArkType by default. Reserve Ajv and ajv-formats for arbitrary provider
   JSON Schema, which ArkType cannot import.
 - Compile input schemas on catalog fetch, reuse validators on calls, and avoid
@@ -79,7 +83,7 @@ doc in the same change.
 ## Boundary checks
 
 When changing protocol validation or negotiation, preserve the initial HTTP
-discovery fallback for legacy backends that reject the probe with HTTP
+discovery fallback for 2025 backends that reject the probe with HTTP
 `400`/`404`/`405` and an invalid RPC envelope (such as `id: null`). Use only the HTTP
 status for this fallback; keep initialization, pinned peers, and application
 responses strictly validated. Run the negotiation regressions in

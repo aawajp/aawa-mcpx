@@ -61,7 +61,7 @@ SDK supplies types only; the gateway implements dispatch and transports itself.
 | | `json_rpc.ts`: incoming envelope parsing; `mcp_session.ts`: public initialization/sessions; `client_activity.ts`: dashboard history; `mcp_handlers.ts`: upstream operations; `mcp_namespaces.ts`: applies namespaces and `[serverName]` description prefixes to catalogs; `ui_routes.ts`: UI APIs/events. |
 | `server/mcp_upstreams/` | `manager.ts`: stable gateway API/service wiring; `connections.ts`: per-backend state record, connection/recovery lifecycle; `health_checks.ts`: probes; `catalog.ts`: caches/exposure state. |
 | | `method_calls.ts`: calls/argument validation; `protocol_client.ts`: JSON-RPC, revision selection, HTTP/SSE and stdio; `tool_result.ts`: structured recovery/duplicate removal; `input_schema.ts`/`output_schema.ts`: provider schema policies; `json_schema.ts`: shared compiler; `logged_request.ts`: traffic logging around calls; `types.d.ts`: manager contracts. |
-| `shared/` | `mcp_protocol.ts`: revision registry, header encoding, `x-mcp-header` rules; `mcp_metadata.ts`: request-metadata validators; `mcp_namespaces.ts`: namespace and resource-URI codec; `mcp_schemas.ts`: MCP validators; `mcp_results.ts`: result types; `mcp_output_schema.ts`: legacy wrappers. |
+| `shared/` | `mcp_protocol.ts`: revision registry, header encoding, `x-mcp-header` rules; `mcp_metadata.ts`: request-metadata validators; `mcp_namespaces.ts`: namespace and resource-URI codec; `mcp_schemas.ts`: MCP validators; `mcp_results.ts`: result types; `mcp_output_schema.ts`: object wrappers for 2025 clients. |
 | | `ui_api.ts`: dashboard contracts, which also type the server's backend status and traffic records; `client_info.ts`: client identity; `cancellation.ts`: abort helpers; `common.ts`: cross-runtime helpers. |
 | `ui/` | `index.html`: dashboard page; `main.tsx`: entrypoint it loads; `App.tsx`: state/routing; `base_components/`: low-level components; `components/`: app components; `sections/`: pages; `i18n/` and `styles/`: assets. |
 
@@ -125,7 +125,7 @@ retained revision) and never on `-32020`–`-32022`:
 | HTTP | HTTP `400`/`404`/`405`, except `404` with `-32601`; or HTTP `200`/no status with `-32600`/`-32601` |
 | stdio | Any JSON-RPC error |
 
-For compatibility with legacy HTTP backends, the HTTP-status cases apply even if
+For compatibility with 2025 HTTP backends, the HTTP-status cases apply even if
 the RPC envelope is invalid (for example, `id: null`). Only the HTTP status is
 used; initialization, pinned peers, and application responses still require
 valid envelopes and matching request IDs. Dropping that status during envelope
@@ -195,7 +195,7 @@ upstream cursors are not aggregate cursors. Public `2026-07-28` catalogs carry
 private, zero-TTL cache hints.
 
 Fixtures cover each supported backend revision over HTTP/stdio and all client
-revisions; public HTTP tests cover modern metadata and both 2025 session paths.
+revisions; public HTTP tests cover `2026-07-28` request metadata and both 2025 session paths.
 
 ### 3.3 Sessions
 
@@ -231,7 +231,7 @@ Gateway-generated logs, traffic-record identity, and dashboard contracts exclude
 session IDs; logs use reported name/version where available. The UI shows first/last
 activity and latest protocol, without connection status.
 
-### 3.5 Modern HTTP metadata and headers
+### 3.5 `2026-07-28` HTTP metadata and headers
 
 For `2026-07-28`, each request supplies its own version and client capabilities;
 optional client identity, log level, and progress token are validated with them.
@@ -248,14 +248,14 @@ public header checks. A tool with invalid
 annotations is hidden from 2026 HTTP clients, with a warning, but stays in the
 catalog and in `enabledTools`. When the backend itself is a 2026 HTTP backend,
 calls to that tool fail before reaching it, because its headers cannot be built.
-Legacy and stdio connections do not apply that annotation contract.
+2025 and stdio connections do not apply that annotation contract.
 Mirrors use strict UTF-8 Base64 decoding where required and compare integers
 numerically (`42.0` matches `42`). Recognized headers for absent/null arguments
 are rejected.
 
 Each backend HTTP hop rebuilds protocol, method, name, and recognized parameter
 headers from its own revision, original backend name/URI, and arguments. Unknown
-parameter mirrors pass through modern hops; legacy hops omit mirrors. Static
+parameter mirrors pass through `2026-07-28` hops; 2025 hops omit mirrors. Static
 backend configuration cannot override these request fields. See the
 [HTTP binding](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http)
 and [request metadata](https://modelcontextprotocol.io/specification/2026-07-28/basic).
@@ -266,8 +266,8 @@ and [request metadata](https://modelcontextprotocol.io/specification/2026-07-28/
 `_meta`, including trace context, across all supported revisions and backend
 transports. Metadata validates once at the public boundary; `ProtocolClient.rpc`
 copies application fields and rebuilds backend context without revalidating or
-mutating the client request. Modern backend requests use the gateway's own
-version, identity, and capabilities; legacy requests omit that envelope.
+mutating the client request. `2026-07-28` backend requests use the gateway's own
+version, identity, and capabilities; 2025 requests omit that envelope.
 
 Progress/log notification opt-ins and task/subscription handles are not
 forwarded, because the gateway cannot relay those flows. A valid progress token is
@@ -288,7 +288,7 @@ notifications are ignored; `initialize` cannot be cancelled.
 The HTTP route owns active 2025 request controllers keyed by session and typed ID;
 2026 requests use their own disconnect signals. Signals pass through dispatch and
 rate limiting to `ProtocolClient`, which cancels with the backend's own request
-ID: notifications for legacy HTTP and all stdio revisions, stream closure for
+ID: notifications for 2025 HTTP and all stdio revisions, stream closure for
 2026 HTTP. Cancellation stops queued dispatch, ignores late replies, and does not
 trigger recovery. Completion/cancellation removes controllers and listeners, so
 an abandoned response cannot complete another request. Shared catalog refreshes
@@ -439,7 +439,7 @@ Replacement catalogs compile fresh validators.
 
 `false`, `0`, `""`, and `null` are present values. Object-only schemas and matching
 objects stay unchanged across revisions; the dashboard retains provider shapes.
-`shared/mcp_output_schema.ts` and the router wrap legacy schemas and results
+`shared/mcp_output_schema.ts` and the router wrap 2025 schemas and results
 consistently; embedded schema resources preserve root-relative references and
 anchors. A root `$ref` moves into `allOf`, because beside `$id` it makes Ajv
 recurse forever and draft-07 ignores it. The SDK's object-only `CallToolResult` requires a wider gateway type,
@@ -462,7 +462,7 @@ keep message/data; codes adapt to the client revision, recovered from the retain
 2025 session or 2026 request metadata. For 2026, resource-not-found `-32002`
 becomes `-32602`, and retired or unassigned reserved codes become `-32603`, per
 the [error-code policy](https://modelcontextprotocol.io/specification/2026-07-28/basic#error-codes).
-Modern metadata errors become `-32603` for 2025 clients; URL-elicitation `-32042`
+`2026-07-28` request-metadata errors become `-32603` for 2025 clients; URL-elicitation `-32042`
 is preserved only for [2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25/client/elicitation#url-elicitation-required-error).
 
 For `tools/call`, `prompts/get`, and `resources/read`, transport and
@@ -488,7 +488,7 @@ copied across protocol boundaries.
 
 ## 6. Validation policy
 
-ArkType is the default for JSON-RPC envelopes, modern request metadata/capabilities,
+ArkType is the default for JSON-RPC envelopes, `2026-07-28` request metadata/capabilities,
 handled method parameters, HTTP API bodies and queries, environment variables and
 `mcp.json`, upstream response shapes, and UI overview/debug contracts. Settings
 and dashboard inputs refuse unknown fields and invalid values instead of falling
@@ -533,22 +533,22 @@ ordinary calls across all three client/backend revisions and both backend transp
 | Term | Alternatives | Meaning | Notes |
 | --- | --- | --- | --- |
 | Input request | `inputRequests` | Embedded elicitation, sampling, or roots request. | Availability depends on client capabilities. |
-| Legacy interaction | Reverse request | Standalone server-to-client JSON-RPC request in 2025. | Requires a response channel and correlation. |
+| 2025 interaction | Reverse request | Standalone server-to-client JSON-RPC request in 2025. | Requires a response channel and correlation. |
 | MRTR | Multi Round-Trip Requests | Interim result followed by a new request carrying input. | Introduced in 2026; replaces reverse requests. |
-| Native relay | Modern → modern | MRTR between peers using `2026-07-28`. | No legacy translation. |
+| Native relay | 2026 → 2026 | MRTR between peers using `2026-07-28`. | No translation. |
 | Request state | `requestState` | Backend-owned opaque continuation string. | Never parse or modify its contents. |
-| Translation | Interactive bridge | Convert MRTR to legacy interactions, or the reverse. | Adds gateway-owned operation state. |
+| Translation | Interactive bridge | Convert MRTR to 2025 interactions, or the reverse. | Adds gateway-owned operation state. |
 
 #### 7.2.1 Options and compatibility
 
 | Option | Coverage | Cost and constraints |
 | --- | --- | --- |
 | Defer | Existing ordinary calls. | Interactive limitations remain explicit. |
-| Native MRTR only | 2026 client → 2026 backend, HTTP or stdio. | Independent rounds; no gateway continuation store or legacy response channel. |
-| Native plus translation | Selected mixed-revision pairs; legacy → legacy relay could also be selected. | Pending calls, response channels, capability isolation, expiry, and cleanup; revision differences still limit coverage. |
+| Native MRTR only | 2026 client → 2026 backend, HTTP or stdio. | Independent rounds; no gateway continuation store or 2025 response channel. |
+| Native plus translation | Selected mixed-revision pairs; 2025 → 2025 relay could also be selected. | Pending calls, response channels, capability isolation, expiry, and cleanup; revision differences still limit coverage. |
 
 Translation is optional. With native-only support, every pair involving a 2025
-peer keeps noninteractive behavior: send no MRTR fields to legacy backends,
+peer keeps noninteractive behavior: send no MRTR fields to 2025 backends,
 forward no interactive capabilities on incompatible paths, and fail explicitly
 if an interim result cannot be represented. Do not upgrade peer revisions,
 fabricate input, replay an operation to conceal incompatibility, or claim completion.
@@ -606,9 +606,9 @@ sequenceDiagram
 | 2025 client → 2026 backend | Hold the client operation pending, send reverse requests through its response channel, collect replies, and issue fresh backend MRTR rounds. |
 | 2025 client → 2025 backend, if selected | Relay reverse requests with independent IDs and caller/session attribution; no MRTR conversion. |
 
-Legacy-client support requires public SSE request delivery and client-response
+2025-client support requires public SSE request delivery and client-response
 dispatch; GET streams and reconnection/resumption need an explicit coverage
-decision. Legacy backend HTTP/SSE and stdio also need reverse-request handling.
+decision. 2025 backend HTTP/SSE and stdio also need reverse-request handling.
 Payload conversion alone is insufficient. The design must resolve:
 
 - Bounded pending-call storage, quotas, expiry, and tokens bound to backend,
@@ -616,7 +616,7 @@ Payload conversion alone is insufficient. The design must resolve:
   not authentication. Duplicate/stale/conflicting retries must not duplicate
   side effects. Any wrapper preserves the inner backend state unchanged.
 - Capability-compatible connection pooling or conservative restrictions:
-  legacy capabilities are initialized per connection. Attribute reverse
+  2025 capabilities are initialized per connection. Attribute reverse
   requests safely during concurrent calls and outside the three MRTR operations.
 - Cleanup after cancellation, session deletion/eviction, stream loss, backend
   restart/disable, gateway restart, and late replies. Decide persistence and
@@ -647,14 +647,14 @@ client/backend combinations still need interoperability confirmation.
 | --- | --- | --- |
 | MRTR-DEC-01 | Whether and when to implement? | Decided: implement after the current bug fixes. Native-only remains the simpler candidate for the first step. |
 | MRTR-DEC-02 | Which pairs need translation? | Identify concrete clients/backends and interactions before selecting either direction. |
-| MRTR-DEC-03 | Which legacy transports/features? | Define coverage, connection isolation, and explicit unsupported cases. |
+| MRTR-DEC-03 | Which 2025 transports/features? | Define coverage, connection isolation, and explicit unsupported cases. |
 | MRTR-DEC-04 | Continuation ownership and retention? | Resolve caller binding, quotas, expiry, retry semantics, and restart policy. |
 | MRTR-DEC-05 | Interactive dashboard support? | Separate scope; gateway relay needs no built-in model or filesystem service. |
 
 Conditional commit boundaries: native support could use two commits—validated
 contracts/backend handling, then complete public relay/capabilities/tests/docs.
 Keep public rejection and interactive capabilities disabled between them.
-Translation would likely add four or five substantial batches: legacy response
+Translation would likely add four or five substantial batches: 2025 response
 channels/correlation, continuation ownership/lifecycle, each bridging direction,
 and remaining revision-specific interoperability. Every enabled path includes
 its own tests, limits, and cleanup. These are complexity estimates, not a schedule.

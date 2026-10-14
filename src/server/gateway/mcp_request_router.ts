@@ -7,7 +7,7 @@ import {
 } from '@/server/gateway/json_rpc';
 import type { createHandlers } from '@/server/gateway/mcp_handlers';
 import { BackendRpcError } from '@/server/mcp_upstreams/protocol_client';
-import { legacyRequestMetadataType } from '@/shared/mcp_metadata';
+import { sessionRequestMetadataType } from '@/shared/mcp_metadata';
 import {
 	requiresOutputWrapper,
 	wrapOutputSchema,
@@ -183,7 +183,7 @@ const createMcpRequestRouter = (
 			!usesRequestMetadata &&
 			bodyParams &&
 			'_meta' in bodyParams &&
-			!legacyRequestMetadataType.allows(bodyParams._meta)
+			!sessionRequestMetadataType.allows(bodyParams._meta)
 		)
 			return createInvalidParamsError(request.id, 'Malformed request metadata');
 		// Continuations need an end-to-end interaction path, which is not yet
@@ -249,7 +249,7 @@ const createMcpRequestRouter = (
 					);
 				const tool = handlers.resolveTool(callParams.name);
 				if (usesRequestMetadata) {
-					// Modern HTTP mirrors annotated arguments in headers; they must match.
+					// MCP 2026-07-28 mirrors annotated arguments in headers; they must match.
 					if (tool.headerParameters instanceof Error)
 						return createInvalidParamsError(
 							request.id,

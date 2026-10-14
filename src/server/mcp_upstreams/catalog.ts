@@ -226,15 +226,15 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 				);
 				continue;
 			}
-			// Both modern HTTP hops need these rules. A tool with invalid annotations
-			// stays in the catalog; these annotations do not invalidate either 2025
-			// contract.
+			// MCP 2026-07-28 HTTP needs these rules on both hops. A tool with invalid
+			// annotations stays in the catalog for session clients, whose revisions
+			// define no such annotations.
 			const headerParameters = toolHeaderParameters(tool.inputSchema);
 			if (headerParameters instanceof Error)
 				logger.warn(
 					JSON.stringify({
 						message:
-							'Tool header annotations are invalid; tool unavailable over modern HTTP',
+							'Tool header annotations are invalid; tool unavailable to MCP 2026-07-28 HTTP clients',
 						context: {
 							backend: server.serverName,
 							tool: tool.name,

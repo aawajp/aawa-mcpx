@@ -441,9 +441,10 @@ for (const method of [
 	}
 }
 
-// Legacy servers may reject discovery before initialization with id:null (or
-// another uncorrelated ID). Strict envelope validation must not lose the HTTP
-// rejection status and prevent negotiation with an otherwise supported peer.
+// Servers without MCP 2026-07-28 may reject discovery before initialization
+// with id:null (or another uncorrelated ID). Strict envelope validation must
+// not lose the HTTP rejection status and prevent negotiation with an otherwise
+// supported peer.
 for (const version of ['2025-11-25', '2025-06-18'] as const) {
 	for (const status of [400, 404, 405]) {
 		test(`initial discovery HTTP ${status} with an uncorrelated error falls back to ${version}`, async () => {
@@ -484,7 +485,7 @@ for (const version of ['2025-11-25', '2025-06-18'] as const) {
 					},
 				});
 				const client = new ProtocolClient({
-					serverName: 'legacy',
+					serverName: 'session',
 					serverConfig: {
 						type: 'http',
 						url: endpoint.url.href,
@@ -513,7 +514,7 @@ for (const version of ['2025-11-25', '2025-06-18'] as const) {
 }
 
 for (const status of [200, 400, 401, 403, 429, 503]) {
-	test(`uncorrelated HTTP ${status} discovery errors do not downgrade ${status === 400 ? 'a pinned modern peer' : 'without a legacy rejection'}`, async () => {
+	test(`uncorrelated HTTP ${status} discovery errors do not downgrade ${status === 400 ? 'a pinned 2026-07-28 peer' : 'without a fallback rejection'}`, async () => {
 		const methods: string[] = [];
 		const endpoint = Bun.serve({
 			port: 0,
@@ -568,7 +569,7 @@ for (const status of [200, 400, 401, 403, 429, 503]) {
 }
 
 for (const code of [-32020, -32021, -32022]) {
-	test(`valid modern discovery error ${code} never triggers initialization`, async () => {
+	test(`valid 2026-07-28 discovery error ${code} never triggers initialization`, async () => {
 		const methods: string[] = [];
 		const endpoint = Bun.serve({
 			port: 0,
@@ -596,7 +597,7 @@ for (const code of [-32020, -32021, -32022]) {
 			},
 		});
 		const client = new ProtocolClient({
-			serverName: 'modern',
+			serverName: 'discovery',
 			serverConfig: {
 				type: 'http',
 				url: endpoint.url.href,
@@ -753,7 +754,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 					requireSession: sessions.requireSession,
 					handleInitialize: sessions.handleInitialize,
 				});
-				// Modern public HTTP mirrors the annotated argument in a header.
+				// MCP 2026-07-28 public HTTP mirrors the annotated argument in a header.
 				const mirroredHeaders = {
 					'Mcp-Param-Text': encodeHeaderValue('Hello, 世界'),
 				};
@@ -979,9 +980,9 @@ for (const version of ['2025-11-25', CURRENT_PROTOCOL_VERSION] as const)
 					trafficLimit: 1000,
 				},
 			});
-			const legacy = version !== CURRENT_PROTOCOL_VERSION;
+			const usesSession = version !== CURRENT_PROTOCOL_VERSION;
 			// The ping answer carries the call's ID, which differs per transport.
-			const pingAnswer = legacy
+			const pingAnswer = usesSession
 				? {
 						jsonrpc: '2.0',
 						result: {},
@@ -1017,7 +1018,7 @@ for (const version of ['2025-11-25', CURRENT_PROTOCOL_VERSION] as const)
 					// The stdio fixture replies only after both answers arrive.
 					const received = recordOf(result.structuredContent)?.answers;
 					expect(received).toEqual(expected);
-				} else if (legacy) {
+				} else if (usesSession) {
 					expect(result.content).toEqual([
 						{
 							type: 'text',

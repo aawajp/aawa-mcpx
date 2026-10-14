@@ -126,13 +126,13 @@ const parseResourceUri = (uri: string): ParseResourceUriResult => {
 			originalUri,
 		};
 	} else {
-		// Accept previously issued URIs only when the legacy scheme identifies a
-		// backend unambiguously. Never interpret malformed new wrappers as legacy.
-		const legacy = /^([A-Za-z][A-Za-z0-9+.-]*):\/\/(.+)$/.exec(uri);
-		if (!legacy?.[1] || !legacy[2] || legacy[1] === 'aawa-mcpx')
+		// Also accept `<server>://<uri>` when its scheme names the backend. A
+		// malformed `aawa-mcpx://` wrapper is never read this way.
+		const serverUri = /^([A-Za-z][A-Za-z0-9+.-]*):\/\/(.+)$/.exec(uri);
+		if (!serverUri?.[1] || !serverUri[2] || serverUri[1] === 'aawa-mcpx')
 			throw new Error(`Invalid resource URI "${uri}"`);
-		serverName = legacy[1];
-		originalUri = legacy[2];
+		serverName = serverUri[1];
+		originalUri = serverUri[2];
 	}
 	// Check the decoded absolute URI once at dispatch. Preserve its spelling:
 	// URL serialization would normalize case, escapes, and path segments.

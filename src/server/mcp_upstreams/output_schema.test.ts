@@ -254,7 +254,7 @@ for (const $schema of [
 	'http://json-schema.org/draft-07/schema#',
 	'https://json-schema.org/draft/2019-09/schema',
 ])
-	test(`legacy wrappers preserve root refs for ${$schema ?? '2020-12'}`, () => {
+	test(`object wrappers preserve root refs for ${$schema ?? '2020-12'}`, () => {
 		const schema = {
 			...($schema
 				? {
@@ -287,7 +287,7 @@ for (const $schema of [
 		expect(requiresOutputWrapper(schema)).toBe(true);
 	});
 
-test('legacy wrappers preserve recursive refs and anchors and avoid changing object schemas', () => {
+test('object wrappers preserve recursive refs and anchors and avoid changing object schemas', () => {
 	const recursive = {
 		type: ['object', 'null'],
 		$defs: {
@@ -337,7 +337,7 @@ test('legacy wrappers preserve recursive refs and anchors and avoid changing obj
 	expect(wrapOutputSchema(object, 'count')).toBe(object);
 });
 
-test('legacy wrappers keep a root $ref compilable in draft-07 and 2020-12', () => {
+test('object wrappers keep a root $ref compilable in draft-07 and 2020-12', () => {
 	// zod-to-json-schema emits a root $ref; client SDKs compile it with Ajv.
 	for (const [Validator, schema] of [
 		[

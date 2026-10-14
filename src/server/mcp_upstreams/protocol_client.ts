@@ -450,9 +450,9 @@ class ProtocolClient {
 	private answerRequest(request: Record<string, unknown>): void {
 		const id = request.id;
 		if (typeof id !== 'string' && typeof id !== 'number') return;
-		const legacy = this.protocolVersion !== CURRENT_PROTOCOL_VERSION;
+		const usesSession = this.protocolVersion !== CURRENT_PROTOCOL_VERSION;
 		const response =
-			legacy && request.method === 'ping'
+			usesSession && request.method === 'ping'
 				? {
 						jsonrpc: JSONRPC_VERSION,
 						id,
@@ -472,8 +472,8 @@ class ProtocolClient {
 				this.child?.stdin.write(`${JSON.stringify(response)}\n`);
 				return;
 			}
-			// 2026-07-28 has no backend requests and no session to answer on.
-			if (!legacy) return;
+			// MCP 2026-07-28 removed backend requests and the session to answer on.
+			if (!usesSession) return;
 			const reply = await fetch(config.url, {
 				method: 'POST',
 				headers: this.httpHeaders(config.headers, response),
@@ -597,7 +597,7 @@ class ProtocolClient {
 	): Headers {
 		const headers = new Headers(configured);
 		// These fields belong to this RPC, never to static backend configuration.
-		// Clear stale mirrors even for legacy hops, which do not validate them.
+		// Clear stale mirrors even for session hops, which do not validate them.
 		headers.delete(MCP_HEADERS.Method);
 		headers.delete(MCP_HEADERS.Name);
 		for (const name of Array.from(headers.keys()))
@@ -607,8 +607,9 @@ class ProtocolClient {
 		headers.delete(MCP_HEADERS.SessionId);
 		headers.delete('Last-Event-ID');
 		if (this.protocolVersion === CURRENT_PROTOCOL_VERSION) {
-			// Preserve unrecognized mirrors on a modern HTTP hop. Recognized ones
-			// below are rebuilt from this backend's schema and the translated body.
+			// MCP 2026-07-28 added parameter mirrors. Preserve unrecognized ones;
+			// recognized ones below are rebuilt from this backend's schema and the
+			// translated body.
 			for (const [name, value] of Object.entries(options.mirroredHeaders ?? {}))
 				if (name.toLowerCase().startsWith('mcp-param-'))
 					headers.set(name, value);
@@ -709,7 +710,7 @@ class ProtocolClient {
 		}
 		const bodyRecord = recordOf(body);
 		// HTTP failures without an RPC envelope still carry status for recovery and
-		// legacy negotiation. A claimed RPC error must validate before forwarding;
+		// the fallback to initialization. A claimed RPC error must validate before forwarding;
 		// otherwise a wrong ID or malformed code could bypass rpc() below.
 		if (
 			response.ok ||
@@ -724,7 +725,7 @@ class ProtocolClient {
 				('id' in message && body.id !== message.id)
 			) {
 				const error = new Error('Invalid backend RPC response');
-				// Legacy HTTP servers can reject an unrecognized discovery probe
+				// HTTP servers without MCP 2026-07-28 can reject the discovery probe
 				// before associating its ID (for example, HTTP 400 with id:null).
 				// Only the first discovery probe may use this transport rejection to
 				// try initialization. Discard all unvalidated RPC code/message/data;
@@ -895,9 +896,9 @@ class ProtocolClient {
 				this.server.serverConfig.type === 'http' &&
 				!usesRequestMetadata
 			) {
-				// Legacy HTTP does not equate disconnect with cancellation. Notify
-				// using this hop's ID/session and a fresh, bounded signal. Modern HTTP
-				// cancels by closing the response stream, so no notification is sent.
+				// Session HTTP does not equate disconnect with cancellation. Notify
+				// using this hop's ID/session and a fresh, bounded signal. Since MCP
+				// 2026-07-28, closing the response stream cancels, so none is sent.
 				void this.send(
 					cancelledNotification(id),
 					AbortSignal.timeout(1000),

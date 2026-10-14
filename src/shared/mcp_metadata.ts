@@ -8,7 +8,7 @@ import {
 } from '@/shared/mcp_protocol';
 import { iconType, jsonObjectType } from '@/shared/mcp_schemas';
 
-// The 2026 schema adds extensions and removes legacy roots.listChanged. Known
+// MCP 2026-07-28 adds extensions and removes roots.listChanged. Known
 // capability fields are checked; unknown fields remain available to extensions.
 const settingsMapType = type({
 	'[string]': jsonObjectType,
@@ -37,9 +37,10 @@ const clientCapabilitiesType = type({
 	'[string]': 'unknown',
 }).and(jsonObjectType);
 
-// Legacy metadata is optional and has no per-request protocol envelope. Validate
-// it at dispatch only; the modern HTTP boundary already validates its metadata.
-const legacyRequestMetadataType = type({
+// Before MCP 2026-07-28, request metadata is optional and carries no protocol
+// version. Validate it at dispatch only; the HTTP route already validates
+// per-request metadata.
+const sessionRequestMetadataType = type({
 	'progressToken?': 'string | number.integer',
 	'[string]': 'unknown',
 })
@@ -65,4 +66,4 @@ const requestMetadataType = type({
 	.and(jsonObjectType)
 	.narrow((value) => Object.keys(value).every((key) => metadataKey.test(key)));
 
-export { legacyRequestMetadataType, requestMetadataType };
+export { requestMetadataType, sessionRequestMetadataType };

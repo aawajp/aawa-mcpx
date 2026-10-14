@@ -259,9 +259,9 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 		}
 	};
 
-	// Legacy IDs are scoped to a session, and number/string IDs remain distinct.
-	// Initialize cannot be cancelled. Modern HTTP has no shared session/ID scope:
-	// only the signal of that request's own connection can cancel its work.
+	// Session request IDs are scoped to their session, and number/string IDs
+	// remain distinct. Initialize cannot be cancelled. MCP 2026-07-28 HTTP has no
+	// session or shared ID scope: only the request's own connection can cancel it.
 	const activeRequests = new Map<
 		string,
 		Map<string | number, AbortController>
@@ -441,9 +441,10 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 
 			const metadata = recordOf(recordOf(message.params)?._meta);
 			const versionHeader = request.headers.get(MCP_HEADERS.ProtocolVersion);
-			// Classify before session validation: 2026-07-28 requests ignore session
-			// IDs. Newer revisions carry request metadata and reach the explicit
-			// version error; other unknown headers fail the 2025 header check.
+			// Classify before session validation: MCP 2026-07-28 requests ignore
+			// session IDs. Unsupported revisions that carry request metadata reach
+			// the explicit version error; other unknown headers fail the session
+			// version check.
 			if (
 				('method' in message && message.method === 'server/discover') ||
 				(metadata && PROTOCOL_VERSION_META in metadata) ||

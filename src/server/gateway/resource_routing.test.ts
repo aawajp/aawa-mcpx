@@ -394,10 +394,10 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 							],
 						});
 					}
-					const legacy = await resultOf('resources/read', {
+					const serverUri = await resultOf('resources/read', {
 						uri: 'fixture://file:///example',
 					});
-					expect(legacy.contents).toEqual(
+					expect(serverUri.contents).toEqual(
 						expect.arrayContaining([
 							expect.objectContaining({
 								uri: addResourcePrefix({

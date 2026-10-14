@@ -149,7 +149,7 @@ const createMcpUpstreamManager = (
 				const backend = backends.get(name);
 				if (!backend) throw new Error(`Unknown MCP upstream "${name}"`);
 				// A refresh already in flight may predate the button press. Wait for it,
-				// then fetch again, bypassing TTL for both initialized and modern peers.
+				// then fetch again, bypassing TTL for every revision.
 				await Promise.allSettled(
 					Object.values(backend.listRefreshes).map(({ promise }) => promise),
 				);

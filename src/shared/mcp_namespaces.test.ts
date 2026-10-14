@@ -104,8 +104,8 @@ test('resource wrappers preserve complete original URIs and distinguish backends
 			uri: 'file:///a',
 		}),
 	);
-	expect(parseResourceUri('legacy://file:///a%2fb?q=1#fragment')).toEqual({
-		serverName: 'legacy',
+	expect(parseResourceUri('docs://file:///a%2fb?q=1#fragment')).toEqual({
+		serverName: 'docs',
 		originalUri: 'file:///a%2fb?q=1#fragment',
 	});
 });
