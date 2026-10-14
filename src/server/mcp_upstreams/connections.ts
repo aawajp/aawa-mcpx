@@ -6,6 +6,7 @@ import {
 	ProtocolNegotiationError,
 } from '@/server/mcp_upstreams/protocol_client';
 import type {
+	Client,
 	McpUpstreamBackend,
 	McpUpstreamErrorState,
 	McpUpstreamServer,
@@ -13,7 +14,10 @@ import type {
 } from '@/server/mcp_upstreams/types';
 import type { TrafficStore } from '@/server/traffic_store';
 import { errorMessage } from '@/shared/common';
-import { SUPPORTED_PROTOCOL_VERSIONS } from '@/shared/mcp_protocol';
+import {
+	CATALOG_LISTS,
+	SUPPORTED_PROTOCOL_VERSIONS,
+} from '@/shared/mcp_protocol';
 import type { McpUpstreamStatus } from '@/shared/ui_api';
 
 const RECONNECT_INITIAL_DELAY_MS = 5000;
@@ -70,6 +74,20 @@ const transportFields = (
 	};
 };
 
+// Status fields the UI can change while the gateway runs.
+const configFields = (config: McpUpstreamServer['serverConfig']) => ({
+	enabled: config.enabled,
+	enabledTools: config.enabledTools ?? [],
+	availableTools: config.availableTools ?? [],
+});
+
+// Status fields the backend reports when it connects or is rediscovered.
+const serverDetails = (client: Client) => ({
+	capabilities: client.getServerCapabilities(),
+	implementation: client.getServerVersion(),
+	instructions: client.getInstructions(),
+});
+
 const createMcpUpstreamConnections = (
 	params: CreateMcpUpstreamConnectionsParams,
 ) => {
@@ -80,6 +98,10 @@ const createMcpUpstreamConnections = (
 
 	const isActive = (backend: McpUpstreamBackend): boolean =>
 		backend.serverConfig.enabled || backend.probing;
+
+	// Automatic recovery applies to enabled backends that need no operator fix.
+	const canReconnect = (backend: McpUpstreamBackend): boolean =>
+		!stopped && backend.serverConfig.enabled && !isConnectionBlocked(backend);
 
 	const isCurrentConnectionAttempt = (
 		backend: McpUpstreamBackend,
@@ -94,6 +116,8 @@ const createMcpUpstreamConnections = (
 		error?: string;
 		errorState?: McpUpstreamErrorState;
 		actionRequired?: boolean;
+		// Fresh server details; the current ones are kept without them.
+		client?: Client;
 	}): void => {
 		const backend = statusParams.backend;
 		const existing = backend.status;
@@ -101,16 +125,18 @@ const createMcpUpstreamConnections = (
 			serverName: backend.serverName,
 			protocolVersion: backend.protocolVersion,
 			...transportFields(backend.serverConfig),
-			enabled: backend.serverConfig.enabled,
-			enabledTools: backend.serverConfig.enabledTools ?? [],
-			availableTools: backend.serverConfig.availableTools ?? [],
+			...configFields(backend.serverConfig),
 			connected: statusParams.connected,
 			error: statusParams.error,
 			errorState: statusParams.errorState,
 			actionRequired: statusParams.actionRequired,
-			implementation: existing?.implementation,
-			capabilities: existing?.capabilities,
-			instructions: existing?.instructions,
+			...(statusParams.client
+				? serverDetails(statusParams.client)
+				: {
+						implementation: existing?.implementation,
+						capabilities: existing?.capabilities,
+						instructions: existing?.instructions,
+					}),
 		};
 	};
 
@@ -218,10 +244,7 @@ const createMcpUpstreamConnections = (
 	};
 
 	const scheduleReconnect = (backend: McpUpstreamBackend): void => {
-		if (stopped) return;
-		if (!backend.serverConfig.enabled) return;
-		if (isConnectionBlocked(backend)) return;
-		if (backend.reconnectTimer) return;
+		if (!canReconnect(backend) || backend.reconnectTimer) return;
 
 		const attempt = backend.reconnectAttempts;
 		const ceiling = Math.min(
@@ -250,9 +273,7 @@ const createMcpUpstreamConnections = (
 		backend: McpUpstreamBackend,
 		error: string,
 	): void => {
-		if (stopped) return;
-		if (!backend.serverConfig.enabled) return;
-		if (isConnectionBlocked(backend)) return;
+		if (!canReconnect(backend)) return;
 
 		const existingStatus = backend.status;
 		if (existingStatus && !existingStatus.connected && !backend.client) {
@@ -347,23 +368,12 @@ const createMcpUpstreamConnections = (
 			if (client.protocolVersion)
 				backend.protocolVersion = client.protocolVersion;
 			backend.healthCheckFailures = 0;
-
-			const status: McpUpstreamStatus = {
-				serverName,
-				protocolVersion: backend.protocolVersion,
-				...transportFields(serverConfig),
-				enabled: serverConfig.enabled,
-				enabledTools: serverConfig.enabledTools ?? [],
-				availableTools: serverConfig.availableTools ?? [],
+			setMcpUpstreamStatus({
+				backend,
 				connected: true,
-				errorState: undefined,
 				actionRequired: false,
-				capabilities: client.getServerCapabilities(),
-				implementation: client.getServerVersion(),
-				instructions: client.getInstructions(),
-				error: undefined,
-			};
-			backend.status = status;
+				client,
+			});
 			logger.info(`Connected to MCP upstream "${serverName}"`);
 			return true;
 		} catch (err) {
@@ -478,18 +488,14 @@ const createMcpUpstreamConnections = (
 		if (backend.client !== client || !backend.status) return;
 		backend.status = {
 			...backend.status,
-			capabilities: client.getServerCapabilities(),
-			implementation: client.getServerVersion(),
-			instructions: client.getInstructions(),
+			...serverDetails(client),
 		};
 	};
 
 	const attemptReconnect = async (
 		backend: McpUpstreamBackend,
 	): Promise<void> => {
-		if (stopped) return;
-		if (!backend.serverConfig.enabled) return;
-		if (isConnectionBlocked(backend)) return;
+		if (!canReconnect(backend)) return;
 		const epoch = backend.epoch;
 		const pending = backend.reconnect;
 		if (pending?.epoch === epoch) return pending.promise;
@@ -630,10 +636,7 @@ const createMcpUpstreamConnections = (
 
 		for (const backend of backends.values()) {
 			await closeMcpUpstreamConnection(backend, true);
-			backend.tools = undefined;
-			backend.prompts = undefined;
-			backend.resources = undefined;
-			backend.resourceTemplates = undefined;
+			for (const { list } of CATALOG_LISTS) backend[list] = undefined;
 			setMcpUpstreamStatus({
 				backend,
 				connected: false,
@@ -650,9 +653,7 @@ const createMcpUpstreamConnections = (
 				? [
 						{
 							...backend.status,
-							enabled: backend.serverConfig.enabled,
-							enabledTools: backend.serverConfig.enabledTools ?? [],
-							availableTools: backend.serverConfig.availableTools ?? [],
+							...configFields(backend.serverConfig),
 						},
 					]
 				: [],
@@ -665,7 +666,6 @@ const createMcpUpstreamConnections = (
 		getStatuses,
 		initialize,
 		markMcpUpstreamConfigurationError,
-		onValidationError,
 		refreshDetails,
 		setMcpUpstreamStatusError,
 		setBackendEnabled,

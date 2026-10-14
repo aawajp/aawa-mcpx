@@ -731,8 +731,6 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 				const tools = enabledTools('fixture', (await client.listTools()).tools);
 				const sessions = createMcpSessionManager({
 					maxSessionsPerClient: 10,
-					protocolHeaderName: 'MCP-Protocol-Version',
-					supportedProtocolVersions: SUPPORTED_PROTOCOL_VERSIONS,
 				});
 				const manager = {
 					listEnabledTools: () => tools,

@@ -6,38 +6,18 @@ import {
 } from '@/server/mcp_upstreams/connections';
 import { createMcpUpstreamOperations } from '@/server/mcp_upstreams/method_calls';
 import type {
-	CatalogList,
 	CatalogRequest,
 	CreateMcpUpstreamManagerParams,
 	McpUpstreamBackend,
 	McpUpstreamManager,
 } from '@/server/mcp_upstreams/types';
 import { parsePrefix } from '@/shared/mcp_namespaces';
-import { CURRENT_PROTOCOL_VERSION, recordOf } from '@/shared/mcp_protocol';
-
-const CATALOG_LISTS: CatalogList[] = [
-	'tools',
-	'prompts',
-	'resources',
-	'resourceTemplates',
-];
-
-// The server capability that covers each list.
-const LIST_CAPABILITIES = {
-	tools: 'tools',
-	prompts: 'prompts',
-	resources: 'resources',
-	resourceTemplates: 'resources',
-} as const satisfies Record<CatalogList, string>;
-
-// The list each catalog-dependent client request reads.
-const REQUEST_LISTS: Record<string, CatalogList | undefined> = {
-	'tools/list': 'tools',
-	'tools/call': 'tools',
-	'prompts/list': 'prompts',
-	'resources/list': 'resources',
-	'resources/templates/list': 'resourceTemplates',
-};
+import {
+	CATALOG_LISTS,
+	type CatalogList,
+	CURRENT_PROTOCOL_VERSION,
+	recordOf,
+} from '@/shared/mcp_protocol';
 
 const createMcpUpstreamManager = (
 	params: CreateMcpUpstreamManagerParams,
@@ -113,7 +93,7 @@ const createMcpUpstreamManager = (
 	};
 	refreshCatalog = async (backend: McpUpstreamBackend): Promise<void> => {
 		await Promise.allSettled(
-			CATALOG_LISTS.map((list) => refreshList(backend, list)),
+			CATALOG_LISTS.map(({ list }) => refreshList(backend, list)),
 		);
 	};
 	// Re-fetch only the stale 2026-07-28 lists a client request reads: every
@@ -121,8 +101,12 @@ const createMcpUpstreamManager = (
 	const refreshStaleCatalogs = async (
 		request: CatalogRequest,
 	): Promise<void> => {
-		const list = REQUEST_LISTS[request.method];
-		if (!list) return;
+		// A tool call reads the tools list.
+		const listMethod =
+			request.method === 'tools/call' ? 'tools/list' : request.method;
+		const entry = CATALOG_LISTS.find(({ method }) => method === listMethod);
+		if (!entry) return;
+		const { list, capability } = entry;
 		let targets = Array.from(backends.values());
 		if (request.method === 'tools/call') {
 			const name = recordOf(request.params)?.name;
@@ -141,9 +125,7 @@ const createMcpUpstreamManager = (
 					(backend) =>
 						backend.status?.connected &&
 						backend.status.protocolVersion === CURRENT_PROTOCOL_VERSION &&
-						backend.client?.getServerCapabilities()?.[
-							LIST_CAPABILITIES[list]
-						] &&
+						backend.client?.getServerCapabilities()?.[capability] &&
 						Date.now() >= backend.listExpiresAt[list],
 				)
 				.map((backend) => refreshList(backend, list)),

@@ -2,7 +2,6 @@ import { createClientActivityTracker } from '@/server/gateway/client_activity';
 import { createMcpSessionManager } from '@/server/gateway/mcp_session';
 import { logger } from '@/server/logger';
 import { parseClientInfo } from '@/shared/client_info';
-import { SUPPORTED_PROTOCOL_VERSIONS } from '@/shared/mcp_protocol';
 import { overviewResponseType } from '@/shared/ui_api';
 
 test('client info requires name and version when present; omitted identity uses unknown', () => {
@@ -45,8 +44,6 @@ test('initialization retains the newest sessions per name/version without idle e
 	for (const maxSessionsPerClient of [10, 2]) {
 		const sessions = createMcpSessionManager({
 			maxSessionsPerClient,
-			protocolHeaderName: 'MCP-Protocol-Version',
-			supportedProtocolVersions: SUPPORTED_PROTOCOL_VERSIONS,
 		});
 		const initialize = async (
 			name = 'agent',
@@ -82,7 +79,7 @@ test('initialization retains the newest sessions per name/version without idle e
 				).sessionId,
 			);
 		for (const id of retained)
-			expect(sessions.requireSession(id, 2, 'tools/list')).toBeNull();
+			expect(sessions.requireSession(id, 2)).toBeNull();
 		await sessions.handleInitialize(
 			{
 				jsonrpc: '2.0',
@@ -92,25 +89,21 @@ test('initialization retains the newest sessions per name/version without idle e
 			},
 			undefined,
 		);
-		expect(sessions.requireSession(retained[0], 2, 'tools/list')).toBeNull();
+		expect(sessions.requireSession(retained[0], 2)).toBeNull();
 		const newest = await initialize();
-		expect(sessions.requireSession(retained[0], 2, 'tools/list')?.status).toBe(
-			404,
-		);
+		expect(sessions.requireSession(retained[0], 2)?.status).toBe(404);
 		for (const id of [
 			...retained.slice(1),
 			newest.sessionId,
 			otherName.sessionId,
 			otherVersion.sessionId,
 		])
-			expect(sessions.requireSession(id, 2, 'tools/list')).toBeNull();
+			expect(sessions.requireSession(id, 2)).toBeNull();
 		expect(sessions.activeCount()).toBe(maxSessionsPerClient + 2);
 		expect(sessions.close(newest.sessionId).status).toBe(202);
-		expect(
-			sessions.requireSession(newest.sessionId, 2, 'tools/list')?.status,
-		).toBe(404);
+		expect(sessions.requireSession(newest.sessionId, 2)?.status).toBe(404);
 		await initialize();
-		expect(sessions.requireSession(retained[1], 2, 'tools/list')).toBeNull();
+		expect(sessions.requireSession(retained[1], 2)).toBeNull();
 	}
 });
 
@@ -124,8 +117,6 @@ test('session lifecycle and rejection logs omit transport identifiers', async ()
 	});
 	const sessions = createMcpSessionManager({
 		maxSessionsPerClient: 10,
-		protocolHeaderName: 'MCP-Protocol-Version',
-		supportedProtocolVersions: SUPPORTED_PROTOCOL_VERSIONS,
 	});
 	try {
 		const result = await sessions.handleInitialize(
@@ -146,8 +137,8 @@ test('session lifecycle and rejection logs omit transport identifiers', async ()
 		expect(result.sessionId).toBeString();
 		sessions.close(result.sessionId);
 		sessions.close(result.sessionId);
-		sessions.requireSession(result.sessionId, 2, 'tools/list');
-		sessions.requireSession('unrecognized-transport-id', 3, 'tools/list');
+		sessions.requireSession(result.sessionId, 2);
+		sessions.requireSession('unrecognized-transport-id', 3);
 		sessions.close('unrecognized-transport-id');
 		const output = messages.join('\n');
 		expect(output).toContain('client=test@1');
@@ -163,8 +154,6 @@ test('client activity groups revisions and reconnects without exposing sessions'
 	const activity = createClientActivityTracker(2);
 	const sessions = createMcpSessionManager({
 		maxSessionsPerClient: 10,
-		protocolHeaderName: 'MCP-Protocol-Version',
-		supportedProtocolVersions: SUPPORTED_PROTOCOL_VERSIONS,
 		onClientActivity: activity.observe,
 	});
 	const client = {
@@ -184,9 +173,7 @@ test('client activity groups revisions and reconnects without exposing sessions'
 			},
 			undefined,
 		);
-		expect(
-			sessions.requireSession(result.sessionId, 2, 'tools/list'),
-		).toBeNull();
+		expect(sessions.requireSession(result.sessionId, 2)).toBeNull();
 		expect(sessions.close(result.sessionId).status).toBe(202);
 		expect(activity.list()).toHaveLength(1);
 	}

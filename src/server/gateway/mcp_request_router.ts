@@ -45,7 +45,6 @@ type GatewayHandlers = ReturnType<typeof createHandlers>;
 type RequireSession = (
 	sessionId: string | undefined,
 	id: string | number | undefined,
-	method: string,
 ) => RouteResult | null;
 
 type RouteOptions = {
@@ -177,7 +176,7 @@ const createMcpRequestRouter = (
 			};
 		if (request.method === 'initialize')
 			return await handleInitialize(request, sessionId);
-		const invalid = requireSession(sessionId, request.id, request.method);
+		const invalid = requireSession(sessionId, request.id);
 		if (invalid) return invalid;
 		const bodyParams = recordOf(request.params);
 		if (

@@ -43,14 +43,34 @@ const GATEWAY_CAPABILITIES = {
 	prompts: {},
 	resources: {},
 };
+// HTTP header names; Headers matches them case-insensitively.
+const MCP_HEADERS = {
+	ProtocolVersion: 'MCP-Protocol-Version',
+	SessionId: 'Mcp-Session-Id',
+	Method: 'Mcp-Method',
+	Name: 'Mcp-Name',
+} as const;
+// Each backend catalog list, the method that lists it and the server
+// capability that covers it.
+const CATALOG_LISTS = [
+	{ list: 'tools', method: 'tools/list', capability: 'tools' },
+	{ list: 'prompts', method: 'prompts/list', capability: 'prompts' },
+	{ list: 'resources', method: 'resources/list', capability: 'resources' },
+	{
+		list: 'resourceTemplates',
+		method: 'resources/templates/list',
+		capability: 'resources',
+	},
+] as const;
+type CatalogList = (typeof CATALOG_LISTS)[number]['list'];
+const LIST_METHODS = CATALOG_LISTS.map(({ method }) => method);
 // Methods that target one named tool, prompt or resource.
 const NAMED_METHODS = new Set(['tools/call', 'prompts/get', 'resources/read']);
-const CACHEABLE_METHODS = new Set([
+// Methods that read the backend catalogs.
+const CATALOG_METHODS = new Set<string>([...LIST_METHODS, ...NAMED_METHODS]);
+const CACHEABLE_METHODS = new Set<string>([
 	'server/discover',
-	'tools/list',
-	'prompts/list',
-	'resources/list',
-	'resources/templates/list',
+	...LIST_METHODS,
 	'resources/read',
 ]);
 
@@ -238,12 +258,12 @@ const protocolHeaders = (
 	parameters: HeaderParameter[] = [],
 ): Headers => {
 	const headers = new Headers({
-		'MCP-Protocol-Version': CURRENT_PROTOCOL_VERSION,
-		'Mcp-Method': method,
+		[MCP_HEADERS.ProtocolVersion]: CURRENT_PROTOCOL_VERSION,
+		[MCP_HEADERS.Method]: method,
 	});
 	const name = requestName(method, params);
 	if (NAMED_METHODS.has(method) && typeof name === 'string')
-		headers.set('Mcp-Name', encodeHeaderValue(name));
+		headers.set(MCP_HEADERS.Name, encodeHeaderValue(name));
 	if (method !== 'tools/call') return headers;
 	for (const parameter of parameters) {
 		let value: unknown = params.arguments;
@@ -263,9 +283,11 @@ const protocolHeaders = (
 	return headers;
 };
 
-export type { HeaderParameter, ProtocolVersion };
+export type { CatalogList, HeaderParameter, ProtocolVersion };
 export {
 	CACHEABLE_METHODS,
+	CATALOG_LISTS,
+	CATALOG_METHODS,
 	CLIENT_CAPABILITIES_META,
 	CLIENT_INFO_META,
 	CURRENT_PROTOCOL_VERSION,
@@ -276,6 +298,7 @@ export {
 	isProtocolVersion,
 	JSONRPC_VERSION,
 	MCP_ERROR_CODES,
+	MCP_HEADERS,
 	NAMED_METHODS,
 	PROTOCOL_VERSION_META,
 	protocolHeaders,

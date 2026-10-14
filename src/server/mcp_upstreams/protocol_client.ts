@@ -22,6 +22,7 @@ import {
 	isProtocolVersion,
 	JSONRPC_VERSION,
 	MCP_ERROR_CODES,
+	MCP_HEADERS,
 	PROTOCOL_VERSION_META,
 	type ProtocolVersion,
 	protocolHeaders,
@@ -50,7 +51,8 @@ type RequestOptions = {
 	// The called tool's header rules; only tools/call has them.
 	headerParameters?: HeaderParameter[] | Error;
 };
-const STDIO_LINE_LIMIT = 8 * 1024 * 1024;
+// The largest backend message: a stdio line or an SSE event.
+const MESSAGE_SIZE_LIMIT = 8 * 1024 * 1024;
 // Each shutdown step waits this long for a stdio backend to exit.
 const STDIO_EXIT_WAIT_MS = 1000;
 
@@ -379,7 +381,7 @@ class ProtocolClient {
 					buffer = buffer.slice(end + 1);
 					end = buffer.indexOf('\n');
 				}
-				if (buffer.length > STDIO_LINE_LIMIT) {
+				if (buffer.length > MESSAGE_SIZE_LIMIT) {
 					if (!truncate) throw new Error('Backend message exceeds size limit');
 					onLine(buffer);
 					buffer = '';
@@ -515,7 +517,7 @@ class ProtocolClient {
 			this.protocolVersion !== CURRENT_PROTOCOL_VERSION &&
 			message.method === 'initialize'
 		)
-			this.sessionId = response.headers.get('Mcp-Session-Id') ?? undefined;
+			this.sessionId = response.headers.get(MCP_HEADERS.SessionId) ?? undefined;
 		if (!('id' in message) && response.ok) return undefined;
 		if (
 			response.headers.get('content-type')?.includes('text/event-stream') &&
@@ -596,16 +598,13 @@ class ProtocolClient {
 		const headers = new Headers(configured);
 		// These fields belong to this RPC, never to static backend configuration.
 		// Clear stale mirrors even for legacy hops, which do not validate them.
+		headers.delete(MCP_HEADERS.Method);
+		headers.delete(MCP_HEADERS.Name);
 		for (const name of Array.from(headers.keys()))
-			if (
-				name === 'mcp-method' ||
-				name === 'mcp-name' ||
-				name.startsWith('mcp-param-')
-			)
-				headers.delete(name);
+			if (name.startsWith('mcp-param-')) headers.delete(name);
 		headers.set('Content-Type', 'application/json');
 		headers.set('Accept', 'application/json, text/event-stream');
-		headers.delete('Mcp-Session-Id');
+		headers.delete(MCP_HEADERS.SessionId);
 		headers.delete('Last-Event-ID');
 		if (this.protocolVersion === CURRENT_PROTOCOL_VERSION) {
 			// Preserve unrecognized mirrors on a modern HTTP hop. Recognized ones
@@ -625,10 +624,10 @@ class ProtocolClient {
 				headers.set(name, value);
 		} else {
 			headers.set(
-				'MCP-Protocol-Version',
+				MCP_HEADERS.ProtocolVersion,
 				this.protocolVersion ?? CURRENT_PROTOCOL_VERSION,
 			);
-			if (this.sessionId) headers.set('Mcp-Session-Id', this.sessionId);
+			if (this.sessionId) headers.set(MCP_HEADERS.SessionId, this.sessionId);
 		}
 		return headers;
 	}
@@ -656,7 +655,7 @@ class ProtocolClient {
 				carriageReturn = !next.done && text.endsWith('\r');
 				if (carriageReturn) text = text.slice(0, -1);
 				buffer += text.replace(/\r\n?/g, '\n');
-				if (buffer.length > 8 * 1024 * 1024)
+				if (buffer.length > MESSAGE_SIZE_LIMIT)
 					throw new Error('Backend event exceeds size limit');
 				let end = buffer.indexOf('\n\n');
 				while (end >= 0) {

@@ -25,9 +25,11 @@ import {
 import { errorMessage } from '@/shared/common';
 import { requestMetadataType } from '@/shared/mcp_metadata';
 import {
+	CATALOG_METHODS,
 	CLIENT_INFO_META,
 	CURRENT_PROTOCOL_VERSION,
 	decodeHeaderValue,
+	MCP_HEADERS,
 	NAMED_METHODS,
 	PROTOCOL_VERSION_META,
 	RPC_ERROR,
@@ -41,18 +43,6 @@ type ClientTrafficEntry = Parameters<TrafficStore['logClientTraffic']>[0] & {
 };
 
 type McpSessionManager = ReturnType<typeof createMcpSessionManager>;
-
-// Methods that read the backend catalogs, so they wait for initialization and
-// refresh stale lists first.
-const CATALOG_METHODS = new Set([
-	'tools/list',
-	'tools/call',
-	'prompts/list',
-	'prompts/get',
-	'resources/list',
-	'resources/templates/list',
-	'resources/read',
-]);
 
 const NAME_LABELS: Record<string, string> = {
 	'tools/call': 'tool',
@@ -82,14 +72,12 @@ type CreateMcpHttpRouteParams = {
 	trafficStore: TrafficStore;
 	// MCP requests wait for backend initialization and fail if it fails.
 	initialization?: Promise<void>;
-	onRequestMetadata?: (
-		metadata: Record<string, unknown>,
-		client?: ClientInfo,
+	onClientActivity?: (
+		client: ClientInfo | undefined,
+		protocolVersion: string,
 	) => void;
 	refreshCatalogs?: (request: CatalogRequest) => Promise<void>;
 };
-
-const MCP_SESSION_HEADER = 'mcp-session-id';
 
 const createJsonResponse = (
 	body: OutgoingJsonRpcResponse,
@@ -100,7 +88,7 @@ const createJsonResponse = (
 		'Content-Type': 'application/json',
 	});
 	if (sessionId) {
-		headers.set(MCP_SESSION_HEADER, sessionId);
+		headers.set(MCP_HEADERS.SessionId, sessionId);
 	}
 	return new Response(JSON.stringify(body), {
 		status: status ?? 200,
@@ -112,7 +100,7 @@ const createNotificationResponse = (sessionId?: string): Response => {
 	// Per MCP spec: notifications MUST return HTTP 202 Accepted with no body
 	const headers = new Headers();
 	if (sessionId) {
-		headers.set(MCP_SESSION_HEADER, sessionId);
+		headers.set(MCP_HEADERS.SessionId, sessionId);
 	}
 	return new Response(null, {
 		status: 202,
@@ -139,7 +127,7 @@ const createOriginForbiddenResponse = (): Response => {
 };
 
 const parseSessionId = (request: Request): string | undefined =>
-	request.headers.get(MCP_SESSION_HEADER) || undefined;
+	request.headers.get(MCP_HEADERS.SessionId) || undefined;
 
 const getHeaderValues = (value: string | null): string[] => {
 	if (!value) return [];
@@ -452,7 +440,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 			}
 
 			const metadata = recordOf(recordOf(message.params)?._meta);
-			const versionHeader = request.headers.get('MCP-Protocol-Version');
+			const versionHeader = request.headers.get(MCP_HEADERS.ProtocolVersion);
 			// Classify before session validation: 2026-07-28 requests ignore session
 			// IDs. Newer revisions carry request metadata and reach the explicit
 			// version error; other unknown headers fail the 2025 header check.
@@ -501,7 +489,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 							supported: [...SUPPORTED_PROTOCOL_VERSIONS],
 						},
 					);
-				if (request.headers.get('Mcp-Method') !== message.method)
+				if (request.headers.get(MCP_HEADERS.Method) !== message.method)
 					return fail(
 						RPC_ERROR.HeaderMismatch,
 						'Missing or mismatched Mcp-Method',
@@ -510,7 +498,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 				if (NAMED_METHODS.has(message.method)) {
 					const name = requestName(message.method, bodyParams);
 					try {
-						const header = request.headers.get('Mcp-Name');
+						const header = request.headers.get(MCP_HEADERS.Name);
 						if (header === null || decodeHeaderValue(header) !== name)
 							return fail(
 								RPC_ERROR.HeaderMismatch,
@@ -551,7 +539,10 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 				}
 				// Metadata is already validated; activity tracking needs no second
 				// parse/validation of client identity and grants it no capabilities.
-				params.onRequestMetadata?.(metadata, metadata[CLIENT_INFO_META]);
+				params.onClientActivity?.(
+					metadata[CLIENT_INFO_META],
+					CURRENT_PROTOCOL_VERSION,
+				);
 				try {
 					const result = await routeCancellableRequest(
 						message,
@@ -607,11 +598,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 						sessionId,
 						requestParams: notification.params,
 					});
-				const invalid = mcpSessions.requireSession(
-					sessionId,
-					undefined,
-					notification.method,
-				);
+				const invalid = mcpSessions.requireSession(sessionId, undefined);
 				if (invalid) {
 					logClientTraffic({
 						sessionId,
@@ -667,11 +654,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 						method: 'response',
 						sessionId,
 					});
-				const invalid = mcpSessions.requireSession(
-					sessionId,
-					undefined,
-					'response',
-				);
+				const invalid = mcpSessions.requireSession(sessionId, undefined);
 				if (invalid) {
 					logClientTraffic({
 						sessionId,
@@ -783,7 +766,8 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 		async DELETE(request: Request) {
 			if (!isValidOrigin(request)) return createOriginForbiddenResponse();
 			if (
-				request.headers.get('MCP-Protocol-Version') === CURRENT_PROTOCOL_VERSION
+				request.headers.get(MCP_HEADERS.ProtocolVersion) ===
+				CURRENT_PROTOCOL_VERSION
 			)
 				return new Response(null, {
 					status: 405,

@@ -11,10 +11,7 @@ import type {
 	McpUpstreamManager,
 } from '@/server/mcp_upstreams/types';
 import type { TrafficStore } from '@/server/traffic_store';
-import {
-	SUPPORTED_PROTOCOL_VERSIONS,
-	toolHeaderParameters,
-} from '@/shared/mcp_protocol';
+import { toolHeaderParameters } from '@/shared/mcp_protocol';
 
 import { mock } from 'bun:test';
 
@@ -52,8 +49,6 @@ const createRouteFixture = (
 ) => {
 	const sessions = createMcpSessionManager({
 		maxSessionsPerClient: 10,
-		protocolHeaderName: 'MCP-Protocol-Version',
-		supportedProtocolVersions: SUPPORTED_PROTOCOL_VERSIONS,
 	});
 	const handlers = createHandlers({
 		mcpUpstreamManager: manager,

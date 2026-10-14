@@ -19,12 +19,7 @@ import {
 } from '@/shared/mcp_protocol';
 import indexHtml from '@/ui/index.html';
 
-const MCP_PROTOCOL_VERSION_HEADER = 'mcp-protocol-version';
-
 const CLIENT_ACTIVITY_HISTORY_LIMIT = 200;
-
-const SUPPORTED_GATEWAY_PROTOCOL_VERSIONS = SUPPORTED_PROTOCOL_VERSIONS;
-const DEFAULT_GATEWAY_PROTOCOL_VERSION = SUPPORTED_GATEWAY_PROTOCOL_VERSIONS[0];
 
 type StartServerParams = {
 	port: number;
@@ -58,9 +53,7 @@ const startServer = async (
 	);
 	const mcpSessions = createMcpSessionManager({
 		onClientActivity: clientActivity.observe,
-		protocolHeaderName: MCP_PROTOCOL_VERSION_HEADER,
 		maxSessionsPerClient,
-		supportedProtocolVersions: SUPPORTED_GATEWAY_PROTOCOL_VERSIONS,
 	});
 
 	// All data is cached - no network calls, pure synchronous
@@ -94,7 +87,7 @@ const startServer = async (
 		const clients = clientActivity.list();
 
 		return {
-			protocolVersion: DEFAULT_GATEWAY_PROTOCOL_VERSION,
+			protocolVersion: CURRENT_PROTOCOL_VERSION,
 			supportedProtocolVersions: [...SUPPORTED_PROTOCOL_VERSIONS],
 			backends,
 			clients,
@@ -119,9 +112,7 @@ const startServer = async (
 		routes: {
 			'/mcp': createMcpHttpRoute({
 				refreshCatalogs: mcpUpstreamManager.refreshStaleCatalogs,
-				onRequestMetadata: (_metadata, client) => {
-					clientActivity.observe(client, CURRENT_PROTOCOL_VERSION);
-				},
+				onClientActivity: clientActivity.observe,
 				initialization,
 				mcpSessions,
 				routeRequest,

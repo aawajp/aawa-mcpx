@@ -17,6 +17,7 @@ import {
 	GATEWAY_INFO,
 	isProtocolVersion,
 	JSONRPC_VERSION,
+	MCP_HEADERS,
 	type ProtocolVersion,
 	RPC_ERROR,
 	recordOf,
@@ -37,8 +38,6 @@ type CloseSessionResult = {
 type CreateMcpSessionManagerParams = {
 	maxSessionsPerClient: number;
 	onClientActivity?: (client: ClientInfo, protocolVersion: string) => void;
-	protocolHeaderName: string;
-	supportedProtocolVersions: readonly string[];
 };
 
 const isSupportedSessionVersion = (
@@ -136,7 +135,7 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 					RPC_ERROR.InvalidParams,
 					`Unsupported MCP protocol version: ${requested.protocolVersion ?? 'missing'}`,
 					{
-						supported: params.supportedProtocolVersions,
+						supported: SUPPORTED_PROTOCOL_VERSIONS,
 					},
 				),
 				status: 400,
@@ -191,7 +190,6 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 	const requireSession = (
 		sessionId: string | undefined,
 		id: string | number | undefined,
-		_method: string,
 	): SessionError | null => {
 		if (!sessionId) {
 			return createProtocolError({
@@ -219,7 +217,7 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 		method: string,
 	): SessionError | null => {
 		if (method === 'initialize') return null;
-		const header = request.headers.get(params.protocolHeaderName);
+		const header = request.headers.get(MCP_HEADERS.ProtocolVersion);
 		if (!header) return null;
 		if (!isSupportedSessionVersion(header)) {
 			return createProtocolError({

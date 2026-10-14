@@ -42,7 +42,11 @@ import type {
 import type { McpConfig, McpServerConfig } from '@/server/config/schema';
 import type { SchemaIssue } from '@/server/mcp_upstreams/json_schema';
 import type { TrafficStore } from '@/server/traffic_store';
-import type { HeaderParameter, ProtocolVersion } from '@/shared/mcp_protocol';
+import type {
+	CatalogList,
+	HeaderParameter,
+	ProtocolVersion,
+} from '@/shared/mcp_protocol';
 import type { ToolCallResult } from '@/shared/mcp_results';
 import type { McpUpstreamStatus } from '@/shared/ui_api';
 
@@ -133,8 +137,6 @@ type McpUpstreamResourceTemplatesMap = Map<
 	McpUpstreamResourceTemplates
 >;
 
-type CatalogList = 'tools' | 'prompts' | 'resources' | 'resourceTemplates';
-
 // A client request that may need fresh backend lists.
 type CatalogRequest = {
 	method: string;
@@ -211,7 +213,6 @@ type McpUpstreamManager = {
 
 export type {
 	CallToolParams,
-	CatalogList,
 	CatalogRequest,
 	Client,
 	CreateMcpUpstreamManagerParams,

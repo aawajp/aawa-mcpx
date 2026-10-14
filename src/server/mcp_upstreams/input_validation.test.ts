@@ -217,8 +217,6 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 				expect(compilations).toBeGreaterThan(0);
 				const sessions = createMcpSessionManager({
 					maxSessionsPerClient: 10,
-					protocolHeaderName: 'MCP-Protocol-Version',
-					supportedProtocolVersions: SUPPORTED_PROTOCOL_VERSIONS,
 				});
 				const route = createMcpRequestRouter({
 					handlers: createHandlers({
