@@ -10,28 +10,28 @@ import { errorMessage } from '@/shared/common';
 import { jsonObjectType } from '@/shared/mcp_schemas';
 
 const toggleToolBodyType = type({
+	'+': 'reject',
 	serverName: 'string',
 	toolName: 'string',
 	enabled: 'boolean',
-	'[string]': 'unknown',
 });
 
 const toggleBackendBodyType = type({
+	'+': 'reject',
 	serverName: 'string',
 	enabled: 'boolean',
-	'[string]': 'unknown',
 });
 
 const refreshBackendsBodyType = type({
+	'+': 'reject',
 	'serverName?': 'string',
-	'[string]': 'unknown',
 });
 
 const callToolBodyType = type({
+	'+': 'reject',
 	serverName: 'string',
 	toolName: 'string',
 	'arguments?': jsonObjectType,
-	'[string]': 'unknown',
 });
 
 type CreateUiRoutesParams = {
@@ -51,23 +51,31 @@ const jsonError = (status: number, message: string): Response =>
 		},
 	);
 
-const parsePagination = (url: string) => {
-	const search = new URL(url).searchParams;
-	const limitRaw = Number(search.get('limit'));
-	const offsetRaw = Number(search.get('offset'));
-	const errorsOnlyRaw = search.get('errorsOnly');
-	const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : 20;
-	const offset = Number.isFinite(offsetRaw) && offsetRaw >= 0 ? offsetRaw : 0;
-	const errorsOnly =
-		errorsOnlyRaw === '1' ||
-		errorsOnlyRaw === 'true' ||
-		errorsOnlyRaw === 'yes';
-	return {
-		limit,
-		offset,
-		errorsOnly,
-		search,
-	};
+const pageFields = {
+	'+': 'reject',
+	limit: type('string.integer.parse').to('number > 0').default('20'),
+	offset: type('string.integer.parse').to('number >= 0').default('0'),
+	errorsOnly: type("'0' | '1'")
+		.pipe((value) => value === '1')
+		.default('0'),
+} as const;
+
+const debugQueryType = type(pageFields);
+
+const backendDebugQueryType = type({
+	...pageFields,
+	backend: 'string > 0',
+	'method?': 'string > 0',
+});
+
+const readQuery = <T>(
+	queryType: (value: unknown) => T | type.errors,
+	url: string,
+): T | Response => {
+	const query = queryType(Object.fromEntries(new URL(url).searchParams));
+	return query instanceof type.errors
+		? jsonError(400, `Invalid query: ${query.summary}`)
+		: query;
 };
 
 const createUiRoutes = (params: CreateUiRoutesParams) => {
@@ -317,8 +325,10 @@ const createUiRoutes = (params: CreateUiRoutesParams) => {
 		},
 		'/api/debug': {
 			async GET(request: Request) {
+				const query = readQuery(debugQueryType, request.url);
+				if (query instanceof Response) return query;
+				const { limit, offset, errorsOnly } = query;
 				try {
-					const { limit, offset, errorsOnly } = parsePagination(request.url);
 					const client = trafficStore.getClientTraffic({
 						limit,
 						offset,
@@ -350,7 +360,9 @@ const createUiRoutes = (params: CreateUiRoutesParams) => {
 		},
 		'/api/debug/client': {
 			async GET(request: Request) {
-				const { limit, offset, errorsOnly } = parsePagination(request.url);
+				const query = readQuery(debugQueryType, request.url);
+				if (query instanceof Response) return query;
+				const { limit, offset, errorsOnly } = query;
 				try {
 					const client = trafficStore.getClientTraffic({
 						limit,
@@ -366,18 +378,13 @@ const createUiRoutes = (params: CreateUiRoutesParams) => {
 		},
 		'/api/debug/backend': {
 			async GET(request: Request) {
-				const { limit, offset, errorsOnly, search } = parsePagination(
-					request.url,
-				);
-				const backend = search.get('backend');
-				const method = search.get('method') ?? undefined;
-				if (!backend) {
-					return jsonError(400, 'Missing backend parameter');
-				}
+				const query = readQuery(backendDebugQueryType, request.url);
+				if (query instanceof Response) return query;
+				const { backend, method, limit, offset, errorsOnly } = query;
 				try {
 					const data = trafficStore.getBackendTraffic({
 						backend,
-						method: method && method.trim() !== '' ? method : undefined,
+						method,
 						limit,
 						offset,
 						errorsOnly,

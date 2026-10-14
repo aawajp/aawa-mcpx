@@ -19,6 +19,7 @@ const createRouteFixture = (
 	} = {},
 ) => {
 	const sessions = createMcpSessionManager({
+		maxSessionsPerClient: 10,
 		protocolHeaderName: 'MCP-Protocol-Version',
 		supportedProtocolVersions: SUPPORTED_PROTOCOL_VERSIONS,
 	});

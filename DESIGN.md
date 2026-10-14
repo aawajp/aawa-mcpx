@@ -56,7 +56,7 @@ SDK supplies types only; the gateway implements dispatch and transports itself.
 | Layer | Modules and responsibilities |
 | --- | --- |
 | `server/` | `index.ts`: entrypoint (load configuration, start upstreams and the server, handle shutdown); `traffic_store.ts`: SQLite traffic storage; `logger.ts`: console logging. |
-| `server/config/` | Load, validate, and persist configuration. |
+| `server/config/` | `schema.ts`: every user setting as ArkType schemas (environment variables and `mcp.json`); `loader.ts`: loads and persists `mcp.json`; `constants.ts`: file locations. |
 | `server/gateway/` | `server.ts`: `Bun.serve`/route wiring; `mcp_http_route.ts`: HTTP handling; `mcp_request_router.ts`: JSON-RPC dispatch/version adaptation. |
 | | `json_rpc.ts`: incoming envelope parsing; `mcp_session.ts`: public initialization/sessions; `client_activity.ts`: dashboard history; `mcp_handlers.ts`: upstream operations; `mcp_namespaces.ts`: applies namespaces and `[serverName]` description prefixes to catalogs; `ui_routes.ts`: UI APIs/events. |
 | `server/mcp_upstreams/` | `manager.ts`: stable gateway API/service wiring; `connections.ts`: per-backend state record, connection/recovery lifecycle; `health_checks.ts`: probes; `catalog.ts`: caches/exposure state. |
@@ -486,8 +486,10 @@ copied across protocol boundaries.
 ## 6. Validation policy
 
 ArkType is the default for JSON-RPC envelopes, modern request metadata/capabilities,
-handled method parameters, HTTP API bodies, configuration, upstream response shapes,
-and UI overview/debug contracts. Ajv and `ajv-formats` are peer dependencies used
+handled method parameters, HTTP API bodies and queries, environment variables and
+`mcp.json`, upstream response shapes, and UI overview/debug contracts. Settings
+and dashboard inputs refuse unknown fields and invalid values instead of falling
+back to defaults. Ajv and `ajv-formats` are peer dependencies used
 only for arbitrary provider JSON Schema, which ArkType cannot import.
 
 `ProtocolClient.rpc` validates backend envelopes and result shapes once; the

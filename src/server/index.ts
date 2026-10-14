@@ -2,22 +2,14 @@ import path from 'node:path';
 
 import { CONFIG_FILENAME, DATABASE_FILENAME } from '@/server/config/constants';
 import { load as loadConfig } from '@/server/config/loader';
+import { environmentType } from '@/server/config/schema';
 import { startServer } from '@/server/gateway/server';
 import { logger } from '@/server/logger';
 import { createMcpUpstreamManager } from '@/server/mcp_upstreams/manager';
 import { createTrafficStore } from '@/server/traffic_store';
 import { errorMessage } from '@/shared/common';
 
-const DEFAULT_PORT = 4567;
-
-const resolvePort = (value: string | undefined): number => {
-	if (!value) {
-		return DEFAULT_PORT;
-	}
-
-	const parsed = Number(value);
-	return Number.isNaN(parsed) ? DEFAULT_PORT : parsed;
-};
+const environment = environmentType.assert(process.env);
 
 const configPath = path.join(process.cwd(), CONFIG_FILENAME);
 const config = await loadConfig(configPath);
@@ -35,10 +27,10 @@ void initialization.catch((err) => {
 	logger.error(`Backend initialization failed: ${errorMessage(err)}`);
 });
 
-const port = resolvePort(process.env.PORT);
 const server = await startServer({
-	port,
-	development: process.env.NODE_ENV !== 'production',
+	port: environment.PORT,
+	development: environment.NODE_ENV !== 'production',
+	maxSessionsPerClient: environment.MCP_MAX_SESSIONS_PER_CLIENT,
 	mcpUpstreamManager,
 	trafficStore,
 	initialization,

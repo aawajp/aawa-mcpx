@@ -33,6 +33,10 @@ bun install
 
 ## Configuration
 
+The gateway takes its settings from environment variables and from `mcp.json`;
+it has no command-line options. Both are validated at startup, and an invalid
+or unknown setting stops the gateway with an error that names it.
+
 ### Backends
 
 Backends are defined in `mcp.json` under `mcpServers`. The file is read once at
@@ -75,20 +79,22 @@ Stdio backend:
 }
 ```
 
-| Field | Transport | Description |
-| --- | --- | --- |
-| `type` | Both | `"http"` or `"stdio"` (required) |
-| `url` | HTTP | Backend MCP endpoint (required) |
-| `headers` | HTTP | Literal header values sent to the backend |
-| `command` | stdio | Server executable (required) |
-| `args` | stdio | Command-line arguments |
-| `env` | stdio | Literal environment variables for the process; of the gateway's own environment only `HOME`, `PATH`, `SHELL`, `USER`, `LOGNAME`, `TMPDIR`, `SystemRoot` and `TEMP` are passed on |
-| `cwd` | stdio | Working directory for the process |
-| `timeout` | Both | Request timeout in ms; default `10000` |
-| `enabled` | Both | Keep the backend connected and expose it; default `true`. A disabled backend is contacted once at startup so the dashboard can show its details |
-| `trafficLimit` | Both | Requests per second to the backend (integer), including catalog fetches and health probes; default `1` |
-| `enabledTools` | Both | Tools exposed to clients; if omitted, every tool from the first fetch is exposed |
-| `availableTools` | Both | Discovered tools; managed by the gateway, do not edit |
+| Field | Transport | Type | Description |
+| --- | --- | --- | --- |
+| `type` | Both | `"http"` or `"stdio"` | Transport (required) |
+| `url` | HTTP | `http://` or `https://` URL | Backend MCP endpoint (required) |
+| `headers` | HTTP | Object of strings | Literal header values sent to the backend |
+| `command` | stdio | Non-empty string | Server executable (required) |
+| `args` | stdio | Array of strings | Command-line arguments |
+| `env` | stdio | Object of strings | Literal environment variables for the process; of the gateway's own environment only `HOME`, `PATH`, `SHELL`, `USER`, `LOGNAME`, `TMPDIR`, `SystemRoot` and `TEMP` are passed on |
+| `cwd` | stdio | String | Working directory for the process |
+| `timeout` | Both | Positive integer | Request timeout in ms; default `10000` |
+| `enabled` | Both | Boolean | Keep the backend connected and expose it; default `true`. A disabled backend is contacted once at startup so the dashboard can show its details |
+| `trafficLimit` | Both | Positive integer | Requests per second to the backend, including catalog fetches and health probes; default `1` |
+| `enabledTools` | Both | Array of strings | Tools exposed to clients; if omitted, every tool from the first fetch is exposed |
+| `availableTools` | Both | Array of strings | Discovered tools; managed by the gateway, do not edit |
+
+Other fields, in a backend or next to `mcpServers`, are refused.
 
 After the first fetch, newly discovered tools stay hidden until enabled. Tools
 that disappear from a backend are removed from both tool lists. An unknown name
@@ -97,12 +103,14 @@ tool is toggled in the dashboard.
 
 ### Environment
 
-| Variable | Default | Description |
-| --- | --- | --- |
-| `PORT` | `4567` | Listening port |
-| `MCP_MAX_SESSIONS_PER_CLIENT` | `10` | Retained 2025 sessions per client name/version; the oldest is dropped beyond it |
+| Variable | Type | Default | Description |
+| --- | --- | --- | --- |
+| `PORT` | Integer from 1 to 65535 | `4567` | Listening port |
+| `MCP_MAX_SESSIONS_PER_CLIENT` | Positive integer | `10` | Retained 2025 sessions per client name/version; the oldest is dropped beyond it |
+| `NODE_ENV` | String | unset | `production` turns off the dashboard's hot reload and browser console forwarding |
 
-Start from `.env.example` when creating `.env`.
+`bun start` and `bun dev` read these from `.env`, and Docker Compose passes
+`.env` to the container. Start from `.env.example` when creating `.env`.
 
 ## Run the gateway
 
@@ -189,6 +197,11 @@ The separate **Debug** page (`/debug`) shows client and backend traffic from the
 | `/api/debug` | GET | First page of client traffic and of each backend's traffic (`?limit=&offset=&errorsOnly=`) |
 | `/api/debug/client` | GET | Client traffic (`?limit=&offset=&errorsOnly=`) |
 | `/api/debug/backend` | GET | One backend's traffic (`?backend=&method=&limit=&offset=&errorsOnly=`; `backend` required) |
+
+The debug queries take `limit` (positive integer, default `20`), `offset`
+(integer from 0, default `0`) and `errorsOnly` (`1` or `0`, default `0`);
+`/api/debug/backend` also takes `backend` (required) and `method`, both
+non-empty. Request bodies and queries with other fields are refused.
 
 Failed `/api/*` requests return `{ error }` with status 400 for a malformed request or a refused tool call, 404 for an unknown backend or tool, and 500 otherwise. Toggles persist to `mcp.json`. Traffic is stored in `db/traffic.db`, which keeps the newest 10,000 records and is cleared at startup. Any other path serves the dashboard page.
 

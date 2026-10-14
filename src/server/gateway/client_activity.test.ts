@@ -42,7 +42,7 @@ test('client info requires name and version when present; omitted identity uses 
 import { expect, spyOn, test } from 'bun:test';
 
 test('initialization retains the newest sessions per name/version without idle expiration', async () => {
-	for (const maxSessionsPerClient of [undefined, 2]) {
+	for (const maxSessionsPerClient of [10, 2]) {
 		const sessions = createMcpSessionManager({
 			maxSessionsPerClient,
 			protocolHeaderName: 'MCP-Protocol-Version',
@@ -71,8 +71,7 @@ test('initialization retains the newest sessions per name/version without idle e
 		const otherName = await initialize('other');
 		const otherVersion = await initialize('agent', '2');
 		const retained: Array<string | undefined> = [];
-		const limit = maxSessionsPerClient ?? 10;
-		for (let index = 0; index < limit; index++)
+		for (let index = 0; index < maxSessionsPerClient; index++)
 			retained.push(
 				(
 					await initialize(
@@ -105,7 +104,7 @@ test('initialization retains the newest sessions per name/version without idle e
 			otherVersion.sessionId,
 		])
 			expect(sessions.requireSession(id, 2, 'tools/list')).toBeNull();
-		expect(sessions.activeCount()).toBe(limit + 2);
+		expect(sessions.activeCount()).toBe(maxSessionsPerClient + 2);
 		expect(sessions.close(newest.sessionId).status).toBe(202);
 		expect(
 			sessions.requireSession(newest.sessionId, 2, 'tools/list')?.status,
@@ -124,6 +123,7 @@ test('session lifecycle and rejection logs omit transport identifiers', async ()
 		messages.push(String(message));
 	});
 	const sessions = createMcpSessionManager({
+		maxSessionsPerClient: 10,
 		protocolHeaderName: 'MCP-Protocol-Version',
 		supportedProtocolVersions: SUPPORTED_PROTOCOL_VERSIONS,
 	});
@@ -162,6 +162,7 @@ test('session lifecycle and rejection logs omit transport identifiers', async ()
 test('client activity groups revisions and reconnects without exposing sessions', async () => {
 	const activity = createClientActivityTracker(2);
 	const sessions = createMcpSessionManager({
+		maxSessionsPerClient: 10,
 		protocolHeaderName: 'MCP-Protocol-Version',
 		supportedProtocolVersions: SUPPORTED_PROTOCOL_VERSIONS,
 		onClientActivity: activity.observe,

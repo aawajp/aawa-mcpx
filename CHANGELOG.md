@@ -41,6 +41,10 @@ entry under the date its change was committed. The project uses
 - At startup, the gateway connects once to each disabled backend to fetch its
   server details and catalogs for the dashboard, then disconnects. Before, a
   disabled backend was never contacted and the dashboard had nothing to show.
+- **Breaking:** Validate environment variables and `mcp.json` at startup;
+  invalid values and unknown fields stop the gateway.
+- **Breaking:** Make the dashboard API refuse unknown fields and invalid query
+  values.
 
 #### Fixed
 

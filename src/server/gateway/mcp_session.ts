@@ -27,7 +27,7 @@ type CloseSessionResult = {
 };
 
 type CreateMcpSessionManagerParams = {
-	maxSessionsPerClient?: number;
+	maxSessionsPerClient: number;
 	onClientActivity?: (client: ClientInfo, protocolVersion: string) => void;
 	protocolHeaderName: string;
 	supportedProtocolVersions: readonly string[];
@@ -57,9 +57,7 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 	// 2025-06-18 and 2025-11-25 requests use the issued ID to recover their
 	// negotiated version and client identity. It is transport state, not a client ID.
 	const sessions = new Map<string, SessionInfo>();
-	const limit = params.maxSessionsPerClient ?? 10;
-	if (!Number.isSafeInteger(limit) || limit < 1)
-		throw new Error('Session limit must be a positive integer');
+	const limit = params.maxSessionsPerClient;
 	const activeCount = (): number => sessions.size;
 
 	const getClientInfo = (value: unknown): ClientInfo | undefined => {

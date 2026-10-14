@@ -22,22 +22,15 @@ import indexHtml from '@/ui/index.html';
 
 const MCP_PROTOCOL_VERSION_HEADER = 'mcp-protocol-version';
 
-const DEFAULT_MAX_SESSIONS_PER_CLIENT = 10;
 const CLIENT_ACTIVITY_HISTORY_LIMIT = 200;
 
 const SUPPORTED_GATEWAY_PROTOCOL_VERSIONS = SUPPORTED_PROTOCOL_VERSIONS;
 const DEFAULT_GATEWAY_PROTOCOL_VERSION = SUPPORTED_GATEWAY_PROTOCOL_VERSIONS[0];
 
-const resolveNumberEnv = (key: string, fallback: number): number => {
-	const raw = process.env[key];
-	if (!raw) return fallback;
-	const parsed = Number(raw);
-	return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
-};
-
 type StartServerParams = {
 	port: number;
 	development: boolean;
+	maxSessionsPerClient: number;
 	mcpUpstreamManager: McpUpstreamManager;
 	trafficStore: TrafficStore;
 	initialization?: Promise<void>;
@@ -53,6 +46,7 @@ const startServer = async (
 	const {
 		development,
 		initialization = Promise.resolve(),
+		maxSessionsPerClient,
 		mcpUpstreamManager,
 		port,
 		trafficStore,
@@ -66,10 +60,7 @@ const startServer = async (
 	const mcpSessions = createMcpSessionManager({
 		onClientActivity: clientActivity.observe,
 		protocolHeaderName: MCP_PROTOCOL_VERSION_HEADER,
-		maxSessionsPerClient: resolveNumberEnv(
-			'MCP_MAX_SESSIONS_PER_CLIENT',
-			DEFAULT_MAX_SESSIONS_PER_CLIENT,
-		),
+		maxSessionsPerClient,
 		supportedProtocolVersions: SUPPORTED_GATEWAY_PROTOCOL_VERSIONS,
 	});
 

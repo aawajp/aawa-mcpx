@@ -710,6 +710,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 				await client.ping();
 				const tools = await client.listTools();
 				const sessions = createMcpSessionManager({
+					maxSessionsPerClient: 10,
 					protocolHeaderName: 'MCP-Protocol-Version',
 					supportedProtocolVersions: SUPPORTED_PROTOCOL_VERSIONS,
 				});

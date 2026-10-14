@@ -57,6 +57,14 @@ test('dashboard toggles name the backend and tool as they are and return the ove
 			})
 		).status,
 	).toBe(400);
+	expect(
+		(
+			await toggle({
+				...params,
+				extra: true,
+			})
+		).status,
+	).toBe(400);
 });
 
 test('backend refresh waits for fresh catalogs before returning the overview', async () => {
@@ -284,4 +292,62 @@ test('shutdown closes active UI event streams', async () => {
 		done: true,
 		value: undefined,
 	});
+});
+
+test('debug queries are parsed with their defaults and malformed ones are refused', async () => {
+	const queries: unknown[] = [];
+	const routes = createUiRoutes({
+		buildOverview: () => ({}),
+		mcpUpstreamManager: catalogOf('backend') as unknown as McpUpstreamManager,
+		shutdownSignal: new AbortController().signal,
+		trafficStore: {
+			getBackendTraffic: (query: unknown) => {
+				queries.push(query);
+				return {
+					records: [],
+					total: 0,
+				};
+			},
+		} as unknown as TrafficStore,
+	});
+	const get = (query: string) =>
+		routes['/api/debug/backend'].GET(
+			new Request(`http://localhost/api/debug/backend?${query}`),
+		);
+
+	expect((await get('backend=backend')).status).toBe(200);
+	expect(
+		(await get('backend=backend&limit=5&offset=10&errorsOnly=1&method=ping'))
+			.status,
+	).toBe(200);
+	expect(queries).toEqual([
+		{
+			backend: 'backend',
+			limit: 20,
+			offset: 0,
+			errorsOnly: false,
+		},
+		{
+			backend: 'backend',
+			method: 'ping',
+			limit: 5,
+			offset: 10,
+			errorsOnly: true,
+		},
+	]);
+	for (const query of [
+		'',
+		'backend=backend&limit=0',
+		'backend=backend&limit=1.5',
+		'backend=backend&offset=-1',
+		'backend=backend&errorsOnly=yes',
+		'backend=backend&page=2',
+		'backend=backend&method=',
+	]) {
+		const response = await get(query);
+		expect(response.status).toBe(400);
+		expect(await response.json()).toEqual({
+			error: expect.stringMatching(/^Invalid query: /),
+		});
+	}
 });
