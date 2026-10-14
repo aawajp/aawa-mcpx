@@ -431,7 +431,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 						name: 'echo',
 					}),
 				).rejects.toMatchObject({
-					code: -32000,
+					code: -32603,
 					status: transientStatus,
 					data: undefined,
 				});

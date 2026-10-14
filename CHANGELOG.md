@@ -24,6 +24,8 @@ Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 #### Changed
 
+- Name JSON-RPC and MCP error codes and the JSON-RPC version instead of
+  repeating literals.
 - Use the MCP SDK v2 client package for protocol types.
 - Make `ajv` and `ajv-formats` runtime dependencies.
 - Share repeated gateway helpers and constants.
@@ -71,6 +73,10 @@ Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 #### Fixed
 
+- Return `-32602` for an `initialize` request without a protocol version.
+- Return `-32603` instead of `-32000` for backend HTTP failures.
+- Return `-32002` to 2025 clients reading a resource of an unknown or disabled
+  backend.
 - Exit immediately on a second Ctrl+C or `SIGTERM` during shutdown.
 - The dashboard lists every configured backend from the moment the gateway
   starts, with a **Connecting…** badge until the first connection attempt

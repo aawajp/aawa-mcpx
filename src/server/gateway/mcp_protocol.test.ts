@@ -564,6 +564,26 @@ test('initialize proposals choose a supported alternative and enforce stored ver
 			expect(rejected.status).toBe(400);
 		}
 	}
+	const missingVersion = await sessions.handleInitialize(
+		{
+			jsonrpc: '2.0',
+			id: 1,
+			method: 'initialize',
+			params: {
+				clientInfo: {
+					name: 'test',
+					version: '1',
+				},
+			},
+		},
+		undefined,
+	);
+	expect(missingVersion.status).toBe(400);
+	expect(missingVersion.payload).toMatchObject({
+		error: {
+			code: -32602,
+		},
+	});
 	const initial = await sessions.handleInitialize(
 		{
 			jsonrpc: '2.0',

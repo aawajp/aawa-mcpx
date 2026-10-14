@@ -454,6 +454,7 @@ Lookup, transport, malformed-response, and gateway failures use protocol errors:
 | Failure | JSON-RPC code |
 | --- | --- |
 | Unknown/disabled tool or backend, invalid prefixed name | `-32602` |
+| Resource of an unknown/disabled backend, for 2025 clients | `-32002` |
 | Disconnected backend, transport failure, malformed backend result, gateway dispatch failure | `-32603` |
 
 Backend RPC errors validate their envelope and request ID before forwarding and

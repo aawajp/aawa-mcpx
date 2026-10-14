@@ -18,6 +18,9 @@ import {
 	GATEWAY_CAPABILITIES,
 	GATEWAY_INFO,
 	isProtocolVersion,
+	JSONRPC_VERSION,
+	MCP_ERROR_CODES,
+	RPC_ERROR,
 	recordOf,
 	SERVER_INFO_META,
 	SUPPORTED_PROTOCOL_VERSIONS,
@@ -71,7 +74,7 @@ const createInvalidParamsError = (
 	message: string,
 ): RouteResult => {
 	return {
-		payload: rpcError(id, -32602, message),
+		payload: rpcError(id, RPC_ERROR.InvalidParams, message),
 	};
 };
 
@@ -107,28 +110,29 @@ const clientErrorCode = (code: number, protocolVersion?: string): number => {
 	if (protocolVersion !== CURRENT_PROTOCOL_VERSION) {
 		// These protocol errors have meanings only in the revisions defining them.
 		if (
-			(code >= -32022 && code <= -32020) ||
-			(code === -32042 && protocolVersion !== '2025-11-25')
+			MCP_ERROR_CODES.has(code) ||
+			(code === RPC_ERROR.UrlElicitationRequired &&
+				protocolVersion !== '2025-11-25')
 		)
-			return -32603;
+			return RPC_ERROR.InternalError;
 		return code;
 	}
-	// Modern MCP replaces resource-not-found and forbids retired/unassigned
+	// MCP 2026-07-28 replaces resource-not-found and forbids retired/unassigned
 	// reserved codes. Preserve diagnostic message/data while adapting the code.
-	if (code === -32002) return -32602;
-	if (code >= -32099 && code <= -32000 && !(code >= -32022 && code <= -32020))
-		return -32603;
+	if (code === RPC_ERROR.ResourceNotFound) return RPC_ERROR.InvalidParams;
+	if (code >= -32099 && code <= -32000 && !MCP_ERROR_CODES.has(code))
+		return RPC_ERROR.InternalError;
 	return code;
 };
 
-const modernErrorStatus = (code: number): number | undefined => {
-	if (code === -32601) return 404;
-	if (code === -32603) return 500;
+const errorHttpStatus = (code: number): number | undefined => {
+	if (code === RPC_ERROR.MethodNotFound) return 404;
+	if (code === RPC_ERROR.InternalError) return 500;
 	if (
-		code === -32700 ||
-		code === -32600 ||
-		code === -32602 ||
-		(code >= -32022 && code <= -32020)
+		code === RPC_ERROR.ParseError ||
+		code === RPC_ERROR.InvalidRequest ||
+		code === RPC_ERROR.InvalidParams ||
+		MCP_ERROR_CODES.has(code)
 	)
 		return 400;
 	return undefined;
@@ -165,7 +169,11 @@ const createMcpRequestRouter = (
 		)
 			return {
 				status: usesRequestMetadata ? 404 : undefined,
-				payload: rpcError(request.id, -32601, 'Method not supported'),
+				payload: rpcError(
+					request.id,
+					RPC_ERROR.MethodNotFound,
+					'Method not supported',
+				),
 			};
 		if (request.method === 'initialize')
 			return await handleInitialize(request, sessionId);
@@ -198,7 +206,7 @@ const createMcpRequestRouter = (
 		// augmentation and execute normally. Only supported fields are dispatched.
 		const success = (result: Record<string, unknown>): RouteResult => ({
 			payload: {
-				jsonrpc: '2.0',
+				jsonrpc: JSONRPC_VERSION,
 				id: request.id,
 				result,
 			},
@@ -209,7 +217,7 @@ const createMcpRequestRouter = (
 				capabilities: GATEWAY_CAPABILITIES,
 			});
 		const unsupported = (message: string): RouteResult => ({
-			payload: rpcError(request.id, -32601, message),
+			payload: rpcError(request.id, RPC_ERROR.MethodNotFound, message),
 		});
 		switch (request.method) {
 			case 'tools/list':
@@ -260,7 +268,7 @@ const createMcpRequestRouter = (
 					}
 					if (issue)
 						return {
-							payload: rpcError(request.id, -32020, issue),
+							payload: rpcError(request.id, RPC_ERROR.HeaderMismatch, issue),
 						};
 				}
 				const result = await handlers.callTool({
@@ -327,11 +335,11 @@ const createMcpRequestRouter = (
 			return {
 				...result,
 				// HTTP statuses describe this client's binding, not the backend's.
-				// Keep 2025 RPC responses at their existing HTTP status; modern MCP
+				// Keep 2025 RPC responses at their existing HTTP status; MCP 2026-07-28
 				// requires 404 for unknown methods and 400 for its metadata errors.
 				status:
 					protocolVersion === CURRENT_PROTOCOL_VERSION
-						? (modernErrorStatus(code) ?? result.status)
+						? (errorHttpStatus(code) ?? result.status)
 						: result.status,
 				payload: {
 					...result.payload,

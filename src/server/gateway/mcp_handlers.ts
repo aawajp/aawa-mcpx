@@ -28,6 +28,7 @@ import {
 import {
 	CURRENT_PROTOCOL_VERSION,
 	type ProtocolVersion,
+	RPC_ERROR,
 } from '@/shared/mcp_protocol';
 import type { ToolCallResult } from '@/shared/mcp_results';
 
@@ -64,7 +65,7 @@ const parseOrInvalid = <T>(parse: () => T): T => {
 	try {
 		return parse();
 	} catch (error) {
-		throw new BackendRpcError(errorMessage(error), -32602);
+		throw new BackendRpcError(errorMessage(error), RPC_ERROR.InvalidParams);
 	}
 };
 
@@ -213,7 +214,10 @@ const createHandlers = (params: CreateHandlersParams) => {
 			);
 			// Execution errors arrive as tool results. Unexpected dispatcher failures
 			// are server errors, not actionable tool feedback.
-			throw new BackendRpcError('Internal server error', -32603);
+			throw new BackendRpcError(
+				'Internal server error',
+				RPC_ERROR.InternalError,
+			);
 		}
 	};
 

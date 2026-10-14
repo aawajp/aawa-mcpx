@@ -30,6 +30,7 @@ import {
 	decodeHeaderValue,
 	NAMED_METHODS,
 	PROTOCOL_VERSION_META,
+	RPC_ERROR,
 	recordOf,
 	requestName,
 	SUPPORTED_PROTOCOL_VERSIONS,
@@ -129,7 +130,11 @@ const createMethodNotAllowedResponse = (): Response => {
 };
 
 const createOriginForbiddenResponse = (): Response => {
-	const body = rpcError(undefined, -32600, 'Invalid Origin header.');
+	const body = rpcError(
+		undefined,
+		RPC_ERROR.InvalidRequest,
+		'Invalid Origin header.',
+	);
 	return createJsonResponse(body, undefined, 403);
 };
 
@@ -258,7 +263,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 				...params,
 				payload: rpcError(
 					params.id,
-					-32603,
+					RPC_ERROR.InternalError,
 					`Server initialization failed: ${errorMessage(err)}`,
 				),
 				status: 503,
@@ -309,7 +314,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 				return {
 					payload: rpcError(
 						message.id,
-						-32600,
+						RPC_ERROR.InvalidRequest,
 						'Request ID is already in progress',
 					),
 					status: 400,
@@ -403,7 +408,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 					sessionId,
 					payload: rpcError(
 						undefined,
-						-32600,
+						RPC_ERROR.InvalidRequest,
 						'MCP HTTP POST requests must accept application/json and text/event-stream.',
 					),
 					status: 400,
@@ -418,7 +423,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 					sessionId,
 					payload: rpcError(
 						undefined,
-						-32700,
+						RPC_ERROR.ParseError,
 						`Invalid JSON: ${errorMessage(err)}`,
 					),
 					status: 400,
@@ -437,7 +442,11 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 					method,
 					sessionId,
 					requestParams: record?.params,
-					payload: rpcError(maybeId, -32600, 'Invalid JSON-RPC message'),
+					payload: rpcError(
+						maybeId,
+						RPC_ERROR.InvalidRequest,
+						'Invalid JSON-RPC message',
+					),
 					status: 400,
 				});
 			}
@@ -460,36 +469,55 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 					createJsonResponse(
 						rpcError(message.id, code, text, data),
 						undefined,
-						code === -32603 ? 500 : 400,
+						code === RPC_ERROR.InternalError ? 500 : 400,
 					);
 				if (
 					isIncomingJsonRpcNotification(message) ||
 					isIncomingJsonRpcResponse(message)
 				)
-					return fail(-32600, 'MCP 2026-07-28 HTTP accepts requests only');
+					return fail(
+						RPC_ERROR.InvalidRequest,
+						'MCP 2026-07-28 HTTP accepts requests only',
+					);
 				// Validate the request's own metadata before comparing mirrors. Missing
 				// fields are InvalidParams, not a version/header negotiation failure.
 				if (!requestMetadataType.allows(metadata))
-					return fail(-32602, 'Missing or malformed request metadata');
+					return fail(
+						RPC_ERROR.InvalidParams,
+						'Missing or malformed request metadata',
+					);
 				const version = metadata[PROTOCOL_VERSION_META];
 				if (!versionHeader || versionHeader !== version)
-					return fail(-32020, 'Missing or mismatched protocol version header');
+					return fail(
+						RPC_ERROR.HeaderMismatch,
+						'Missing or mismatched protocol version header',
+					);
 				if (version !== CURRENT_PROTOCOL_VERSION)
-					return fail(-32022, 'Unsupported protocol version', {
-						requested: version,
-						supported: [...SUPPORTED_PROTOCOL_VERSIONS],
-					});
+					return fail(
+						RPC_ERROR.UnsupportedProtocolVersion,
+						'Unsupported protocol version',
+						{
+							requested: version,
+							supported: [...SUPPORTED_PROTOCOL_VERSIONS],
+						},
+					);
 				if (request.headers.get('Mcp-Method') !== message.method)
-					return fail(-32020, 'Missing or mismatched Mcp-Method');
+					return fail(
+						RPC_ERROR.HeaderMismatch,
+						'Missing or mismatched Mcp-Method',
+					);
 				const bodyParams = recordOf(message.params);
 				if (NAMED_METHODS.has(message.method)) {
 					const name = requestName(message.method, bodyParams);
 					try {
 						const header = request.headers.get('Mcp-Name');
 						if (header === null || decodeHeaderValue(header) !== name)
-							return fail(-32020, 'Missing or mismatched Mcp-Name');
+							return fail(
+								RPC_ERROR.HeaderMismatch,
+								'Missing or mismatched Mcp-Name',
+							);
 					} catch {
-						return fail(-32020, 'Malformed Mcp-Name');
+						return fail(RPC_ERROR.HeaderMismatch, 'Malformed Mcp-Name');
 					}
 				}
 				if (CATALOG_METHODS.has(message.method)) {
@@ -518,7 +546,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 								error: errorMessage(error),
 							}),
 						);
-						return fail(-32603, 'Internal server error');
+						return fail(RPC_ERROR.InternalError, 'Internal server error');
 					}
 				}
 				// Metadata is already validated; activity tracking needs no second
@@ -547,7 +575,11 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 					return createJsonResponse(result.payload, undefined, result.status);
 				} catch {
 					return createJsonResponse(
-						rpcError(message.id, -32603, 'Internal server error'),
+						rpcError(
+							message.id,
+							RPC_ERROR.InternalError,
+							'Internal server error',
+						),
 						undefined,
 						500,
 					);
@@ -738,7 +770,11 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 					},
 				});
 				return createJsonResponse(
-					rpcError(jsonRpcRequest.id, -32603, 'Internal server error'),
+					rpcError(
+						jsonRpcRequest.id,
+						RPC_ERROR.InternalError,
+						'Internal server error',
+					),
 					undefined,
 					500,
 				);

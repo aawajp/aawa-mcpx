@@ -15,6 +15,7 @@ import type {
 } from '@/server/mcp_upstreams/types';
 import type { TrafficStore } from '@/server/traffic_store';
 import { errorMessage } from '@/shared/common';
+import { RPC_ERROR } from '@/shared/mcp_protocol';
 import { type ToolCallResult, toolErrorResult } from '@/shared/mcp_results';
 
 type CreateMcpUpstreamOperationsParams = {
@@ -40,7 +41,7 @@ const wrapBackendFailure = async <T>(
 		if (signal?.aborted || error instanceof BackendRpcError) throw error;
 		throw new BackendRpcError(
 			`MCP upstream "${serverName}" request failed: ${errorMessage(error)}`,
-			-32603,
+			RPC_ERROR.InternalError,
 		);
 	}
 };
@@ -52,19 +53,23 @@ const createMcpUpstreamOperations = (
 	const normalizeToolResult = createToolResultNormalizer();
 
 	// The enabled, connected backend a request goes to.
-	const connectedBackend = (serverName: string, signal?: AbortSignal) => {
+	const connectedBackend = (
+		serverName: string,
+		signal?: AbortSignal,
+		unknownCode: number = RPC_ERROR.InvalidParams,
+	) => {
 		signal?.throwIfAborted();
 		const server = getBackend(serverName);
 		const client = server?.client;
 		if (!server?.serverConfig.enabled)
 			throw new BackendRpcError(
 				`MCP upstream "${serverName}" is unknown or disabled`,
-				-32602,
+				unknownCode,
 			);
 		if (!client)
 			throw new BackendRpcError(
 				`MCP upstream "${serverName}" is not available`,
-				-32603,
+				RPC_ERROR.InternalError,
 			);
 		return {
 			server,
@@ -105,13 +110,13 @@ const createMcpUpstreamOperations = (
 			if (inputIssue.reason !== 'schema_mismatch')
 				throw new BackendRpcError(
 					`Input validation unavailable: ${inputIssue.detail}`,
-					-32603,
+					RPC_ERROR.InternalError,
 				);
 			const message = `Invalid arguments for tool "${tool.name}": ${inputIssue.detail}`;
-			// June lists invalid arguments as protocol errors. November and modern
-			// MCP report input validation failures as actionable tool errors.
+			// 2025-06-18 lists invalid arguments as protocol errors; 2025-11-25 and
+			// 2026-07-28 report input validation failures as actionable tool errors.
 			if (callParams.clientProtocolVersion === '2025-06-18')
-				throw new BackendRpcError(message, -32602);
+				throw new BackendRpcError(message, RPC_ERROR.InvalidParams);
 			return toolErrorResult(message);
 		}
 		const result = await send({
@@ -171,7 +176,13 @@ const createMcpUpstreamOperations = (
 		resourceParams: ReadResourceParams,
 	): Promise<ReadResourceResult> => {
 		const { serverName, uri, signal } = resourceParams;
-		const { server, client } = connectedBackend(serverName, signal);
+		// A resource of an unknown backend is not found; the router adapts the
+		// code for 2026-07-28 clients.
+		const { server, client } = connectedBackend(
+			serverName,
+			signal,
+			RPC_ERROR.ResourceNotFound,
+		);
 		return send({
 			server,
 			client,

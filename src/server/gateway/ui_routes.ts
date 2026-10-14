@@ -7,6 +7,7 @@ import { BackendRpcError } from '@/server/mcp_upstreams/protocol_client';
 import type { McpUpstreamManager } from '@/server/mcp_upstreams/types';
 import type { TrafficStore } from '@/server/traffic_store';
 import { errorMessage } from '@/shared/common';
+import { RPC_ERROR } from '@/shared/mcp_protocol';
 import { jsonObjectType } from '@/shared/mcp_schemas';
 
 const toggleToolBodyType = type({
@@ -214,7 +215,10 @@ const createUiRoutes = (params: CreateUiRoutesParams) => {
 				} catch (err) {
 					logger.error(`Tool test error: ${errorMessage(err)}`);
 					return jsonError(
-						err instanceof BackendRpcError && err.code === -32602 ? 400 : 500,
+						err instanceof BackendRpcError &&
+							err.code === RPC_ERROR.InvalidParams
+							? 400
+							: 500,
 						errorMessage(err),
 					);
 				}

@@ -3,11 +3,11 @@ import type {
 	JSONRPCResultResponse,
 } from '@modelcontextprotocol/client';
 
-import { recordOf } from '@/shared/mcp_protocol';
+import { JSONRPC_VERSION, recordOf } from '@/shared/mcp_protocol';
 import { jsonRpcResponseType } from '@/shared/mcp_schemas';
 
 type IncomingJsonRpcRequest = {
-	jsonrpc: '2.0';
+	jsonrpc: typeof JSONRPC_VERSION;
 	method: string;
 	id: string | number;
 	params?: unknown;
@@ -16,7 +16,7 @@ type IncomingJsonRpcRequest = {
 };
 
 type IncomingJsonRpcNotification = {
-	jsonrpc: '2.0';
+	jsonrpc: typeof JSONRPC_VERSION;
 	method: string;
 	id?: never;
 	params?: unknown;
@@ -25,7 +25,7 @@ type IncomingJsonRpcNotification = {
 };
 
 type IncomingJsonRpcResultResponse = {
-	jsonrpc: '2.0';
+	jsonrpc: typeof JSONRPC_VERSION;
 	method?: never;
 	id: string | number;
 	params?: never;
@@ -34,7 +34,7 @@ type IncomingJsonRpcResultResponse = {
 };
 
 type IncomingJsonRpcErrorResponse = {
-	jsonrpc: '2.0';
+	jsonrpc: typeof JSONRPC_VERSION;
 	method?: never;
 	id?: string | number;
 	params?: never;
@@ -80,7 +80,7 @@ const parseIncomingJsonRpcMessage = (
 ): IncomingJsonRpcMessage | null => {
 	const record = recordOf(value);
 	if (!record) return null;
-	if (record.jsonrpc !== '2.0') return null;
+	if (record.jsonrpc !== JSONRPC_VERSION) return null;
 
 	if ('method' in record) {
 		if (typeof record.method !== 'string') return null;
@@ -90,7 +90,7 @@ const parseIncomingJsonRpcMessage = (
 			const id = getJsonRpcId(record.id);
 			if (id === null) return null;
 			const message: IncomingJsonRpcRequest = {
-				jsonrpc: '2.0',
+				jsonrpc: JSONRPC_VERSION,
 				method: record.method,
 				id,
 			};
@@ -100,7 +100,7 @@ const parseIncomingJsonRpcMessage = (
 			return message;
 		}
 		const message: IncomingJsonRpcNotification = {
-			jsonrpc: '2.0',
+			jsonrpc: JSONRPC_VERSION,
 			method: record.method,
 		};
 		if ('params' in record) {
@@ -118,7 +118,7 @@ const rpcError = (
 	message: string,
 	data?: unknown,
 ): JSONRPCErrorResponse => ({
-	jsonrpc: '2.0',
+	jsonrpc: JSONRPC_VERSION,
 	id,
 	error:
 		data === undefined

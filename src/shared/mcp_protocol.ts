@@ -17,6 +17,26 @@ const GATEWAY_INFO = {
 	name: packageJson.name,
 	version: packageJson.version,
 };
+const JSONRPC_VERSION = '2.0';
+// JSON-RPC and MCP error codes, named after the MCP SDK's ProtocolErrorCode.
+const RPC_ERROR = {
+	ParseError: -32700,
+	InvalidRequest: -32600,
+	MethodNotFound: -32601,
+	InvalidParams: -32602,
+	InternalError: -32603,
+	ResourceNotFound: -32002,
+	HeaderMismatch: -32020,
+	MissingRequiredClientCapability: -32021,
+	UnsupportedProtocolVersion: -32022,
+	UrlElicitationRequired: -32042,
+} as const;
+// The codes the MCP specification assigns in its reserved range.
+const MCP_ERROR_CODES = new Set<number>([
+	RPC_ERROR.HeaderMismatch,
+	RPC_ERROR.MissingRequiredClientCapability,
+	RPC_ERROR.UnsupportedProtocolVersion,
+]);
 // The gateway serves these features to clients on every revision.
 const GATEWAY_CAPABILITIES = {
 	tools: {},
@@ -254,9 +274,12 @@ export {
 	GATEWAY_CAPABILITIES,
 	GATEWAY_INFO,
 	isProtocolVersion,
+	JSONRPC_VERSION,
+	MCP_ERROR_CODES,
 	NAMED_METHODS,
 	PROTOCOL_VERSION_META,
 	protocolHeaders,
+	RPC_ERROR,
 	recordOf,
 	requestName,
 	requiresInitialization,

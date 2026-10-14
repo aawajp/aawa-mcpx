@@ -1,5 +1,7 @@
 import { type } from 'arktype';
 
+import { JSONRPC_VERSION } from '@/shared/mcp_protocol';
+
 // ArkType's Record accepts arrays as objects; MCP object fields do not.
 const jsonObjectType = type('Record<string, unknown>').narrow(
 	(value) => !Array.isArray(value),
@@ -9,7 +11,7 @@ const jsonObjectType = type('Record<string, unknown>').narrow(
 // and errors. Error IDs may be absent for transport-level notification failures;
 // the upstream client separately requires an exact ID match for a pending call.
 const jsonRpcResponseType = type({
-	jsonrpc: "'2.0'",
+	jsonrpc: type.unit(JSONRPC_VERSION),
 	id: 'string | number.integer',
 	'method?': 'never',
 	'params?': 'never',
@@ -17,7 +19,7 @@ const jsonRpcResponseType = type({
 	'error?': 'never',
 	'[string]': 'unknown',
 }).or({
-	jsonrpc: "'2.0'",
+	jsonrpc: type.unit(JSONRPC_VERSION),
 	'id?': 'string | number.integer',
 	'method?': 'never',
 	'params?': 'never',

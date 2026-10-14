@@ -419,7 +419,13 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 							}),
 						),
 					]) {
-						const expected = uri.includes('/down/') ? -32603 : -32602;
+						// 2025 reports a resource of an unknown backend as not found.
+						const expected = uri.includes('/down/')
+							? -32603
+							: /\/(missing|disabled)\//.test(uri) &&
+									clientVersion !== '2026-07-28'
+								? -32002
+								: -32602;
 						const failed = await send('resources/read', {
 							uri,
 						});

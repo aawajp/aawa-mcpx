@@ -16,7 +16,9 @@ import {
 	GATEWAY_CAPABILITIES,
 	GATEWAY_INFO,
 	isProtocolVersion,
+	JSONRPC_VERSION,
 	type ProtocolVersion,
+	RPC_ERROR,
 	recordOf,
 	requiresInitialization,
 	SUPPORTED_PROTOCOL_VERSIONS,
@@ -54,7 +56,7 @@ const createProtocolError = (params: {
 	status?: number;
 }): SessionError => {
 	return {
-		payload: rpcError(params.id, -32600, params.message),
+		payload: rpcError(params.id, RPC_ERROR.InvalidRequest, params.message),
 		status: params.status ?? 400,
 	};
 };
@@ -122,7 +124,7 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 				status: 400,
 				payload: rpcError(
 					request.id,
-					-32602,
+					RPC_ERROR.InvalidParams,
 					'Client info must include string name and version fields.',
 				),
 			};
@@ -131,7 +133,7 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 			return {
 				payload: rpcError(
 					request.id,
-					-32000,
+					RPC_ERROR.InvalidParams,
 					`Unsupported MCP protocol version: ${requested.protocolVersion ?? 'missing'}`,
 					{
 						supported: params.supportedProtocolVersions,
@@ -175,7 +177,7 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 		return {
 			sessionId,
 			payload: {
-				jsonrpc: '2.0',
+				jsonrpc: JSONRPC_VERSION,
 				id: request.id,
 				result: {
 					protocolVersion,

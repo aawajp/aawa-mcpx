@@ -23,7 +23,7 @@ import type {
 } from '@/server/mcp_upstreams/types';
 import type { TrafficStore } from '@/server/traffic_store';
 import { errorMessage } from '@/shared/common';
-import { toolHeaderParameters } from '@/shared/mcp_protocol';
+import { RPC_ERROR, toolHeaderParameters } from '@/shared/mcp_protocol';
 
 type CreateMcpUpstreamCatalogParams = {
 	attemptReconnect: (backend: McpUpstreamBackend) => Promise<void>;
@@ -76,7 +76,7 @@ const filterEnabledTools = (
 
 const isMethodNotFoundError = (error: unknown): boolean => {
 	if (typeof error !== 'object' || error === null) return false;
-	return 'code' in error && error.code === -32601;
+	return 'code' in error && error.code === RPC_ERROR.MethodNotFound;
 };
 
 const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
@@ -427,14 +427,14 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 		if (!backend?.serverConfig.enabled)
 			throw new BackendRpcError(
 				`MCP upstream "${serverName}" is unknown or disabled`,
-				-32602,
+				RPC_ERROR.InvalidParams,
 			);
 		const tool = backend.tools?.tools.find((tool) => tool.name === toolName);
 		const enabled = tool && enabledTool(backend, tool);
 		if (!enabled)
 			throw new BackendRpcError(
 				`Tool "${toolName}" is unknown or disabled on MCP upstream "${serverName}"`,
-				-32602,
+				RPC_ERROR.InvalidParams,
 			);
 		return enabled;
 	};

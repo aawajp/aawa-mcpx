@@ -20,9 +20,12 @@ import {
 	GATEWAY_INFO,
 	type HeaderParameter,
 	isProtocolVersion,
+	JSONRPC_VERSION,
+	MCP_ERROR_CODES,
 	PROTOCOL_VERSION_META,
 	type ProtocolVersion,
 	protocolHeaders,
+	RPC_ERROR,
 	recordOf,
 	requiresInitialization,
 	SERVER_INFO_META,
@@ -72,7 +75,12 @@ class BackendTransportError extends Error {
 
 // An HTTP failure without a valid RPC error keeps only its status.
 const httpError = (status: number): BackendRpcError =>
-	new BackendRpcError(`Backend HTTP ${status}`, -32000, undefined, status);
+	new BackendRpcError(
+		`Backend HTTP ${status}`,
+		RPC_ERROR.InternalError,
+		undefined,
+		status,
+	);
 
 const isTransientStatus = (status: number): boolean =>
 	status === 408 || status === 429 || status >= 500;
@@ -101,7 +109,7 @@ const discoveredVersions = (
 };
 
 const cancelledNotification = (requestId: string | number) => ({
-	jsonrpc: '2.0',
+	jsonrpc: JSONRPC_VERSION,
 	method: 'notifications/cancelled',
 	params: {
 		requestId,
@@ -274,10 +282,10 @@ class ProtocolClient {
 				if (
 					config.type === 'http' &&
 					error.status === 404 &&
-					error.code === -32601
+					error.code === RPC_ERROR.MethodNotFound
 				)
 					throw error;
-				if ([-32020, -32021, -32022].includes(error.code)) throw error;
+				if (MCP_ERROR_CODES.has(error.code)) throw error;
 				if (
 					config.type === 'http' &&
 					// Compatibility deviation from the 2026-07-28 HTTP fallback guidance:
@@ -286,7 +294,8 @@ class ProtocolClient {
 					// this exception never replays application requests.
 					!(
 						(error.status === 200 || error.status === undefined) &&
-						(error.code === -32601 || error.code === -32600)
+						(error.code === RPC_ERROR.MethodNotFound ||
+							error.code === RPC_ERROR.InvalidRequest)
 					) &&
 					![
 						// Only endpoint/protocol rejection permits HTTP fallback; an auth,
@@ -340,7 +349,7 @@ class ProtocolClient {
 		this.negotiationMethod = 'notifications/initialized';
 		await this.send(
 			{
-				jsonrpc: '2.0',
+				jsonrpc: JSONRPC_VERSION,
 				method: 'notifications/initialized',
 			},
 			AbortSignal.timeout(config.timeout),
@@ -443,15 +452,15 @@ class ProtocolClient {
 		const response =
 			legacy && request.method === 'ping'
 				? {
-						jsonrpc: '2.0',
+						jsonrpc: JSONRPC_VERSION,
 						id,
 						result: {},
 					}
 				: {
-						jsonrpc: '2.0',
+						jsonrpc: JSONRPC_VERSION,
 						id,
 						error: {
-							code: -32601,
+							code: RPC_ERROR.MethodNotFound,
 							message: 'Method not found',
 						},
 					};
@@ -729,7 +738,7 @@ class ProtocolClient {
 				)
 					throw new BackendRpcError(
 						`Backend HTTP ${response.status} rejected discovery`,
-						-32000,
+						RPC_ERROR.InternalError,
 						undefined,
 						response.status,
 					);
@@ -814,7 +823,7 @@ class ProtocolClient {
 			sent = true;
 			const response = await this.send(
 				{
-					jsonrpc: '2.0',
+					jsonrpc: JSONRPC_VERSION,
 					id,
 					method,
 					params: bodyParams,
