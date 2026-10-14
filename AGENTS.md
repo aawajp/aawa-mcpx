@@ -13,7 +13,7 @@ to the owning doc instead.
 | --- | --- | --- |
 | `README.md` | Project overview: what the gateway does, setup, configuration, running, connecting clients, dashboard, endpoints, development commands. | Users and operators |
 | `DESIGN.md` | Current design (architecture, source layout, protocol behavior, validation, persistence) and planned design (section 7). | Contributors and agents |
-| `CHANGELOG.md` | Every user-visible change, per release. | Users upgrading |
+| `CHANGELOG.md` | Every commit, per release. | Users and contributors |
 | `AGENTS.md` | Agent workflow and conventions only. | Agents |
 
 ### README.md
@@ -42,17 +42,7 @@ to the owning doc instead.
 
 ### CHANGELOG.md
 
-- Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with every
-  entry dated. Add every user-visible change in the same change as the code,
-  under `## [Unreleased]`, then a `### YYYY-MM-DD` heading for the commit date
-  (newest first; reuse the heading if it exists), then `#### Added`, `Changed`,
-  `Deprecated`, `Removed`, `Fixed`, or `Security`.
-- Write one entry per change from the user's point of view. Mark breaking
-  changes with **Breaking:** and include upgrade steps. Skip internal
-  refactors, test-only changes, and doc-only changes.
-- On release, replace `[Unreleased]` with `[<version>] - <release date>`, keep
-  the dated headings below it, add a new empty `[Unreleased]` above it, and
-  match the `package.json` version.
+- Follow the rules at the top of `CHANGELOG.md` when editing it.
 - `CHANGELOG.md` is the only place that tracks changes; do not add change
   notes to other docs.
 
@@ -96,8 +86,5 @@ responses strictly validated. Run the negotiation regressions in
 `src/server/mcp_upstreams/protocol_client.test.ts` and the envelope
 regressions in `src/server/mcp_upstreams/protocol_validation.test.ts`.
 
-Before finishing structural or naming changes, check:
-
-- File and directory names are current in `README.md`, `DESIGN.md`,
-  `AGENTS.md`, and config files.
-- `CHANGELOG.md` has an entry for every user-visible change.
+Before finishing structural or naming changes, check that file and directory
+names are current in `README.md`, `DESIGN.md`, `AGENTS.md`, and config files.

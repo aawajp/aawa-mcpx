@@ -1,9 +1,22 @@
 # Changelog
 
-All notable changes to aawa-mcpx are documented in this file. The format is
-based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with every
-entry under the date its change was committed. The project uses
+Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/); no version has been released yet.
+
+- Add an entry for every commit, in the same commit, under `## [Unreleased]`,
+  then a `### YYYY-MM-DD` heading for the commit date (newest first; reuse the
+  heading if it exists), then `#### Added`, `Changed`, `Deprecated`,
+  `Removed`, `Fixed`, or `Security`.
+- Write entries in the imperative mood, like a commit message: "Validate
+  `mcp.json` at startup", "Fix …", "Add …".
+- Size an entry to the change's significance: one short line for most
+  changes, more only for a large or high-impact one such as a rearchitecture.
+  Say what the change does; no before/after explanations, field lists, or
+  implementation details.
+- Mark breaking changes with **Breaking:**.
+- On release, replace `[Unreleased]` with `[<version>] - <release date>`, keep
+  the dated headings below it, add a new empty `[Unreleased]` above it, and
+  match the `package.json` version.
 
 ## [Unreleased]
 
@@ -11,6 +24,7 @@ entry under the date its change was committed. The project uses
 
 #### Changed
 
+- Define how to write changelog entries.
 - The dashboard is more compact: the summary cards, backend rows, buttons, and
   status badges use less padding and spacing, and use the default font size
   instead of a mix of sizes. Each backend lists its prompts and resources before
