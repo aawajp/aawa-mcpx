@@ -22,6 +22,7 @@ import {
 	protocolHeaders,
 	recordOf,
 	SUPPORTED_PROTOCOL_VERSIONS,
+	usesRequestMetadata,
 } from '@/shared/mcp_protocol';
 
 import { expect, mock, test } from 'bun:test';
@@ -60,23 +61,21 @@ const gateway = (
 		id?: string | number,
 		signal?: AbortSignal,
 	) => {
-		const params =
-			version === CURRENT_PROTOCOL_VERSION
-				? {
-						...fields,
-						_meta: {
-							...recordOf(fields._meta),
-							[PROTOCOL_VERSION_META]: version,
-							[CLIENT_CAPABILITIES_META]: {},
-						},
-					}
-				: fields;
-		const headers =
-			version === CURRENT_PROTOCOL_VERSION
-				? protocolHeaders(method, params)
-				: new Headers({
-						'MCP-Protocol-Version': version,
-					});
+		const params = usesRequestMetadata(version)
+			? {
+					...fields,
+					_meta: {
+						...recordOf(fields._meta),
+						[PROTOCOL_VERSION_META]: version,
+						[CLIENT_CAPABILITIES_META]: {},
+					},
+				}
+			: fields;
+		const headers = usesRequestMetadata(version)
+			? protocolHeaders(method, params)
+			: new Headers({
+					'MCP-Protocol-Version': version,
+				});
 		if (session) headers.set('Mcp-Session-Id', session);
 		return mcpPost({
 			headers,
@@ -220,7 +219,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 			};
 			try {
 				await client.connect();
-				if (backendVersion !== CURRENT_PROTOCOL_VERSION) {
+				if (!usesRequestMetadata(backendVersion)) {
 					const controller = new AbortController();
 					const operation = client.rpc(
 						'initialize',
@@ -251,10 +250,9 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 					).toBe(false);
 				}
 				for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
-					const session =
-						version === CURRENT_PROTOCOL_VERSION
-							? undefined
-							: await initialize(version);
+					const session = usesRequestMetadata(version)
+						? undefined
+						: await initialize(version);
 					for (const [method, fields] of [
 						[
 							'tools/call',
@@ -306,7 +304,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 							)?.id;
 							return backendId !== undefined;
 						});
-						if (version === CURRENT_PROTOCOL_VERSION) controller.abort();
+						if (usesRequestMetadata(version)) controller.abort();
 						else {
 							// A session HTTP disconnect must not cancel; an explicit notification does.
 							controller.abort();
@@ -333,10 +331,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 							'text/event-stream',
 						);
 						expect(await response.text()).toBe('');
-						if (
-							transport === 'stdio' ||
-							backendVersion !== CURRENT_PROTOCOL_VERSION
-						) {
+						if (transport === 'stdio' || !usesRequestMetadata(backendVersion)) {
 							await until(async () =>
 								(await events()).some(
 									(message) =>

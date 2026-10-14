@@ -31,6 +31,7 @@ import {
 	requiresInitialization,
 	SERVER_INFO_META,
 	SUPPORTED_PROTOCOL_VERSIONS,
+	usesRequestMetadata,
 } from '@/shared/mcp_protocol';
 import type { ToolCallResult } from '@/shared/mcp_results';
 import {
@@ -213,7 +214,7 @@ class ProtocolClient {
 		return (
 			error instanceof BackendRpcError &&
 			error.status === 404 &&
-			this.protocolVersion !== CURRENT_PROTOCOL_VERSION &&
+			!usesRequestMetadata(this.protocolVersion) &&
 			Boolean(this.sessionId)
 		);
 	}
@@ -252,7 +253,7 @@ class ProtocolClient {
 		}
 		// A 2025 revision a discovering peer offers instead of 2026-07-28.
 		let offeredVersion: ProtocolVersion | undefined;
-		if (!this.selected || this.selected === CURRENT_PROTOCOL_VERSION) {
+		if (!this.selected || usesRequestMetadata(this.selected)) {
 			this.negotiationMethod = 'server/discover';
 			// Probe with read-only 2026-07-28 discovery before attempting initialize.
 			// A retained 2025 version skips probing on reconnect.
@@ -341,7 +342,7 @@ class ProtocolClient {
 		const negotiated = this.details.protocolVersion;
 		if (
 			!isProtocolVersion(negotiated) ||
-			negotiated === CURRENT_PROTOCOL_VERSION ||
+			usesRequestMetadata(negotiated) ||
 			(this.selected && negotiated !== this.selected)
 		)
 			throw new Error(
@@ -450,7 +451,7 @@ class ProtocolClient {
 	private answerRequest(request: Record<string, unknown>): void {
 		const id = request.id;
 		if (typeof id !== 'string' && typeof id !== 'number') return;
-		const usesSession = this.protocolVersion !== CURRENT_PROTOCOL_VERSION;
+		const usesSession = !usesRequestMetadata(this.protocolVersion);
 		const response =
 			usesSession && request.method === 'ping'
 				? {
@@ -514,7 +515,7 @@ class ProtocolClient {
 			throw new BackendTransportError(error);
 		});
 		if (
-			this.protocolVersion !== CURRENT_PROTOCOL_VERSION &&
+			!usesRequestMetadata(this.protocolVersion) &&
 			message.method === 'initialize'
 		)
 			this.sessionId = response.headers.get(MCP_HEADERS.SessionId) ?? undefined;
@@ -606,7 +607,7 @@ class ProtocolClient {
 		headers.set('Accept', 'application/json, text/event-stream');
 		headers.delete(MCP_HEADERS.SessionId);
 		headers.delete('Last-Event-ID');
-		if (this.protocolVersion === CURRENT_PROTOCOL_VERSION) {
+		if (usesRequestMetadata(this.protocolVersion)) {
 			// MCP 2026-07-28 added parameter mirrors. Preserve unrecognized ones;
 			// recognized ones below are rebuilt from this backend's schema and the
 			// translated body.
@@ -732,7 +733,7 @@ class ProtocolClient {
 				// pinned peers and application responses still require a matching ID.
 				if (
 					!this.selected &&
-					this.protocolVersion === CURRENT_PROTOCOL_VERSION &&
+					usesRequestMetadata(this.protocolVersion) &&
 					message.method === 'server/discover' &&
 					[400, 404, 405].includes(response.status)
 				)
@@ -786,8 +787,7 @@ class ProtocolClient {
 			? AbortSignal.any([controller.signal, options.signal])
 			: controller.signal;
 		const id = ++this.sequence;
-		const usesRequestMetadata =
-			this.protocolVersion === CURRENT_PROTOCOL_VERSION;
+		const withRequestMetadata = usesRequestMetadata(this.protocolVersion);
 		// Preserve application/vendor metadata, but never carry another hop's
 		// protocol identity or operation handles into this backend connection.
 		// This gateway does not relay progress/log notifications or implement tasks
@@ -807,7 +807,7 @@ class ProtocolClient {
 			'io.modelcontextprotocol/related-task',
 		])
 			delete metadata[key];
-		if (usesRequestMetadata) {
+		if (withRequestMetadata) {
 			metadata[PROTOCOL_VERSION_META] = this.protocolVersion;
 			metadata[CLIENT_INFO_META] = GATEWAY_INFO;
 			metadata[CLIENT_CAPABILITIES_META] = {};
@@ -841,12 +841,12 @@ class ProtocolClient {
 				throw new BackendRpcError(error.message, error.code, error.data);
 			const result = recordOf(response.result);
 			if (!result) throw new Error('Missing backend result');
-			if (usesRequestMetadata && result.resultType !== 'complete')
+			if (withRequestMetadata && result.resultType !== 'complete')
 				throw new Error(
 					`Unsupported backend result type: ${String(result.resultType)}; interactive requests are not supported`,
 				);
 			if (
-				usesRequestMetadata &&
+				withRequestMetadata &&
 				CACHEABLE_METHODS.has(method) &&
 				(!Number.isInteger(result.ttlMs) ||
 					Number(result.ttlMs) < 0 ||
@@ -894,7 +894,7 @@ class ProtocolClient {
 				!this.closed &&
 				method !== 'initialize' &&
 				this.server.serverConfig.type === 'http' &&
-				!usesRequestMetadata
+				!withRequestMetadata
 			) {
 				// Session HTTP does not equate disconnect with cancellation. Notify
 				// using this hop's ID/session and a fresh, bounded signal. Since MCP
@@ -927,7 +927,7 @@ class ProtocolClient {
 	// 2026-07-28 discovery is stateless, so a backend can change what it
 	// reports without a new connection. A 2025 session keeps its initialize result.
 	async rediscover(): Promise<void> {
-		if (this.protocolVersion !== CURRENT_PROTOCOL_VERSION) return;
+		if (!usesRequestMetadata(this.protocolVersion)) return;
 		const details = await this.rpc('server/discover');
 		discoveredVersions(details, true);
 		this.details = details;
@@ -935,9 +935,7 @@ class ProtocolClient {
 
 	async ping(options?: RequestOptions): Promise<Record<string, unknown>> {
 		return this.rpc(
-			this.protocolVersion === CURRENT_PROTOCOL_VERSION
-				? 'server/discover'
-				: 'ping',
+			usesRequestMetadata(this.protocolVersion) ? 'server/discover' : 'ping',
 			{},
 			options,
 		);

@@ -14,7 +14,6 @@ import {
 } from '@/shared/mcp_output_schema';
 import {
 	CACHEABLE_METHODS,
-	CURRENT_PROTOCOL_VERSION,
 	GATEWAY_CAPABILITIES,
 	GATEWAY_INFO,
 	isProtocolVersion,
@@ -24,6 +23,7 @@ import {
 	recordOf,
 	SERVER_INFO_META,
 	SUPPORTED_PROTOCOL_VERSIONS,
+	usesRequestMetadata,
 	validateToolHeaders,
 } from '@/shared/mcp_protocol';
 import type { ToolCallResult } from '@/shared/mcp_results';
@@ -106,7 +106,7 @@ const wrapStructuredContent = (
 };
 
 const clientErrorCode = (code: number, protocolVersion?: string): number => {
-	if (protocolVersion !== CURRENT_PROTOCOL_VERSION) {
+	if (!usesRequestMetadata(protocolVersion)) {
 		// These protocol errors have meanings only in the revisions defining them.
 		if (
 			MCP_ERROR_CODES.has(code) ||
@@ -152,12 +152,12 @@ const createMcpRequestRouter = (
 			protocolVersion !== undefined && isProtocolVersion(protocolVersion)
 				? protocolVersion
 				: undefined;
-		const usesRequestMetadata = protocolVersion === CURRENT_PROTOCOL_VERSION;
-		const requireSession: RequireSession = usesRequestMetadata
+		const withRequestMetadata = usesRequestMetadata(protocolVersion);
+		const requireSession: RequireSession = withRequestMetadata
 			? () => null
 			: params.requireSession;
 		if (
-			(usesRequestMetadata &&
+			(withRequestMetadata &&
 				[
 					'initialize',
 					'ping',
@@ -167,7 +167,7 @@ const createMcpRequestRouter = (
 			request.method.startsWith('tasks/')
 		)
 			return {
-				status: usesRequestMetadata ? 404 : undefined,
+				status: withRequestMetadata ? 404 : undefined,
 				payload: rpcError(
 					request.id,
 					RPC_ERROR.MethodNotFound,
@@ -180,7 +180,7 @@ const createMcpRequestRouter = (
 		if (invalid) return invalid;
 		const bodyParams = recordOf(request.params);
 		if (
-			!usesRequestMetadata &&
+			!withRequestMetadata &&
 			bodyParams &&
 			'_meta' in bodyParams &&
 			!sessionRequestMetadataType.allows(bodyParams._meta)
@@ -210,7 +210,7 @@ const createMcpRequestRouter = (
 				result,
 			},
 		});
-		if (usesRequestMetadata && request.method === 'server/discover')
+		if (withRequestMetadata && request.method === 'server/discover')
 			return success({
 				supportedVersions: [...SUPPORTED_PROTOCOL_VERSIONS],
 				capabilities: GATEWAY_CAPABILITIES,
@@ -248,7 +248,7 @@ const createMcpRequestRouter = (
 						}),
 					);
 				const tool = handlers.resolveTool(callParams.name);
-				if (usesRequestMetadata) {
+				if (withRequestMetadata) {
 					// MCP 2026-07-28 mirrors annotated arguments in headers; they must match.
 					if (tool.headerParameters instanceof Error)
 						return createInvalidParamsError(
@@ -276,7 +276,7 @@ const createMcpRequestRouter = (
 					clientProtocolVersion: clientVersion,
 				});
 				return success(
-					usesRequestMetadata
+					withRequestMetadata
 						? result
 						: wrapStructuredContent(result, tool.tool.outputSchema),
 				);
@@ -336,10 +336,9 @@ const createMcpRequestRouter = (
 				// HTTP statuses describe this client's binding, not the backend's.
 				// Keep 2025 RPC responses at their existing HTTP status; MCP 2026-07-28
 				// requires 404 for unknown methods and 400 for its metadata errors.
-				status:
-					protocolVersion === CURRENT_PROTOCOL_VERSION
-						? (errorHttpStatus(code) ?? result.status)
-						: result.status,
+				status: usesRequestMetadata(protocolVersion)
+					? (errorHttpStatus(code) ?? result.status)
+					: result.status,
 				payload: {
 					...result.payload,
 					error: {
@@ -349,7 +348,7 @@ const createMcpRequestRouter = (
 				},
 			};
 		}
-		if (protocolVersion !== CURRENT_PROTOCOL_VERSION) {
+		if (!usesRequestMetadata(protocolVersion)) {
 			// The client and backend select versions independently. Strip the
 			// 2026-07-28 result fields when replying with either supported 2025 revision.
 			if ('result' in result.payload) {

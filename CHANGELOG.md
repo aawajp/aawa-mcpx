@@ -24,6 +24,8 @@ Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 #### Changed
 
+- Select revision-specific behavior by protocol mechanism instead of comparing
+  with the newest supported version.
 - Name protocol logic by mechanism and MCP revision instead of
   "modern"/"legacy".
 - Share backend connection status helpers, and define catalog list methods and

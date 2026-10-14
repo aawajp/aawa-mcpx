@@ -15,11 +15,11 @@ import { addResourcePrefix } from '@/shared/mcp_namespaces';
 import {
 	CLIENT_CAPABILITIES_META,
 	CLIENT_INFO_META,
-	CURRENT_PROTOCOL_VERSION,
 	PROTOCOL_VERSION_META,
 	recordOf,
 	SERVER_INFO_META,
 	SUPPORTED_PROTOCOL_VERSIONS,
+	usesRequestMetadata,
 } from '@/shared/mcp_protocol';
 
 import packageJson from '../../../package.json' with { type: 'json' };
@@ -175,7 +175,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 							recordOf(result?._meta)?.['com.example/request'],
 						);
 						expect(received?._meta).toEqual(
-							backendVersion === CURRENT_PROTOCOL_VERSION
+							usesRequestMetadata(backendVersion)
 								? {
 										...applicationMetadata,
 										[PROTOCOL_VERSION_META]: backendVersion,
@@ -208,7 +208,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 							recordOf(recordOf(plainResult?._meta)?.['com.example/request'])
 								?._meta,
 						);
-						if (backendVersion !== CURRENT_PROTOCOL_VERSION)
+						if (!usesRequestMetadata(backendVersion))
 							expect(plainMetadata).toBeUndefined();
 						else
 							expect(
@@ -286,7 +286,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 			invalidOptions.push({
 				task: {},
 			});
-		if (version !== CURRENT_PROTOCOL_VERSION)
+		if (!usesRequestMetadata(version))
 			for (const _meta of [
 				null,
 				[],
@@ -308,7 +308,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 			const response = await send(extra);
 			expect(recordOf(recordOf(response.payload)?.error)?.code).toBe(-32602);
 			expect(response.status).toBe(
-				version === CURRENT_PROTOCOL_VERSION ? 400 : undefined,
+				usesRequestMetadata(version) ? 400 : undefined,
 			);
 		}
 		expect(callTool).not.toHaveBeenCalled();

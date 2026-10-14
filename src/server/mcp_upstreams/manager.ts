@@ -15,8 +15,8 @@ import { parsePrefix } from '@/shared/mcp_namespaces';
 import {
 	CATALOG_LISTS,
 	type CatalogList,
-	CURRENT_PROTOCOL_VERSION,
 	recordOf,
+	usesRequestMetadata,
 } from '@/shared/mcp_protocol';
 
 const createMcpUpstreamManager = (
@@ -124,7 +124,7 @@ const createMcpUpstreamManager = (
 				.filter(
 					(backend) =>
 						backend.status?.connected &&
-						backend.status.protocolVersion === CURRENT_PROTOCOL_VERSION &&
+						usesRequestMetadata(backend.status.protocolVersion) &&
 						backend.client?.getServerCapabilities()?.[capability] &&
 						Date.now() >= backend.listExpiresAt[list],
 				)

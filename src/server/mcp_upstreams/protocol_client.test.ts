@@ -25,6 +25,7 @@ import {
 	recordOf,
 	SUPPORTED_PROTOCOL_VERSIONS,
 	toolHeaderParameters,
+	usesRequestMetadata,
 } from '@/shared/mcp_protocol';
 
 import { expect, mock, spyOn, test } from 'bun:test';
@@ -190,7 +191,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 				expect(headers.get('X-Fixture-Credential')).toBe('retained');
 				expect(headers.has('Mcp-Param-Static')).toBe(false);
 				expect(headers.get('MCP-Protocol-Version')).toBe(version);
-				if (version !== CURRENT_PROTOCOL_VERSION) {
+				if (!usesRequestMetadata(version)) {
 					expect(
 						Array.from(headers.keys()).some(
 							(name) =>
@@ -218,7 +219,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 							: 'echo',
 				);
 			}
-			if (version === CURRENT_PROTOCOL_VERSION) {
+			if (usesRequestMetadata(version)) {
 				const calls = received.filter(
 					({ message }) => message.method === 'tools/call',
 				);
@@ -629,7 +630,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 				handle: (message, reply, request) => {
 					methods.push(String(message.method));
 					if (!reply) return undefined;
-					if (version === CURRENT_PROTOCOL_VERSION) {
+					if (usesRequestMetadata(version)) {
 						for (const [name, value] of protocolHeaders(
 							String(message.method),
 							recordOf(message.params) ?? {},
@@ -642,7 +643,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 					}
 					if (
 						message.method === 'server/discover' &&
-						version !== CURRENT_PROTOCOL_VERSION
+						!usesRequestMetadata(version)
 					)
 						return Response.json(
 							version === '2025-06-18'
@@ -759,24 +760,23 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 					'Mcp-Param-Text': encodeHeaderValue('Hello, 世界'),
 				};
 				for (const externalVersion of SUPPORTED_PROTOCOL_VERSIONS) {
-					const initial =
-						externalVersion === CURRENT_PROTOCOL_VERSION
-							? undefined
-							: await sessions.handleInitialize(
-									{
-										jsonrpc: '2.0',
-										id: 1,
-										method: 'initialize',
-										params: {
-											protocolVersion: externalVersion,
-											clientInfo: {
-												name: 'test',
-												version: '1',
-											},
+					const initial = usesRequestMetadata(externalVersion)
+						? undefined
+						: await sessions.handleInitialize(
+								{
+									jsonrpc: '2.0',
+									id: 1,
+									method: 'initialize',
+									params: {
+										protocolVersion: externalVersion,
+										clientInfo: {
+											name: 'test',
+											version: '1',
 										},
 									},
-									undefined,
-								);
+								},
+								undefined,
+							);
 					const response = await route(
 						{
 							jsonrpc: '2.0',
@@ -806,29 +806,28 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 						},
 					]);
 					expect(client.protocolVersion).toBe(version);
-					const structuredValues: unknown[] =
-						version === CURRENT_PROTOCOL_VERSION
-							? [
-									{
-										count: 2,
-									},
-									{},
-									[1, 2],
-									[],
-									'hello',
-									'',
-									3.5,
-									0,
-									true,
-									false,
-									null,
-								]
-							: [
-									{
-										count: 2,
-									},
-									{},
-								];
+					const structuredValues: unknown[] = usesRequestMetadata(version)
+						? [
+								{
+									count: 2,
+								},
+								{},
+								[1, 2],
+								[],
+								'hello',
+								'',
+								3.5,
+								0,
+								true,
+								false,
+								null,
+							]
+						: [
+								{
+									count: 2,
+								},
+								{},
+							];
 					for (const structured of structuredValues) {
 						const forwarded = await route(
 							{
@@ -854,8 +853,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 								? forwarded.payload.result
 								: undefined;
 						expect(result?.structuredContent).toEqual(
-							externalVersion === CURRENT_PROTOCOL_VERSION ||
-								recordOf(structured)
+							usesRequestMetadata(externalVersion) || recordOf(structured)
 								? structured
 								: {
 										value: structured,
@@ -874,7 +872,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 				reconnect = new ProtocolClient(backend, client.protocolVersion);
 				await reconnect.connect();
 				expect(reconnect.protocolVersion).toBe(version);
-				if (transport === 'http' && version !== CURRENT_PROTOCOL_VERSION)
+				if (transport === 'http' && !usesRequestMetadata(version))
 					expect(methods).toEqual(['initialize', 'notifications/initialized']);
 			} finally {
 				await client.close();
@@ -980,7 +978,7 @@ for (const version of ['2025-11-25', CURRENT_PROTOCOL_VERSION] as const)
 					trafficLimit: 1000,
 				},
 			});
-			const usesSession = version !== CURRENT_PROTOCOL_VERSION;
+			const usesSession = !usesRequestMetadata(version);
 			// The ping answer carries the call's ID, which differs per transport.
 			const pingAnswer = usesSession
 				? {

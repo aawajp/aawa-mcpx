@@ -107,7 +107,9 @@ internet connectivity; `2026-07-28` backends are probed with discovery.
 
 Clients and backends both support `2026-07-28`, `2025-11-25`, and `2025-06-18`;
 `2025-03-26` is not supported. `shared/mcp_protocol.ts` is the ordered revision
-registry; `CURRENT_PROTOCOL_VERSION` is its newest entry. Client and backend
+registry; `CURRENT_PROTOCOL_VERSION` is its newest entry, the version the gateway
+prefers and sends. Revision-specific behavior branches on `requiresInitialization`
+or `usesRequestMetadata`, never on that entry. Client and backend
 revisions are independent. `2026-07-28` uses per-request version and capability
 metadata; the 2025 revisions initialize sessions. Unsupported initialization
 proposals select `2025-11-25`, the highest supported revision requiring initialization.

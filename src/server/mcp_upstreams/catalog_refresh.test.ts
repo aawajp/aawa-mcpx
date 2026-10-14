@@ -12,6 +12,7 @@ import {
 	recordOf,
 	SERVER_INFO_META,
 	SUPPORTED_PROTOCOL_VERSIONS,
+	usesRequestMetadata,
 } from '@/shared/mcp_protocol';
 
 import { expect, test } from 'bun:test';
@@ -102,7 +103,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 				// Passive snapshots never fetch. A 2026-07-28 peer's hour-long TTL also
 				// keeps automatic refresh from picking up this change prematurely.
 				await routes['/api/overview'].GET();
-				if (version === CURRENT_PROTOCOL_VERSION)
+				if (usesRequestMetadata(version))
 					await manager.refreshStaleCatalogs?.({
 						method: 'tools/list',
 					});
@@ -163,7 +164,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 				).toBe(200);
 				expect(names('other')).toEqual(['keep', 'off', 'added']);
 				expect(names('disabled')).toEqual(['keep', 'remove', 'off']);
-				if (transport === 'http' && version === CURRENT_PROTOCOL_VERSION) {
+				if (transport === 'http' && usesRequestMetadata(version)) {
 					// An earlier request can contain stale data even while in flight.
 					// The button must wait for it and then make another backend request.
 					holdNextToolsRequest = true;

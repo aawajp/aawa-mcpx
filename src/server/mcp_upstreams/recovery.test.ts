@@ -12,6 +12,7 @@ import {
 	CURRENT_PROTOCOL_VERSION,
 	recordOf,
 	SUPPORTED_PROTOCOL_VERSIONS,
+	usesRequestMetadata,
 } from '@/shared/mcp_protocol';
 
 import { expect, jest, spyOn, test } from 'bun:test';
@@ -219,7 +220,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 				return Response.json(fixtureReply(message, version), {
 					status:
 						message.method === 'server/discover' &&
-						version !== CURRENT_PROTOCOL_VERSION
+						!usesRequestMetadata(version)
 							? 400
 							: 200,
 					headers:
@@ -241,7 +242,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 			if (!client) throw new Error('Missing client');
 			// 2026 has no session, so its connection-level failure is a lost
 			// connection.
-			if (version === CURRENT_PROTOCOL_VERSION)
+			if (usesRequestMetadata(version))
 				fetch.mockRejectedValueOnce(new TypeError('Connection reset'));
 			else failed = true;
 			await expect(
@@ -259,7 +260,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 				protocolVersion: version,
 			});
 			expect(refreshes).toBe(2);
-			expect(toolCalls).toBe(version === CURRENT_PROTOCOL_VERSION ? 0 : 1);
+			expect(toolCalls).toBe(usesRequestMetadata(version) ? 0 : 1);
 			client.ontransporterror(new Error('Late error from old client'));
 			expect(harness.backend.status?.connected).toBe(true);
 		} finally {
@@ -295,7 +296,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 				return Response.json(fixtureReply(message, version), {
 					status:
 						message.method === 'server/discover' &&
-						version !== CURRENT_PROTOCOL_VERSION
+						!usesRequestMetadata(version)
 							? 400
 							: 200,
 					headers:
@@ -366,7 +367,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 				const message = recordOf(await request.json()) ?? {};
 				if (
 					message.method === 'server/discover' &&
-					version !== CURRENT_PROTOCOL_VERSION
+					!usesRequestMetadata(version)
 				)
 					return Response.json(fixtureReply(message, version), {
 						status: 400,

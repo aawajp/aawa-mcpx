@@ -22,6 +22,7 @@ import {
 	CURRENT_PROTOCOL_VERSION,
 	recordOf,
 	SUPPORTED_PROTOCOL_VERSIONS,
+	usesRequestMetadata,
 } from '@/shared/mcp_protocol';
 
 import { expect, mock, spyOn, test } from 'bun:test';
@@ -233,24 +234,23 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 					extra: 'preserved',
 				};
 				for (const clientVersion of SUPPORTED_PROTOCOL_VERSIONS) {
-					const initial =
-						clientVersion === CURRENT_PROTOCOL_VERSION
-							? undefined
-							: await sessions.handleInitialize(
-									{
-										jsonrpc: '2.0',
-										id: 0,
-										method: 'initialize',
-										params: {
-											protocolVersion: clientVersion,
-											clientInfo: {
-												name: 'input-test',
-												version: '1',
-											},
+					const initial = usesRequestMetadata(clientVersion)
+						? undefined
+						: await sessions.handleInitialize(
+								{
+									jsonrpc: '2.0',
+									id: 0,
+									method: 'initialize',
+									params: {
+										protocolVersion: clientVersion,
+										clientInfo: {
+											name: 'input-test',
+											version: '1',
 										},
 									},
-									undefined,
-								);
+								},
+								undefined,
+							);
 					const call = (args?: unknown, name = 'echo') =>
 						route(
 							{

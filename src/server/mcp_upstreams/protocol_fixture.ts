@@ -1,8 +1,8 @@
 import {
 	CACHEABLE_METHODS,
-	CURRENT_PROTOCOL_VERSION,
 	PROTOCOL_VERSION_META,
 	recordOf,
+	usesRequestMetadata,
 } from '@/shared/mcp_protocol';
 
 const fixtureReply = (
@@ -10,7 +10,7 @@ const fixtureReply = (
 	version: string,
 ): Record<string, unknown> => {
 	const params = recordOf(message.params) ?? {};
-	const usesRequestMetadata = version === CURRENT_PROTOCOL_VERSION;
+	const withRequestMetadata = usesRequestMetadata(version);
 	const error = (code: number, text: string): Record<string, unknown> => ({
 		jsonrpc: '2.0',
 		id: message.id,
@@ -19,10 +19,10 @@ const fixtureReply = (
 			message: text,
 		},
 	});
-	if (message.method === 'server/discover' && !usesRequestMetadata)
+	if (message.method === 'server/discover' && !withRequestMetadata)
 		return error(-32600, 'Initialize first');
 	if (
-		usesRequestMetadata &&
+		withRequestMetadata &&
 		recordOf(params._meta)?.[PROTOCOL_VERSION_META] !== version
 	)
 		return error(-32022, 'Incorrect version');
@@ -155,7 +155,7 @@ const fixtureReply = (
 			};
 			break;
 		case 'ping':
-			if (usesRequestMetadata)
+			if (withRequestMetadata)
 				return error(-32601, 'MCP 2026-07-28 does not define ping');
 			result = {};
 			break;
@@ -167,7 +167,7 @@ const fixtureReply = (
 		id: message.id,
 		result: {
 			...result,
-			...(usesRequestMetadata
+			...(withRequestMetadata
 				? {
 						resultType: 'complete',
 						...(CACHEABLE_METHODS.has(String(message.method))

@@ -22,6 +22,7 @@ import {
 	recordOf,
 	SERVER_INFO_META,
 	SUPPORTED_PROTOCOL_VERSIONS,
+	usesRequestMetadata,
 } from '@/shared/mcp_protocol';
 import type { ToolCallResult } from '@/shared/mcp_results';
 
@@ -85,12 +86,11 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 							_meta,
 						}),
 			};
-			const headers =
-				version === CURRENT_PROTOCOL_VERSION
-					? protocolHeaders(method, body)
-					: new Headers({
-							'MCP-Protocol-Version': version,
-						});
+			const headers = usesRequestMetadata(version)
+				? protocolHeaders(method, body)
+				: new Headers({
+						'MCP-Protocol-Version': version,
+					});
 			if (session) headers.set('Mcp-Session-Id', session);
 			return route.POST(
 				mcpPost({
@@ -104,7 +104,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 				}),
 			);
 		};
-		if (version !== CURRENT_PROTOCOL_VERSION) {
+		if (!usesRequestMetadata(version)) {
 			const initialized = await send('initialize', {
 				protocolVersion: version,
 				capabilities: {},
@@ -120,7 +120,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 				locale: 'ja',
 			},
 			progressToken: 0,
-			...(version === CURRENT_PROTOCOL_VERSION
+			...(usesRequestMetadata(version)
 				? {
 						[PROTOCOL_VERSION_META]: version,
 						[CLIENT_CAPABILITIES_META]: {},
@@ -144,7 +144,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 			metadata,
 		);
 		expect((await continued.json()).error.code).toBe(-32602);
-		if (version === CURRENT_PROTOCOL_VERSION) {
+		if (usesRequestMetadata(version)) {
 			const discovery = await send(
 				'server/discover',
 				{
@@ -189,8 +189,8 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 			method: string,
 			params: Record<string, unknown> = {},
 		) => {
-			const usesRequestMetadata = version === CURRENT_PROTOCOL_VERSION;
-			const body = usesRequestMetadata
+			const withRequestMetadata = usesRequestMetadata(version);
+			const body = withRequestMetadata
 				? {
 						...params,
 						_meta: {
@@ -199,7 +199,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 						},
 					}
 				: params;
-			const headers = usesRequestMetadata
+			const headers = withRequestMetadata
 				? protocolHeaders(method, body)
 				: new Headers({
 						'MCP-Protocol-Version': version,
@@ -217,7 +217,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 				}),
 			);
 		};
-		if (version !== CURRENT_PROTOCOL_VERSION) {
+		if (!usesRequestMetadata(version)) {
 			const initial = await send('initialize', {
 				protocolVersion: version,
 				clientInfo: {
@@ -257,7 +257,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 				text: 'works',
 			},
 		]);
-		if (version === CURRENT_PROTOCOL_VERSION) {
+		if (usesRequestMetadata(version)) {
 			expect(list.headers.has('Mcp-Session-Id')).toBe(false);
 			expect(result).toMatchObject({
 				resultType: 'complete',
@@ -274,9 +274,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 		const failure = await send('tools/call', {
 			name: 'backend__echo',
 		});
-		expect(failure.status).toBe(
-			version === CURRENT_PROTOCOL_VERSION ? 404 : 200,
-		);
+		expect(failure.status).toBe(usesRequestMetadata(version) ? 404 : 200);
 		expect((await failure.json()).error).toEqual({
 			code: -32601,
 			message: 'Missing tool',
@@ -333,22 +331,20 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 			method: string,
 			params: Record<string, unknown> = {},
 		): Promise<Response> => {
-			const body =
-				version === CURRENT_PROTOCOL_VERSION
-					? {
-							...params,
-							_meta: {
-								[PROTOCOL_VERSION_META]: version,
-								[CLIENT_CAPABILITIES_META]: {},
-							},
-						}
-					: params;
-			const headers =
-				version === CURRENT_PROTOCOL_VERSION
-					? protocolHeaders(method, body)
-					: new Headers({
-							'MCP-Protocol-Version': version,
-						});
+			const body = usesRequestMetadata(version)
+				? {
+						...params,
+						_meta: {
+							[PROTOCOL_VERSION_META]: version,
+							[CLIENT_CAPABILITIES_META]: {},
+						},
+					}
+				: params;
+			const headers = usesRequestMetadata(version)
+				? protocolHeaders(method, body)
+				: new Headers({
+						'MCP-Protocol-Version': version,
+					});
 			if (session) headers.set('Mcp-Session-Id', session);
 			return route.POST(
 				mcpPost({
@@ -362,7 +358,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 				}),
 			);
 		};
-		if (version !== CURRENT_PROTOCOL_VERSION) {
+		if (!usesRequestMetadata(version)) {
 			const response = await send('initialize', {
 				protocolVersion: version,
 				clientInfo: {
@@ -376,7 +372,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 		const catalog = await (await send('tools/list')).json();
 		const advertisedSchema: unknown = catalog.result.tools[0].outputSchema;
 		expect(recordOf(advertisedSchema)?.type).toEqual(
-			version === CURRENT_PROTOCOL_VERSION ? schema.type : 'object',
+			usesRequestMetadata(version) ? schema.type : 'object',
 		);
 		const validate = createOutputSchemaValidator();
 		const values = [
@@ -447,7 +443,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 				trace: 'schema-test',
 			});
 			expect(result.structuredContent).toEqual(
-				version === CURRENT_PROTOCOL_VERSION
+				usesRequestMetadata(version)
 					? structuredContent
 					: {
 							value: structuredContent,
@@ -492,7 +488,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 				}
 				expect(result.content).toEqual([]);
 				expect(result.structuredContent).toEqual(
-					version === CURRENT_PROTOCOL_VERSION || recordOf(structuredContent)
+					usesRequestMetadata(version) || recordOf(structuredContent)
 						? structuredContent
 						: {
 								value: structuredContent,
@@ -1002,8 +998,8 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 			]);
 		let session: string | null = null;
 		const send = (method: string, params: Record<string, unknown> = {}) => {
-			const usesRequestMetadata = version === CURRENT_PROTOCOL_VERSION;
-			const body = usesRequestMetadata
+			const withRequestMetadata = usesRequestMetadata(version);
+			const body = withRequestMetadata
 				? {
 						...params,
 						_meta: {
@@ -1012,7 +1008,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 						},
 					}
 				: params;
-			const headers = usesRequestMetadata
+			const headers = withRequestMetadata
 				? protocolHeaders(method, body)
 				: new Headers({
 						'MCP-Protocol-Version': version,
@@ -1030,7 +1026,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 				}),
 			);
 		};
-		if (version !== CURRENT_PROTOCOL_VERSION)
+		if (!usesRequestMetadata(version))
 			session = (
 				await send('initialize', {
 					protocolVersion: version,
@@ -1042,7 +1038,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 			).headers.get('Mcp-Session-Id');
 		const catalog = (await (await send('tools/list')).json()).result.tools;
 		expect(catalog.map((tool: Record<string, unknown>) => tool.name)).toEqual(
-			version === CURRENT_PROTOCOL_VERSION
+			usesRequestMetadata(version)
 				? ['backend__echo']
 				: ['backend__echo', 'backend__bad'],
 		);
@@ -1052,7 +1048,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 				value: 1.5,
 			},
 		});
-		if (version === CURRENT_PROTOCOL_VERSION) {
+		if (usesRequestMetadata(version)) {
 			expect((await called.json()).error.code).toBe(-32602);
 			expect(invoke).not.toHaveBeenCalled();
 		} else {

@@ -10,9 +10,9 @@ import { startFixtureBackend } from '@/server/mcp_upstreams/protocol_fixture';
 import type { McpUpstreamManager } from '@/server/mcp_upstreams/types';
 import { addResourcePrefix } from '@/shared/mcp_namespaces';
 import {
-	CURRENT_PROTOCOL_VERSION,
 	recordOf,
 	SUPPORTED_PROTOCOL_VERSIONS,
+	usesRequestMetadata,
 } from '@/shared/mcp_protocol';
 import {
 	invalidToolResults,
@@ -96,9 +96,9 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 						content: [],
 						structuredContent,
 					};
-					if (version === CURRENT_PROTOCOL_VERSION)
+					if (usesRequestMetadata(version))
 						expect(await callResult(result)).toMatchObject(result);
-					if (version !== CURRENT_PROTOCOL_VERSION)
+					if (!usesRequestMetadata(version))
 						await expect(callResult(result)).rejects.toThrow(
 							'MCP 2025 structuredContent must be a JSON object',
 						);
@@ -238,24 +238,23 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 					handleInitialize: sessions.handleInitialize,
 				});
 				for (const externalVersion of SUPPORTED_PROTOCOL_VERSIONS) {
-					const initial =
-						externalVersion === CURRENT_PROTOCOL_VERSION
-							? undefined
-							: await sessions.handleInitialize(
-									{
-										jsonrpc: '2.0',
-										id: 0,
-										method: 'initialize',
-										params: {
-											protocolVersion: externalVersion,
-											clientInfo: {
-												name: 'test',
-												version: '1',
-											},
+					const initial = usesRequestMetadata(externalVersion)
+						? undefined
+						: await sessions.handleInitialize(
+								{
+									jsonrpc: '2.0',
+									id: 0,
+									method: 'initialize',
+									params: {
+										protocolVersion: externalVersion,
+										clientInfo: {
+											name: 'test',
+											version: '1',
 										},
 									},
-									undefined,
-								);
+								},
+								undefined,
+							);
 					const response = await route(
 						{
 							jsonrpc: '2.0',

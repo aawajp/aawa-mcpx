@@ -7,6 +7,7 @@ const SUPPORTED_PROTOCOL_VERSIONS = [
 ] as const;
 type ProtocolVersion = (typeof SUPPORTED_PROTOCOL_VERSIONS)[number];
 const CURRENT_PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0];
+// Revisions before MCP 2026-07-28 open a session with initialize.
 const requiresInitialization = (version: string): boolean =>
 	version === '2025-11-25' || version === '2025-06-18';
 const PROTOCOL_VERSION_META = 'io.modelcontextprotocol/protocolVersion';
@@ -76,6 +77,9 @@ const CACHEABLE_METHODS = new Set<string>([
 
 const isProtocolVersion = (value: unknown): value is ProtocolVersion =>
 	SUPPORTED_PROTOCOL_VERSIONS.some((version) => version === value);
+// MCP 2026-07-28 replaced initialize and sessions with per-request metadata.
+const usesRequestMetadata = (version: unknown): boolean =>
+	isProtocolVersion(version) && !requiresInitialization(version);
 
 const recordOf = (value: unknown): Record<string, unknown> | undefined =>
 	value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -309,5 +313,6 @@ export {
 	SERVER_INFO_META,
 	SUPPORTED_PROTOCOL_VERSIONS,
 	toolHeaderParameters,
+	usesRequestMetadata,
 	validateToolHeaders,
 };

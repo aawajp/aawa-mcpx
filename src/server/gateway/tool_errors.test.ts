@@ -20,11 +20,11 @@ import type {
 import { addResourcePrefix } from '@/shared/mcp_namespaces';
 import {
 	CLIENT_CAPABILITIES_META,
-	CURRENT_PROTOCOL_VERSION,
 	PROTOCOL_VERSION_META,
 	protocolHeaders,
 	recordOf,
 	SUPPORTED_PROTOCOL_VERSIONS,
+	usesRequestMetadata,
 } from '@/shared/mcp_protocol';
 
 import { expect, mock, spyOn, test } from 'bun:test';
@@ -93,15 +93,14 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 				await client.connect();
 				await client.listTools();
 				for (const clientVersion of SUPPORTED_PROTOCOL_VERSIONS) {
-					const usesRequestMetadata =
-						clientVersion === CURRENT_PROTOCOL_VERSION;
+					const withRequestMetadata = usesRequestMetadata(clientVersion);
 					let session: string | null = null;
 					const send = async (
 						method: string,
 						params: Record<string, unknown>,
 						omitVersion = false,
 					) => {
-						const body = usesRequestMetadata
+						const body = withRequestMetadata
 							? {
 									...params,
 									_meta: {
@@ -110,7 +109,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 									},
 								}
 							: params;
-						const headers = usesRequestMetadata
+						const headers = withRequestMetadata
 							? protocolHeaders(method, body)
 							: new Headers(
 									omitVersion
@@ -132,7 +131,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 							}),
 						);
 					};
-					if (!usesRequestMetadata) {
+					if (!withRequestMetadata) {
 						const initial = await send('initialize', {
 							protocolVersion: clientVersion,
 							clientInfo: {
@@ -181,7 +180,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 								},
 							}),
 							-32602,
-							usesRequestMetadata ? 400 : 200,
+							withRequestMetadata ? 400 : 200,
 						);
 					await assertError(
 						await send('tools/call', {
@@ -191,12 +190,12 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 							},
 						}),
 						-32603,
-						usesRequestMetadata ? 500 : 200,
+						withRequestMetadata ? 500 : 200,
 					);
 					expect(invoke.mock.calls).toHaveLength(sent);
 					expect(validate.mock.calls).toHaveLength(validated);
 					expect(rateLimit.mock.calls).toHaveLength(limited);
-					for (const omitVersion of usesRequestMetadata
+					for (const omitVersion of withRequestMetadata
 						? [false]
 						: [false, true]) {
 						const response = await send(
@@ -242,13 +241,13 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 					const executionBody = await executionResponse.json();
 					expect(executionBody.result).toMatchObject(execution);
 					expect(executionBody.result.resultType).toBe(
-						usesRequestMetadata ? 'complete' : undefined,
+						withRequestMetadata ? 'complete' : undefined,
 					);
 					for (const code of [
 						-32602, -32603, -32601, -32002, -32042, -32023, -32000, -32020,
 						-32021, -32022, 42,
 					]) {
-						const expected = usesRequestMetadata
+						const expected = withRequestMetadata
 							? code === -32002
 								? -32602
 								: [-32042, -32023, -32000].includes(code)
@@ -258,7 +257,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 									(code === -32042 && clientVersion === '2025-06-18')
 								? -32603
 								: code;
-						const status = !usesRequestMetadata
+						const status = !withRequestMetadata
 							? 200
 							: expected === -32601
 								? 404
@@ -336,7 +335,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 							},
 						}),
 						-32603,
-						usesRequestMetadata ? 500 : 200,
+						withRequestMetadata ? 500 : 200,
 					);
 					invoke.mockImplementationOnce(async () => {
 						throw new BackendTransportError(new Error('Connection reset'));
@@ -350,7 +349,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 							},
 						}),
 						-32603,
-						usesRequestMetadata ? 500 : 200,
+						withRequestMetadata ? 500 : 200,
 					);
 					expect(invoke.mock.calls).toHaveLength(beforeTransport + 1);
 					const successful = await send('tools/call', {
@@ -394,10 +393,10 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 		} as unknown as McpUpstreamManager;
 		const { route, routeRequest } = createRouteFixture(manager);
 		const log = spyOn(logger, 'error').mockImplementation(() => undefined);
-		const usesRequestMetadata = version === CURRENT_PROTOCOL_VERSION;
+		const withRequestMetadata = usesRequestMetadata(version);
 		const params = {
 			name: 'fixture__echo',
-			...(usesRequestMetadata
+			...(withRequestMetadata
 				? {
 						_meta: {
 							[PROTOCOL_VERSION_META]: version,
@@ -408,7 +407,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 		};
 		let session: string | null = null;
 		const post = (method: string, body: Record<string, unknown>) => {
-			const headers = usesRequestMetadata
+			const headers = withRequestMetadata
 				? protocolHeaders(method, body)
 				: new Headers({
 						'MCP-Protocol-Version': version,
@@ -427,7 +426,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 			);
 		};
 		try {
-			if (!usesRequestMetadata)
+			if (!withRequestMetadata)
 				session = (
 					await post('initialize', {
 						protocolVersion: version,
@@ -438,7 +437,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 					})
 				).headers.get('Mcp-Session-Id');
 			const dispatcherFailure = await post('tools/call', params);
-			expect(dispatcherFailure.status).toBe(usesRequestMetadata ? 500 : 200);
+			expect(dispatcherFailure.status).toBe(withRequestMetadata ? 500 : 200);
 			expect((await dispatcherFailure.json()).error).toEqual({
 				code: -32603,
 				message: 'Internal server error',
@@ -492,10 +491,10 @@ test('malformed prompt and resource results are JSON-RPC errors for every client
 	try {
 		await client.connect();
 		for (const clientVersion of SUPPORTED_PROTOCOL_VERSIONS) {
-			const usesRequestMetadata = clientVersion === CURRENT_PROTOCOL_VERSION;
+			const withRequestMetadata = usesRequestMetadata(clientVersion);
 			let session: string | null = null;
 			const send = (method: string, params: Record<string, unknown>) => {
-				const body = usesRequestMetadata
+				const body = withRequestMetadata
 					? {
 							...params,
 							_meta: {
@@ -504,7 +503,7 @@ test('malformed prompt and resource results are JSON-RPC errors for every client
 							},
 						}
 					: params;
-				const headers = usesRequestMetadata
+				const headers = withRequestMetadata
 					? protocolHeaders(method, body)
 					: new Headers({
 							'MCP-Protocol-Version': clientVersion,
@@ -522,7 +521,7 @@ test('malformed prompt and resource results are JSON-RPC errors for every client
 					}),
 				);
 			};
-			if (!usesRequestMetadata)
+			if (!withRequestMetadata)
 				session = (
 					await send('initialize', {
 						protocolVersion: clientVersion,
@@ -543,7 +542,7 @@ test('malformed prompt and resource results are JSON-RPC errors for every client
 					}),
 				}),
 			]) {
-				expect(response.status).toBe(usesRequestMetadata ? 500 : 200);
+				expect(response.status).toBe(withRequestMetadata ? 500 : 200);
 				expect((await response.json()).error).toMatchObject({
 					code: -32603,
 					message: expect.stringContaining(

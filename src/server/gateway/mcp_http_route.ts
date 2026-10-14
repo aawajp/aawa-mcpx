@@ -27,7 +27,6 @@ import { requestMetadataType } from '@/shared/mcp_metadata';
 import {
 	CATALOG_METHODS,
 	CLIENT_INFO_META,
-	CURRENT_PROTOCOL_VERSION,
 	decodeHeaderValue,
 	MCP_HEADERS,
 	NAMED_METHODS,
@@ -36,6 +35,7 @@ import {
 	recordOf,
 	requestName,
 	SUPPORTED_PROTOCOL_VERSIONS,
+	usesRequestMetadata,
 } from '@/shared/mcp_protocol';
 
 type ClientTrafficEntry = Parameters<TrafficStore['logClientTraffic']>[0] & {
@@ -289,12 +289,13 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 		disconnect?: AbortSignal,
 	): Promise<RouteResult> => {
 		const controller = new AbortController();
-		const signal =
-			version === CURRENT_PROTOCOL_VERSION ? disconnect : controller.signal;
+		const signal = usesRequestMetadata(version)
+			? disconnect
+			: controller.signal;
 		const tracksId =
 			sessionId !== undefined &&
 			message.method !== 'initialize' &&
-			version !== CURRENT_PROTOCOL_VERSION;
+			!usesRequestMetadata(version);
 		let requests =
 			sessionId === undefined ? undefined : activeRequests.get(sessionId);
 		if (tracksId) {
@@ -316,8 +317,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 		try {
 			signal?.throwIfAborted();
 			// The 2026-07-28 path refreshed before checking mirrored headers.
-			if (version !== CURRENT_PROTOCOL_VERSION)
-				await refreshCatalogs(message, signal);
+			if (!usesRequestMetadata(version)) await refreshCatalogs(message, signal);
 			return await withCancellation(
 				routeRequest(message, {
 					sessionId,
@@ -365,10 +365,9 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 	const logClientTraffic = (entry: ClientTrafficEntry): void => {
 		const requestParams = recordOf(recordOf(entry.request)?.params);
 		const metadata = recordOf(requestParams?._meta);
-		const client =
-			entry.protocolVersion === CURRENT_PROTOCOL_VERSION
-				? parseClientInfo(metadata?.[CLIENT_INFO_META])
-				: mcpSessions.getClient(entry.sessionId);
+		const client = usesRequestMetadata(entry.protocolVersion)
+			? parseClientInfo(metadata?.[CLIENT_INFO_META])
+			: mcpSessions.getClient(entry.sessionId);
 		// Store the version now so subsequent session changes cannot rewrite history.
 		trafficStore.logClientTraffic({
 			client: client && formatClientInfo(client),
@@ -448,7 +447,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 			if (
 				('method' in message && message.method === 'server/discover') ||
 				(metadata && PROTOCOL_VERSION_META in metadata) ||
-				versionHeader === CURRENT_PROTOCOL_VERSION
+				usesRequestMetadata(versionHeader)
 			) {
 				const fail = (
 					code: number,
@@ -481,7 +480,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 						RPC_ERROR.HeaderMismatch,
 						'Missing or mismatched protocol version header',
 					);
-				if (version !== CURRENT_PROTOCOL_VERSION)
+				if (!usesRequestMetadata(version))
 					return fail(
 						RPC_ERROR.UnsupportedProtocolVersion,
 						'Unsupported protocol version',
@@ -540,15 +539,12 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 				}
 				// Metadata is already validated; activity tracking needs no second
 				// parse/validation of client identity and grants it no capabilities.
-				params.onClientActivity?.(
-					metadata[CLIENT_INFO_META],
-					CURRENT_PROTOCOL_VERSION,
-				);
+				params.onClientActivity?.(metadata[CLIENT_INFO_META], version);
 				try {
 					const result = await routeCancellableRequest(
 						message,
 						undefined,
-						CURRENT_PROTOCOL_VERSION,
+						version,
 						// Unknown parameter mirrors remain opaque to this hop.
 						Object.fromEntries(
 							[...request.headers].filter(([name]) =>
@@ -559,7 +555,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 					);
 					if (!result.payload) return createCancelledResponse();
 					logClientTraffic({
-						protocolVersion: CURRENT_PROTOCOL_VERSION,
+						protocolVersion: version,
 						method: message.method,
 						request: message,
 						response: result.payload,
@@ -766,10 +762,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 		},
 		async DELETE(request: Request) {
 			if (!isValidOrigin(request)) return createOriginForbiddenResponse();
-			if (
-				request.headers.get(MCP_HEADERS.ProtocolVersion) ===
-				CURRENT_PROTOCOL_VERSION
-			)
+			if (usesRequestMetadata(request.headers.get(MCP_HEADERS.ProtocolVersion)))
 				return new Response(null, {
 					status: 405,
 					headers: {

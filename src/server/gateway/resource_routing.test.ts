@@ -15,9 +15,9 @@ import {
 	addResourceTemplatePrefix,
 } from '@/shared/mcp_namespaces';
 import {
-	CURRENT_PROTOCOL_VERSION,
 	recordOf,
 	SUPPORTED_PROTOCOL_VERSIONS,
+	usesRequestMetadata,
 } from '@/shared/mcp_protocol';
 
 import { expect, mock, test } from 'bun:test';
@@ -34,8 +34,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 							jsonrpc: '2.0',
 							id: message.id,
 							error: {
-								code:
-									backendVersion === CURRENT_PROTOCOL_VERSION ? -32602 : -32002,
+								code: usesRequestMetadata(backendVersion) ? -32602 : -32002,
 								message: 'Resource not found',
 								data: {
 									uri: params.uri,
@@ -463,8 +462,8 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 						expect(failed.payload).toMatchObject({
 							error: {
 								code:
-									backendVersion === CURRENT_PROTOCOL_VERSION ||
-									clientVersion === CURRENT_PROTOCOL_VERSION
+									usesRequestMetadata(backendVersion) ||
+									usesRequestMetadata(clientVersion)
 										? -32602
 										: -32002,
 								data: {

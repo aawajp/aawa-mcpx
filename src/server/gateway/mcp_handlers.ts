@@ -26,9 +26,9 @@ import {
 	parseResourceUri,
 } from '@/shared/mcp_namespaces';
 import {
-	CURRENT_PROTOCOL_VERSION,
 	type ProtocolVersion,
 	RPC_ERROR,
+	usesRequestMetadata,
 } from '@/shared/mcp_protocol';
 import type { ToolCallResult } from '@/shared/mcp_results';
 
@@ -93,7 +93,7 @@ const createHandlers = (params: CreateHandlersParams) => {
 			.listEnabledTools()
 			.filter(
 				({ headerParameters }) =>
-					clientProtocolVersion !== CURRENT_PROTOCOL_VERSION ||
+					!usesRequestMetadata(clientProtocolVersion) ||
 					!(headerParameters instanceof Error),
 			)
 			.map(({ serverName, tool }) =>
