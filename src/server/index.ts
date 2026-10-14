@@ -36,8 +36,14 @@ const server = await startServer({
 	initialization,
 });
 
+let shuttingDown = false;
+
 const shutdown = async () => {
-	logger.info('Shutting down aawa-mcpx gateway');
+	if (shuttingDown) {
+		process.exit(1);
+	}
+	shuttingDown = true;
+	logger.info('Shutting down');
 	await server.stop();
 	await mcpUpstreamManager.disconnect();
 	process.exit(0);

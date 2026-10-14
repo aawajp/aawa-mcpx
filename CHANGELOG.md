@@ -62,6 +62,7 @@ Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 #### Fixed
 
+- Exit immediately on a second Ctrl+C or `SIGTERM` during shutdown.
 - The dashboard lists every configured backend from the moment the gateway
   starts, with a **Connecting…** badge until the first connection attempt
   ends. Before, a backend appeared only after that attempt.
