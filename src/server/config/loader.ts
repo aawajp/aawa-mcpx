@@ -77,6 +77,12 @@ const saveServerFields = async (params: {
 	});
 };
 
+const configuredServer = (config: McpConfig, serverName: string) => {
+	const server = config.mcpServers[serverName];
+	if (!server) throw new Error(`Unknown backend "${serverName}"`);
+	return server;
+};
+
 const saveToolState = async (params: {
 	configPath: string;
 	config: McpConfig;
@@ -91,10 +97,7 @@ const saveToolState = async (params: {
 		new Set(params.availableTools.filter((name) => name.trim() !== '')),
 	);
 
-	const server = params.config.mcpServers[params.serverName];
-	if (!server) {
-		throw new Error(`Unknown backend "${params.serverName}"`);
-	}
+	const server = configuredServer(params.config, params.serverName);
 	server.enabledTools = enabledTools;
 	server.availableTools = availableTools;
 	await saveServerFields({
@@ -112,10 +115,7 @@ const saveBackendEnabled = async (params: {
 	serverName: string;
 	enabled: boolean;
 }): Promise<void> => {
-	const server = params.config.mcpServers[params.serverName];
-	if (!server) {
-		throw new Error(`Unknown backend "${params.serverName}"`);
-	}
+	const server = configuredServer(params.config, params.serverName);
 	const previousEnabled = server.enabled;
 	server.enabled = params.enabled;
 	try {

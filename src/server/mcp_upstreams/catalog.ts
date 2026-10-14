@@ -101,11 +101,8 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 		tools: Tool[];
 	}): Promise<void> => {
 		const toolNames = getToolNames(catalogParams.tools);
-		let enabledTools = catalogParams.server.serverConfig.enabledTools;
-		if (!enabledTools) {
-			enabledTools = toolNames;
-			catalogParams.server.serverConfig.enabledTools = enabledTools;
-		}
+		let enabledTools =
+			catalogParams.server.serverConfig.enabledTools ?? toolNames;
 		// A previously discovered tool disappearing is a catalog change, not a
 		// configuration typo. Prune only those names; never silently accept an
 		// enabledTools entry that has never appeared in this backend's catalog.
@@ -118,8 +115,6 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 		enabledTools = enabledTools.filter(
 			(name) => !previousNames.has(name) || currentNames.has(name),
 		);
-		catalogParams.server.serverConfig.enabledTools = enabledTools;
-		catalogParams.server.serverConfig.availableTools = toolNames;
 		try {
 			await saveToolState({
 				configPath,
@@ -475,9 +470,6 @@ const createMcpUpstreamCatalog = (params: CreateMcpUpstreamCatalogParams) => {
 		);
 		const previousEnabled = server.serverConfig.enabledTools;
 		const previousAvailable = server.serverConfig.availableTools;
-		server.serverConfig.enabledTools = nextEnabled;
-		server.serverConfig.availableTools = toolNames;
-
 		try {
 			await saveToolState({
 				configPath,
