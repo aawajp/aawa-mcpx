@@ -354,7 +354,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 }
 
 for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
-	test(`${version}: a rejected credential retries with backoff`, async () => {
+	test(`${version}: a rejected credential stops retries, before and after connecting`, async () => {
 		let authorized = false;
 		const endpoint = Bun.serve({
 			port: 0,
@@ -391,24 +391,121 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 			},
 		});
 		const harness = createHarness(endpoint.url.href);
+		const stoppedOnCredential = {
+			connected: false,
+			errorState: 'authentication',
+			actionRequired: true,
+			error: 'Backend HTTP 401',
+		};
 		try {
 			await harness.connections.initialize();
-			expect(harness.backend.status).toMatchObject({
-				connected: false,
-				errorState: 'authentication',
-				actionRequired: false,
-				error: 'Backend HTTP 401',
-			});
-			expect(harness.backend.reconnectTimer).toBeDefined();
+			expect(harness.backend.status).toMatchObject(stoppedOnCredential);
+			expect(harness.backend.reconnectTimer).toBeUndefined();
 			authorized = true;
 			await harness.connections.attemptReconnect(harness.backend);
+			expect(harness.backend.status?.connected).toBe(false);
+			await harness.connections.setBackendEnabled(harness.backend, false);
+			await harness.connections.setBackendEnabled(harness.backend, true);
 			expect(harness.backend.status).toMatchObject({
 				connected: true,
 				protocolVersion: version,
 			});
+			authorized = false;
+			harness.backend.client?.ontransporterror(new Error('Connection reset'));
+			await harness.connections.attemptReconnect(harness.backend);
+			expect(harness.backend.status).toMatchObject(stoppedOnCredential);
+			expect(harness.backend.reconnectTimer).toBeUndefined();
 		} finally {
 			await harness.connections.disconnect();
 			endpoint.stop(true);
 		}
 	});
 }
+
+test('a start failure that is not transient stops at once', async () => {
+	const connect = spyOn(ProtocolClient.prototype, 'connect').mockRejectedValue(
+		Object.assign(new Error('Executable not found in $PATH'), {
+			code: 'ENOENT',
+		}),
+	);
+	const harness = createHarness();
+	try {
+		await harness.connections.initialize();
+		expect(harness.backend.status).toMatchObject({
+			connected: false,
+			errorState: 'runtime',
+			actionRequired: true,
+		});
+		expect(harness.backend.reconnectTimer).toBeUndefined();
+		await harness.connections.attemptReconnect(harness.backend);
+		expect(connect).toHaveBeenCalledTimes(1);
+	} finally {
+		await harness.connections.disconnect();
+		connect.mockRestore();
+	}
+});
+
+test('transient start failures stop after the startup window', async () => {
+	const connect = spyOn(ProtocolClient.prototype, 'connect').mockRejectedValue(
+		new BackendTransportError(new Error('Connection refused')),
+	);
+	const now = Date.now;
+	let offset = 0;
+	const clock = spyOn(Date, 'now').mockImplementation(() => now() + offset);
+	const harness = createHarness();
+	try {
+		await harness.connections.initialize();
+		expect(harness.backend.status?.actionRequired).toBe(false);
+		expect(harness.backend.reconnectTimer).toBeDefined();
+		offset = 5 * 60_000;
+		await harness.connections.attemptReconnect(harness.backend);
+		expect(harness.backend.status).toMatchObject({
+			connected: false,
+			errorState: 'runtime',
+			actionRequired: true,
+		});
+		expect(harness.backend.reconnectTimer).toBeUndefined();
+	} finally {
+		await harness.connections.disconnect();
+		clock.mockRestore();
+		connect.mockRestore();
+	}
+});
+
+test('after a connection, failures retry unless a certificate is rejected', async () => {
+	const connect = spyOn(ProtocolClient.prototype, 'connect').mockImplementation(
+		async function (this: ProtocolClient) {
+			this.protocolVersion = CURRENT_PROTOCOL_VERSION;
+		},
+	);
+	const harness = createHarness();
+	try {
+		await harness.connections.initialize();
+		expect(harness.backend.status?.connected).toBe(true);
+		connect.mockRejectedValue(new Error('Invalid backend JSON response'));
+		harness.backend.client?.ontransporterror(new Error('Connection reset'));
+		await harness.connections.attemptReconnect(harness.backend);
+		expect(harness.backend.status).toMatchObject({
+			connected: false,
+			actionRequired: false,
+		});
+		expect(harness.backend.reconnectTimer).toBeDefined();
+		connect.mockRejectedValue(
+			new BackendTransportError(
+				Object.assign(new Error('self signed certificate'), {
+					code: 'DEPTH_ZERO_SELF_SIGNED_CERT',
+				}),
+			),
+		);
+		await harness.connections.attemptReconnect(harness.backend);
+		expect(harness.backend.status).toMatchObject({
+			connected: false,
+			errorState: 'runtime',
+			actionRequired: true,
+		});
+		expect(harness.backend.reconnectTimer).toBeUndefined();
+	} finally {
+		await harness.connections.disconnect();
+		connect.mockRestore();
+	}
+});

@@ -157,9 +157,13 @@ type McpUpstreamBackend = McpUpstreamServer & {
 	connectionAttempt?: PendingAttempt<boolean>;
 	protocolVersion?: ProtocolVersion;
 	status?: McpUpstreamStatus;
-	// Either error stops reconnects until the operator acts.
+	// Either flag stops reconnects until the operator acts.
 	configError: boolean;
-	protocolError: boolean;
+	connectionStopped: boolean;
+	// When the gateway last started or enabled the backend, and whether it has
+	// connected since; this decides which connection failures retry.
+	startedAt: number;
+	hasConnected: boolean;
 	// A disabled backend is contacted once at startup for the dashboard.
 	probing: boolean;
 	reconnect?: PendingAttempt<void>;

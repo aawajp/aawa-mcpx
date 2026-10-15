@@ -24,6 +24,9 @@ Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 #### Changed
 
+- Stop retrying a backend that fails before its first connection (transient
+  failures retry for 5 minutes) or rejects its credential or TLS certificate;
+  retry other failures after a connection without limit.
 - Select revision-specific behavior by protocol mechanism instead of comparing
   with the newest supported version.
 - Name protocol logic by mechanism and MCP revision instead of

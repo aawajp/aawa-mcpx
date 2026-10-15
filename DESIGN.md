@@ -74,11 +74,21 @@ silences the logger during tests.
 
 ### 2.2 Backend connections and recovery
 
-Enabled backends recover automatically from lost connections and lost
-initialized HTTP sessions. Handshakes also retry after timeouts and HTTP
-`401`/`403`/`408`/`429`/`5xx`. Transport failures retire the client and schedule recovery. Failed
-tool calls are never replayed, because their side effects may have completed.
-Negotiation failures stop retries until disable/re-enable ([3.1](#31-revisions-and-negotiation)).
+Whether a backend has connected since the gateway started or enabled it
+decides which connection failures retry. The MCP specification defines no
+retry policy; this is the gateway's own:
+
+| Failure | Before the first connection | After it |
+| --- | --- | --- |
+| HTTP `401`/`403`, TLS certificate error | Stop | Stop |
+| Transport failure, timeout, HTTP `408`/`429`/`5xx` | Retry for 5 minutes, then stop | Retry without limit |
+| Anything else, such as a negotiation failure or a stdio command that cannot start | Stop | Retry without limit |
+
+The startup window lets backends that start after the gateway connect. A
+stopped backend shows the error with "Action required"; disable and re-enable
+it to retry. Transport failures retire the client and schedule recovery,
+including lost initialized HTTP sessions. Failed tool calls are never replayed,
+because their side effects may have completed.
 At startup, the gateway connects to each disabled backend once, fetches its
 server details and catalogs for the dashboard, and disconnects. It does not
 retry, health-check, or expose such a backend.
@@ -133,14 +143,15 @@ used; initialization, pinned peers, and application responses still require
 valid envelopes and matching request IDs. Dropping that status during envelope
 validation would stop negotiation before a compatible 2025 backend can initialize.
 Other discovery failures count as negotiation failures, except transient
-failures and HTTP `401`/`403`. A rejected credential retries with backoff and
-the dashboard shows it as an authentication error.
+failures and HTTP `401`/`403`, which the dashboard shows as an authentication
+error.
 A discovery result without `2026-07-28` initializes with the highest 2025
 revision it lists; one listing no supported revision is a negotiation failure.
 
-Negotiation failures stop automatic retries. The dashboard shows the failed
-method, attempted revision, and available HTTP/JSON-RPC codes. Disable and
-re-enable the backend to retry; restart to change a retained revision.
+For a negotiation failure, the dashboard shows the failed method, attempted
+revision, and available HTTP/JSON-RPC codes; whether it retries follows
+[2.2](#22-backend-connections-and-recovery). Restart to change a retained
+revision.
 
 ### 3.2 Transports and catalogs
 

@@ -2,8 +2,10 @@ import { logger } from '@/server/logger';
 import { createMcpUpstreamHealthChecks } from '@/server/mcp_upstreams/health_checks';
 import {
 	isAuthenticationError,
+	isTransientBackendError,
 	ProtocolClient,
 	ProtocolNegotiationError,
+	requiresOperatorFix,
 } from '@/server/mcp_upstreams/protocol_client';
 import type {
 	Client,
@@ -23,6 +25,9 @@ import type { McpUpstreamStatus } from '@/shared/ui_api';
 const RECONNECT_INITIAL_DELAY_MS = 5000;
 const RECONNECT_MAX_DELAY_MS = 60_000;
 const MIN_INTERVAL_MS = 1000;
+// Until its first connection, a backend retries transient failures this long,
+// so backends that start after the gateway still connect.
+const STARTUP_RETRY_MS = 5 * 60_000;
 
 type CreateMcpUpstreamConnectionsParams = {
 	backends: Map<string, McpUpstreamBackend>;
@@ -36,7 +41,9 @@ const createMcpUpstreamBackend = (
 	...server,
 	epoch: 0,
 	configError: false,
-	protocolError: false,
+	connectionStopped: false,
+	startedAt: 0,
+	hasConnected: false,
 	probing: false,
 	reconnectAttempts: 0,
 	healthCheckReady: false,
@@ -94,7 +101,7 @@ const createMcpUpstreamConnections = (
 	const { backends, trafficStore, refreshCatalog } = params;
 	let stopped = false;
 	const isConnectionBlocked = (backend: McpUpstreamBackend): boolean =>
-		backend.configError || backend.protocolError;
+		backend.configError || backend.connectionStopped;
 
 	const isActive = (backend: McpUpstreamBackend): boolean =>
 		backend.serverConfig.enabled || backend.probing;
@@ -368,6 +375,7 @@ const createMcpUpstreamConnections = (
 			if (client.protocolVersion)
 				backend.protocolVersion = client.protocolVersion;
 			backend.healthCheckFailures = 0;
+			backend.hasConnected = true;
 			setMcpUpstreamStatus({
 				backend,
 				connected: true,
@@ -384,9 +392,17 @@ const createMcpUpstreamConnections = (
 			}
 			const message = errorMessage(err);
 			const protocolFailure = err instanceof ProtocolNegotiationError;
-			if (protocolFailure) {
-				// A failed negotiation needs operator attention, not a reconnect loop.
-				backend.protocolError = true;
+			// A backend that has connected is assumed to fail transiently. One that
+			// has not is likely misconfigured: it retries only transient failures,
+			// within the startup window. A rejected credential or certificate never
+			// fixes itself.
+			const retry =
+				!requiresOperatorFix(err) &&
+				(backend.hasConnected ||
+					(isTransientBackendError(err) &&
+						Date.now() < backend.startedAt + STARTUP_RETRY_MS));
+			if (!retry) {
+				backend.connectionStopped = true;
 				clearReconnectTimer(backend);
 			}
 			logger.error(
@@ -397,13 +413,13 @@ const createMcpUpstreamConnections = (
 						transport: serverConfig.type,
 						...(err instanceof ProtocolNegotiationError ? err.context : {}),
 						supportedVersions: SUPPORTED_PROTOCOL_VERSIONS,
-						...(protocolFailure
+						...(retry
 							? {
-									retry: 'stopped',
-									recovery: 'Disable and re-enable the backend to retry',
+									retry: 'automatic with backoff',
 								}
 							: {
-									retry: 'automatic with backoff',
+									retry: 'stopped',
+									recovery: 'Disable and re-enable the backend to retry',
 								}),
 					},
 					error: message,
@@ -418,7 +434,7 @@ const createMcpUpstreamConnections = (
 					: isAuthenticationError(err)
 						? 'authentication'
 						: 'runtime',
-				actionRequired: protocolFailure,
+				actionRequired: !retry,
 			});
 			await client.close().catch(() => undefined);
 			return false;
@@ -548,8 +564,10 @@ const createMcpUpstreamConnections = (
 		backend.reconnectAttempts = 0;
 		await backend.connectingClient?.close().catch(() => undefined);
 		backend.serverConfig.enabled = enabled;
-		backend.protocolError = false;
+		backend.connectionStopped = false;
 		backend.configError = false;
+		backend.startedAt = Date.now();
+		backend.hasConnected = false;
 
 		if (!enabled) {
 			backend.healthCheckReady = false;
@@ -596,12 +614,14 @@ const createMcpUpstreamConnections = (
 	const initialize = async (): Promise<void> => {
 		stopped = false;
 		const allBackends = Array.from(backends.values());
-		for (const backend of allBackends)
+		for (const backend of allBackends) {
+			backend.startedAt = Date.now();
 			setMcpUpstreamStatus({
 				backend,
 				connected: false,
 				actionRequired: false,
 			});
+		}
 		const results = await Promise.allSettled(
 			allBackends.map((backend) =>
 				backend.serverConfig.enabled ? bringUp(backend) : probe(backend),
