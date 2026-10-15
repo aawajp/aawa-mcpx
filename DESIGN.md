@@ -362,7 +362,7 @@ Tools, prompts, resources, and resource templates work across supported revision
 continuations, sampling, elicitation, subscriptions, and tasks are not advertised,
 and unsupported interactive results fail explicitly ([7.2](#72-interactive-mcp-requests)
 covers the planned design). Backend credentials define their authorization
-context. The gateway has no client authentication ([7.1](#71-runtime-options)).
+context. The gateway has no client authentication ([7.1](#71-security)).
 
 For 2025 clients the gateway answers `completion/complete` with empty values,
 and `logging/setLevel` and `ping` with `{}`. For 2026 clients these methods and
@@ -532,22 +532,22 @@ cross-runtime layer.
 
 Nothing in this section is approved for implementation unless it says so.
 
-### 7.1 Runtime options
+### 7.1 Security
 
-| Option | Revisit when |
-| --- | --- |
-| Client authentication | Before the gateway is reachable from untrusted networks. It currently has no client authentication and listens on all interfaces. |
-| Positive aggregate catalog TTL | Derive freshness from the minimum remaining backend TTL and exposure-policy lifetime; preserve authorization isolation. Current public TTL remains zero. |
-| `bun test --parallel` | Enough independent files benefit from workers. |
-| `--smol` | Deployed memory becomes a constraint; benchmark first. |
-| Isolated linker/global virtual store | Workspace growth or repeated worktree installs justify it. |
-| React Compiler | Stable release or measured rendering bottleneck. |
-| `process.on("memoryPressure")` | Substantial disposable in-memory caches. |
-| HTTP/2 or HTTP/3 | Stable Bun support and an MCP/deployment requirement justify compatibility risk. |
+**Status: next; needs its own design.** The gateway has no client
+authentication: any client that reaches a host in `ALLOWED_HOSTS` can list and
+call every exposed tool, and the dashboard API is open the same way. Planned:
+
+- Client authentication with OAuth2/OIDC.
+- Granular tool permissions: which backends and tools each client may list and
+  call.
+- Browser login for the dashboard, built on the OAuth2/OIDC mechanism.
+
+HTTP Basic authentication is not planned.
 
 ### 7.2 Interactive MCP requests
 
-**Status: to be implemented after the current bug fixes; scope (native relay, translation) remains undecided.**
+**Status: to be implemented after the security work ([7.1](#71-security)); scope (native relay, translation) remains undecided.**
 The runtime rejects continuation parameters and backend `input_required` results
 and advertises no interactive client capabilities. Any future support must retain
 ordinary calls across all three client/backend revisions and both backend transports.
@@ -667,7 +667,7 @@ client/backend combinations still need interoperability confirmation.
 
 | ID | Decision needed | Current position / next evidence |
 | --- | --- | --- |
-| MRTR-DEC-01 | Whether and when to implement? | Decided: implement after the current bug fixes. Native-only remains the simpler candidate for the first step. |
+| MRTR-DEC-01 | Whether and when to implement? | Decided: implement after the security work (7.1). Native-only remains the simpler candidate for the first step. |
 | MRTR-DEC-02 | Which pairs need translation? | Identify concrete clients/backends and interactions before selecting either direction. |
 | MRTR-DEC-03 | Which 2025 transports/features? | Define coverage, connection isolation, and explicit unsupported cases. |
 | MRTR-DEC-04 | Continuation ownership and retention? | Resolve caller binding, quotas, expiry, retry semantics, and restart policy. |
@@ -685,8 +685,9 @@ its own tests, limits, and cleanup. These are complexity estimates, not a schedu
 
 **Status: TODO; needs its own design. Lowest priority.** No CI runs today:
 `.github/` is excluded by `.gitignore`. The design must cover which checks run
-(`bun lint`, `bun test`), image builds and publishing, release tagging, and the
-build-context checksum (which must include the Dockerfile and file paths).
+(`bun lint`, `bun test`), image builds and publishing, release tagging, the
+build-context checksum (which must include the Dockerfile and file paths), and
+whether `bun audit` findings fail the image build (the Dockerfile only warns).
 
 ### 7.4 Configuration in the dashboard
 
@@ -716,6 +717,18 @@ Bun's built-in linter ([`bun lint`](https://bun.com/docs/lint)) has
 configured in `bunfig.toml`. Once it is in a stable release, decide whether it
 replaces Biome's linter or runs alongside it, and turn on the rules Biome does
 not cover, starting with `@typescript-eslint/no-deprecated`.
+
+### 7.7 Runtime options
+
+| Option | Revisit when |
+| --- | --- |
+| Positive aggregate catalog TTL | Derive freshness from the minimum remaining backend TTL and exposure-policy lifetime; preserve authorization isolation. Current public TTL remains zero. |
+| `bun test --parallel` | Enough independent files benefit from workers. |
+| `--smol` | Deployed memory becomes a constraint; benchmark first. |
+| Isolated linker/global virtual store | Workspace growth or repeated worktree installs justify it. |
+| React Compiler | Stable release or measured rendering bottleneck. |
+| `process.on("memoryPressure")` | Substantial disposable in-memory caches. |
+| HTTP/2 or HTTP/3 | Stable Bun support and an MCP/deployment requirement justify compatibility risk. |
 
 ## 8. References
 
