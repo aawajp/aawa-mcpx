@@ -18,9 +18,8 @@ behavior, and planned design; [CHANGELOG.md](/CHANGELOG.md) lists changes.
 > [!WARNING]
 > The gateway has no client authentication and listens on all interfaces. It
 > refuses requests whose host or `Origin` is not listed in `ALLOWED_HOSTS`,
-> which stops web pages in your browser from calling it, but
-> any client on the network can still send an allowed host. Run it only on a
-> trusted network.
+> which stops web pages in your browser from calling it, but any client on the
+> network can still send an allowed host. Run it only on a trusted network.
 
 ## Prerequisites
 
@@ -91,7 +90,7 @@ Stdio backend:
 | `env` | stdio | Object of strings | Literal environment variables for the process; of the gateway's own environment only `HOME`, `PATH`, `SHELL`, `USER`, `LOGNAME`, `TMPDIR`, `SystemRoot` and `TEMP` are passed on |
 | `cwd` | stdio | String | Working directory for the process |
 | `timeout` | Both | Positive integer | Request timeout in ms; default `10000` |
-| `enabled` | Both | Boolean | Keep the backend connected and expose it; default `true`. A disabled backend is contacted once at startup so the dashboard can show its details |
+| `enabled` | Both | Boolean | Keep the backend connected and expose it; default `true`. A disabled backend is contacted once at startup and on its **Refresh** so the dashboard can show its details |
 | `trafficLimit` | Both | Positive integer | Requests per second to the backend, including catalog fetches and health probes; default `1` |
 | `enabledTools` | Both | Array of strings | Tools exposed to clients; if omitted, every tool from the first fetch is exposed |
 | `availableTools` | Both | Array of strings | Discovered tools; managed by the gateway, do not edit |
@@ -206,7 +205,7 @@ The debug queries take `limit` (positive integer, default `20`), `offset`
 `/api/debug/backend` also takes `backend` (required) and `method`, both
 non-empty. Request bodies and queries with other fields are refused.
 
-Failed `/api/*` requests return `{ error }` with status 400 for a malformed request or a refused tool call, 404 for an unknown backend or tool, and 500 otherwise. Toggles persist to `mcp.json`. Traffic is stored in `db/traffic.db`, which keeps the newest 10,000 records and is cleared at startup. Any other path serves the dashboard page.
+Failed `/api/*` requests return `{ error }` with status 400 for a malformed request or a refused tool call, 403 for a host or `Origin` not in `ALLOWED_HOSTS`, 404 for an unknown backend or tool, and 500 otherwise. Toggles persist to `mcp.json`. Traffic is stored in `db/traffic.db`, which keeps the newest 10,000 records and is cleared at startup. Any other path serves the dashboard page.
 
 ## Development
 

@@ -67,7 +67,7 @@ doc in the same change.
 
 - Import code through the `@/` alias, even from the same folder. Relative
   paths are only for non-code files such as JSON, CSS, and HTML; `bun lint`
-  enforces this and the `src/ui`, `src/shared`, `src/server` import boundaries.
+  enforces this and the `src/ui` and `src/shared` import boundaries.
 - Name protocol logic by mechanism, such as `requiresInitialization(version)`,
   never by era ("modern", "legacy") or a revision date. Source comments name
   the MCP revision that introduced a rule, such as "MCP 2026-07-28 removed

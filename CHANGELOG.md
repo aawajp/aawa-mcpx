@@ -32,6 +32,7 @@ Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 - Make **Refresh** reconnect a disconnected or stopped backend and contact a
   disabled one once without enabling it; **Refresh all** covers every backend.
+- Bring README, DESIGN and AGENTS.md in line with the current code.
 
 ### 2026-10-14
 

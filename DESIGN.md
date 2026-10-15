@@ -57,13 +57,13 @@ SDK supplies types only; the gateway implements dispatch and transports itself.
 | --- | --- |
 | `server/` | `index.ts`: entrypoint (load configuration, start upstreams and the server, handle shutdown); `traffic_store.ts`: SQLite traffic storage; `logger.ts`: console logging. |
 | `server/config/` | `schema.ts`: every user setting as ArkType schemas (environment variables and `mcp.json`); `loader.ts`: loads and persists `mcp.json`; `constants.ts`: file locations. |
-| `server/gateway/` | `server.ts`: `Bun.serve`/route wiring; `mcp_http_route.ts`: HTTP handling; `mcp_request_router.ts`: JSON-RPC dispatch/version adaptation. |
+| `server/gateway/` | `server.ts`: `Bun.serve`/route wiring; `allowed_hosts.ts`: `Host`/`Origin` allowlist and route guard; `mcp_http_route.ts`: HTTP handling; `mcp_request_router.ts`: JSON-RPC dispatch/version adaptation. |
 | | `json_rpc.ts`: incoming envelope parsing; `mcp_session.ts`: public initialization/sessions; `client_activity.ts`: dashboard history; `mcp_handlers.ts`: upstream operations; `mcp_namespaces.ts`: applies namespaces and `[serverName]` description prefixes to catalogs; `ui_routes.ts`: UI APIs/events. |
 | `server/mcp_upstreams/` | `manager.ts`: stable gateway API/service wiring; `connections.ts`: per-backend state record, connection/recovery lifecycle; `health_checks.ts`: probes; `catalog.ts`: caches/exposure state. |
 | | `method_calls.ts`: calls/argument validation; `protocol_client.ts`: JSON-RPC, revision selection, HTTP/SSE and stdio; `tool_result.ts`: structured recovery/duplicate removal; `input_schema.ts`/`output_schema.ts`: provider schema policies; `json_schema.ts`: shared compiler; `logged_request.ts`: traffic logging around calls; `types.d.ts`: manager contracts. |
 | `shared/` | `mcp_protocol.ts`: revision registry, header encoding, `x-mcp-header` rules; `mcp_metadata.ts`: request-metadata validators; `mcp_namespaces.ts`: namespace and resource-URI codec; `mcp_schemas.ts`: MCP validators; `mcp_results.ts`: result types; `mcp_output_schema.ts`: object wrappers for 2025 clients. |
 | | `ui_api.ts`: dashboard contracts, which also type the server's backend status and traffic records; `client_info.ts`: client identity; `cancellation.ts`: abort helpers; `common.ts`: cross-runtime helpers. |
-| `ui/` | `index.html`: dashboard page; `main.tsx`: entrypoint it loads; `App.tsx`: state/routing; `base_components/`: low-level components; `components/`: app components; `sections/`: pages; `i18n/` and `styles/`: assets. |
+| `ui/` | `index.html`: dashboard page; `main.tsx`: entrypoint it loads; `App.tsx`: state/routing; `base_components/`: low-level components; `components/`: app components; `sections/`: pages; `api/`: dashboard API client; `index.css`: Tailwind entry; `i18n/` and `styles/`: assets. |
 
 The compact footer links `© [current year] Aawa Technologies / Mikael Nakajima`
 to [Aawa Technologies](https://aawa.jp). Test fixtures live next to the tests:
@@ -74,8 +74,8 @@ silences the logger during tests.
 
 ### 2.2 Backend connections and recovery
 
-Whether a backend has connected since the gateway started or enabled it
-decides which connection failures retry. The MCP specification defines no
+Whether a backend has connected since the gateway started, enabled or
+refreshed it decides which connection failures retry. The MCP specification defines no
 retry policy; this is the gateway's own:
 
 | Failure | Before the first connection | After it |
@@ -83,6 +83,7 @@ retry policy; this is the gateway's own:
 | HTTP `401`/`403`, TLS certificate error | Stop | Stop |
 | Transport failure, timeout, HTTP `408`/`429`/`5xx` | Retry for 5 minutes, then stop | Retry without limit |
 | Anything else, such as a negotiation failure or a stdio command that cannot start | Stop | Retry without limit |
+| `enabledTools` names a tool the backend does not list | — | Stop until **Refresh** or a tool toggle |
 
 The startup window lets backends that start after the gateway connect. A
 stopped backend shows the error with "Action required"; its **Refresh**, or
@@ -98,7 +99,8 @@ Retry delays are jittered: **5–10**, **10–20**, **20–40**, then **30–60 
 measured after each attempt finishes, following
 [AWS retry guidance](https://docs.aws.amazon.com/sdkref/latest/guide/feature-retry-behavior.html).
 Reconnects share one attempt per backend and connection epoch. A successful
-reconnect or a backend toggle resets the backoff; disable and shutdown invalidate epochs and
+reconnect, a backend toggle or a **Refresh** that restarts the backend resets
+the backoff; disable and shutdown invalidate epochs and
 cancel clients and timers.
 
 Health probes run independently for enabled, connected backends after catalog
@@ -169,19 +171,20 @@ header gets HTTP 400 / `-32600`.
 with a JSON-RPC error without `id`. Checking both stops DNS rebinding, because a
 rebinding page names its own host in both. Clients must accept both
 `application/json` and `text/event-stream`. Until backend initialization finishes,
-MCP requests wait; if it fails they get HTTP 503 / `-32603`.
+2025 messages and 2026 list requests wait; if it fails they get HTTP 503 /
+`-32603`.
 
 Public GET event streams and stdio are not exposed. The gateway sends no
 server-initiated MCP messages and normally completes operations with one JSON
 response. Backend HTTP must offer Streamable HTTP with JSON or SSE `POST`
 responses; the backend's standalone `GET` event stream is not used. Backend stdio
 is supported. Backend stdio buffers and SSE events are limited to 8 MiB, and
-backend pagination to 1,000 pages.
+backend pagination to 1,000 pages after the first.
 
 A stdio backend's stdout lines that are not JSON-RPC messages are logged and
 skipped. A stdout line over the limit, or stdout closing, is a transport failure
 and starts recovery. Stderr lines are logged at info level, prefixed with the
-backend name; longer lines are cut at the limit. Closing a stdio backend closes
+backend name; a longer line is logged in pieces of about the limit. Closing a stdio backend closes
 its stdin, sends `SIGTERM` if it has not exited after 1 s, and `SIGKILL` after
 another 1 s.
 
@@ -195,7 +198,7 @@ Backend SSE lines may end in CRLF, LF, or CR.
 The gateway requests only the lists (tools, prompts, resources, resource
 templates) that a backend advertises in its capabilities. Each 2026 backend list
 is cached on its own: it expires at its fetch start time plus its TTL (the
-smallest across pages), scoped to configured credentials, and a list without a
+smallest across pages, less the time spent fetching), scoped to configured credentials, and a list without a
 TTL is stale at once. Before a public list request (`tools/list`,
 `prompts/list`, `resources/list`, `resources/templates/list`), the gateway
 re-fetches that list from every connected 2026 backend where it is stale; before
@@ -230,7 +233,7 @@ the selected revision persists.
 
 Sessions exist only in memory, without lifecycle status, timestamps, idle expiry,
 or cleanup timers. `MCP_MAX_SESSIONS_PER_CLIENT` (positive integer, default `10`;
-invalid values use the default) limits retained sessions per reported
+an invalid value stops startup) limits retained sessions per reported
 name/version pair across both 2025 revisions. Successful initialization beyond
 the limit evicts that pair's oldest session by insertion order; request activity
 does not reorder sessions, and invalid initialization evicts none. DELETE removes
@@ -344,8 +347,9 @@ Only MCP resource fields are wrapped: catalogs, read contents, tool links/embedd
 resources, and prompt embedded resources; text and structured output stay intact.
 Backend responses in traffic records and dashboard tests remain original. Reads
 decode once and route without requiring catalog membership, because tool links
-need not occur in `resources/list`. Malformed routes and unknown/disabled backends
-return `-32602`; disconnected backends return `-32603`. Backend errors keep the
+need not occur in `resources/list`. Malformed routes return `-32602`, and unknown or
+disabled backends `-32002` for 2025 clients and `-32602` for 2026 clients;
+disconnected backends return `-32603`. Backend errors keep the
 client-version adaptation of [4.5](#45-tool-call-errors). The same codec applies
 to all supported revisions.
 
@@ -487,7 +491,7 @@ like tool content blocks.
 
 Ordinary 2025 RPC errors keep HTTP 200. Gateway-generated transport errors use
 JSON-RPC `-32600` with these HTTP statuses: missing session 400, unknown session
-404, header mismatch 400, invalid `Origin` 403, unacceptable `Accept` 400. The 2026 binding uses HTTP 400 for
+404, header mismatch 400, `Host` or `Origin` not in `ALLOWED_HOSTS` 403, unacceptable `Accept` 400. The 2026 binding uses HTTP 400 for
 invalid requests/parameters and metadata errors, 404 for unknown methods, and
 500 for internal errors. HTTP handler failures use 500 in every revision.
 Backend HTTP statuses stay local to backend recovery/negotiation and are not
@@ -516,8 +520,8 @@ which `rpc` does not check. JSON-RPC envelopes require string/integer IDs, integ
 codes, and matching response IDs; only the initial discovery fallback in
 [3.1](#31-revisions-and-negotiation) tolerates an invalid envelope.
 
-Custom parsing handles request/notification envelopes, headers (`Accept`, `Origin`,
-session/protocol IDs), URL pagination/filter coercion, schema-driven form inputs,
+Custom parsing handles request/notification envelopes, headers (`Accept`, `Host`,
+`Origin`, session/protocol IDs), URL pagination/filter coercion, schema-driven form inputs,
 SQLite row mapping, and error normalization. `shared/` is the only intentional
 cross-runtime layer.
 
@@ -698,7 +702,7 @@ only; which of `args`, `env`, and `cwd` to show, and how, is undecided.
 ### 7.6 Linting gaps
 
 **Status: TODO; waiting for Bun's built-in linter in a stable release.** The
-`lint` script runs `bun check` and `biome check`. Neither reports uses of code
+`lint` script runs `bun check` and `biome check --fix`. Neither reports uses of code
 marked `@deprecated` in JSDoc: `bun check` reports what `tsc` reports, and `tsc`
 leaves deprecation to editor suggestions. Biome's `noDeprecatedImports` flags
 imports of deprecated exports only, not calls such as `Database.exec` from
