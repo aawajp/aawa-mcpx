@@ -1,5 +1,6 @@
 import { type } from 'arktype';
 
+import { HOST_NOT_ALLOWED } from '@/server/gateway/allowed_hosts';
 import {
 	getJsonRpcId,
 	type IncomingJsonRpcRequest,
@@ -117,12 +118,8 @@ const createMethodNotAllowedResponse = (): Response => {
 	});
 };
 
-const createOriginForbiddenResponse = (): Response => {
-	const body = rpcError(
-		undefined,
-		RPC_ERROR.InvalidRequest,
-		'Invalid Origin header.',
-	);
+const createMcpForbiddenResponse = (): Response => {
+	const body = rpcError(undefined, RPC_ERROR.InvalidRequest, HOST_NOT_ALLOWED);
 	return createJsonResponse(body, undefined, 403);
 };
 
@@ -143,36 +140,6 @@ const acceptsContentType = (request: Request, contentType: string): boolean => {
 		const [mediaType] = value.split(';');
 		return mediaType === contentType || mediaType === '*/*';
 	});
-};
-
-const isLocalHostname = (hostname: string): boolean => {
-	return (
-		hostname === 'localhost' ||
-		hostname === '127.0.0.1' ||
-		hostname === '[::1]' ||
-		hostname === '::1'
-	);
-};
-
-const isValidOrigin = (request: Request): boolean => {
-	const origin = request.headers.get('origin');
-	if (!origin) return true;
-	const host = request.headers.get('host');
-	if (!host) return false;
-	try {
-		const originUrl = new URL(origin);
-		const requestUrl = new URL(request.url);
-		if (originUrl.host === host) return true;
-		if (
-			isLocalHostname(originUrl.hostname) &&
-			isLocalHostname(requestUrl.hostname)
-		) {
-			return true;
-		}
-	} catch {
-		return false;
-	}
-	return false;
 };
 
 const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
@@ -379,12 +346,10 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 	};
 
 	return {
-		GET(request: Request) {
-			if (!isValidOrigin(request)) return createOriginForbiddenResponse();
+		GET() {
 			return createMethodNotAllowedResponse();
 		},
 		async POST(request: Request) {
-			if (!isValidOrigin(request)) return createOriginForbiddenResponse();
 			const sessionId = parseSessionId(request);
 			if (
 				!acceptsContentType(request, 'application/json') ||
@@ -761,7 +726,6 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 			}
 		},
 		async DELETE(request: Request) {
-			if (!isValidOrigin(request)) return createOriginForbiddenResponse();
 			if (usesRequestMetadata(request.headers.get(MCP_HEADERS.ProtocolVersion)))
 				return new Response(null, {
 					status: 405,
@@ -783,4 +747,4 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 	};
 };
 
-export { createMcpHttpRoute };
+export { createMcpForbiddenResponse, createMcpHttpRoute };

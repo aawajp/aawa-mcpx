@@ -1,9 +1,16 @@
+import { createHostCheck, guardRoutes } from '@/server/gateway/allowed_hosts';
 import { createClientActivityTracker } from '@/server/gateway/client_activity';
 import { createHandlers } from '@/server/gateway/mcp_handlers';
-import { createMcpHttpRoute } from '@/server/gateway/mcp_http_route';
+import {
+	createMcpForbiddenResponse,
+	createMcpHttpRoute,
+} from '@/server/gateway/mcp_http_route';
 import { createMcpRequestRouter } from '@/server/gateway/mcp_request_router';
 import { createMcpSessionManager } from '@/server/gateway/mcp_session';
-import { createUiRoutes } from '@/server/gateway/ui_routes';
+import {
+	createApiForbiddenResponse,
+	createUiRoutes,
+} from '@/server/gateway/ui_routes';
 import { logger } from '@/server/logger';
 import {
 	emptyPromptsResult,
@@ -23,6 +30,7 @@ const CLIENT_ACTIVITY_HISTORY_LIMIT = 200;
 
 type StartServerParams = {
 	port: number;
+	allowedHosts: readonly string[];
 	development: boolean;
 	maxSessionsPerClient: number;
 	mcpUpstreamManager: McpUpstreamManager;
@@ -38,6 +46,7 @@ const startServer = async (
 	params: StartServerParams,
 ): Promise<ServerInstance> => {
 	const {
+		allowedHosts,
 		development,
 		initialization = Promise.resolve(),
 		maxSessionsPerClient,
@@ -100,6 +109,7 @@ const startServer = async (
 		handleInitialize: mcpSessions.handleInitialize,
 	});
 	const uiShutdownController = new AbortController();
+	const isAllowedHost = createHostCheck(allowedHosts);
 
 	const server = Bun.serve({
 		port,
@@ -110,20 +120,30 @@ const startServer = async (
 				}
 			: false,
 		routes: {
-			'/mcp': createMcpHttpRoute({
-				refreshCatalogs: mcpUpstreamManager.refreshStaleCatalogs,
-				onClientActivity: clientActivity.observe,
-				initialization,
-				mcpSessions,
-				routeRequest,
-				trafficStore,
-			}),
-			...createUiRoutes({
-				mcpUpstreamManager,
-				buildOverview,
-				shutdownSignal: uiShutdownController.signal,
-				trafficStore,
-			}),
+			...guardRoutes(
+				{
+					'/mcp': createMcpHttpRoute({
+						refreshCatalogs: mcpUpstreamManager.refreshStaleCatalogs,
+						onClientActivity: clientActivity.observe,
+						initialization,
+						mcpSessions,
+						routeRequest,
+						trafficStore,
+					}),
+				},
+				isAllowedHost,
+				createMcpForbiddenResponse,
+			),
+			...guardRoutes(
+				createUiRoutes({
+					mcpUpstreamManager,
+					buildOverview,
+					shutdownSignal: uiShutdownController.signal,
+					trafficStore,
+				}),
+				isAllowedHost,
+				createApiForbiddenResponse,
+			),
 			'/*': indexHtml,
 		},
 		error(err) {

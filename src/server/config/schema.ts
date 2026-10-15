@@ -1,8 +1,23 @@
 import { type } from 'arktype';
 
+// A bare host name or IP address, as in a URL without scheme, port or path.
+const hostNameType = type('string').narrow(
+	(host, ctx) =>
+		URL.parse(`http://${host}`)?.hostname === host ||
+		ctx.mustBe('a lowercase host name without scheme or port'),
+);
+
 // Gateway settings from environment variables; Bun also loads them from `.env`.
 const environmentType = type({
 	PORT: type('string.integer.parse').to('1 <= number <= 65535').default('4567'),
+	ALLOWED_HOSTS: type('string')
+		.pipe((value) =>
+			value
+				.split(',')
+				.map((host) => host.trim())
+				.filter((host) => host !== ''),
+		)
+		.to(hostNameType.array().atLeastLength(1)),
 	MCP_MAX_SESSIONS_PER_CLIENT: type('string.integer.parse')
 		.to('number > 0')
 		.default('10'),

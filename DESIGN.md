@@ -164,9 +164,10 @@ fields; removed methods return HTTP 404 with JSON-RPC method-not-found. A suppli
 A request takes the 2026 path when it is `server/discover`, carries protocol
 version metadata, or has the exact `2026-07-28` header. Any other unsupported
 header gets HTTP 400 / `-32600`.
-A present `Origin` must match the `Host` header, or both must be local host names.
-This check does not stop DNS rebinding, because a rebinding page controls both
-values, and `/api/*` routes have no `Origin` check. Clients must accept both
+`/mcp` and `/api/*` requests must name a host listed in `ALLOWED_HOSTS` in
+`Host` and, when present, in `Origin`. Other requests get HTTP 403, on `/mcp`
+with a JSON-RPC error without `id`. Checking both stops DNS rebinding, because a
+rebinding page names its own host in both. Clients must accept both
 `application/json` and `text/event-stream`. Until backend initialization finishes,
 MCP requests wait; if it fails they get HTTP 503 / `-32603`.
 

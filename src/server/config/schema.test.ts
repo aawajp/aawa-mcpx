@@ -26,28 +26,38 @@ test('backend enabled setting defaults to true', () => {
 });
 
 test('environment settings are parsed with their defaults and invalid values are refused', () => {
-	expect(environmentType.assert({})).toEqual({
+	expect(environmentType.assert({ ALLOWED_HOSTS: 'localhost' })).toEqual({
 		PORT: 4567,
+		ALLOWED_HOSTS: ['localhost'],
 		MCP_MAX_SESSIONS_PER_CLIENT: 10,
 	});
 	expect(
 		environmentType.assert({
 			PORT: '8080',
+			ALLOWED_HOSTS: ' mcpx.lan, 192.168.1.10,[fd00::1] ,',
 			MCP_MAX_SESSIONS_PER_CLIENT: '3',
 			NODE_ENV: 'production',
 			HOME: '/home/app',
 		}),
 	).toMatchObject({
 		PORT: 8080,
+		ALLOWED_HOSTS: ['mcpx.lan', '192.168.1.10', '[fd00::1]'],
 		MCP_MAX_SESSIONS_PER_CLIENT: 3,
 		NODE_ENV: 'production',
 	});
 	for (const env of [
+		{},
+		{ ALLOWED_HOSTS: '' },
+		{ ALLOWED_HOSTS: ' , ' },
 		{ PORT: '' },
 		{ PORT: 'abc' },
 		{ PORT: '-1' },
 		{ PORT: '1.5' },
 		{ PORT: '65536' },
+		{ ALLOWED_HOSTS: 'mcpx.lan:4567' },
+		{ ALLOWED_HOSTS: 'http://mcpx.lan' },
+		{ ALLOWED_HOSTS: 'MCPX.lan' },
+		{ ALLOWED_HOSTS: 'fd00::1' },
 		{ MCP_MAX_SESSIONS_PER_CLIENT: '0' },
 	])
 		expect(() => environmentType.assert(env)).toThrow();

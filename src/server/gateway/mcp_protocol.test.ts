@@ -1057,31 +1057,19 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 		}
 	});
 
-test('POST checks Origin and Accept before reading the body', async () => {
+test('POST checks Accept before reading the body', async () => {
 	const { route } = fixture();
 	const post = (headers: Record<string, string>) =>
 		route.POST(
 			new Request('http://localhost:4567/mcp', {
 				method: 'POST',
 				headers: {
-					Host: 'localhost:4567',
 					'MCP-Protocol-Version': '2025-11-25',
 					...headers,
 				},
 				body: '{}',
 			}),
 		);
-	const accept = {
-		Accept: 'application/json, text/event-stream',
-	};
-	expect(
-		(
-			await post({
-				...accept,
-				Origin: 'http://evil.example',
-			})
-		).status,
-	).toBe(403);
 	for (const value of ['application/json', 'text/event-stream'])
 		expect(
 			(
@@ -1090,10 +1078,9 @@ test('POST checks Origin and Accept before reading the body', async () => {
 				})
 			).status,
 		).toBe(400);
-	// Local origins and */* pass both checks; the empty body then fails.
+	// */* passes the check; the empty body then fails.
 	const passed = await post({
 		Accept: '*/*',
-		Origin: 'http://127.0.0.1:3000',
 	});
 	expect(passed.status).toBe(400);
 	expect((await passed.json()).error.code).toBe(-32600);
@@ -1153,12 +1140,6 @@ test('gateway transport errors keep their HTTP status and use Invalid Request', 
 		});
 	const session = (await initialize()).headers.get('Mcp-Session-Id') ?? '';
 	const cases: [Promise<Response>, number][] = [
-		[
-			post({
-				Origin: 'http://evil.example',
-			}),
-			403,
-		],
 		[
 			post({
 				Accept: 'application/json',

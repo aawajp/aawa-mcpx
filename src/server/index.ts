@@ -29,6 +29,7 @@ void initialization.catch((err) => {
 
 const server = await startServer({
 	port: environment.PORT,
+	allowedHosts: environment.ALLOWED_HOSTS,
 	development: environment.NODE_ENV !== 'production',
 	maxSessionsPerClient: environment.MCP_MAX_SESSIONS_PER_CLIENT,
 	mcpUpstreamManager,

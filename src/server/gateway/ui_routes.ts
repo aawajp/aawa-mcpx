@@ -2,6 +2,7 @@ import { type } from 'arktype';
 
 import { setInterval as setIntervalAsync } from 'node:timers/promises';
 
+import { HOST_NOT_ALLOWED } from '@/server/gateway/allowed_hosts';
 import { logger } from '@/server/logger';
 import { BackendRpcError } from '@/server/mcp_upstreams/protocol_client';
 import type { McpUpstreamManager } from '@/server/mcp_upstreams/types';
@@ -51,6 +52,9 @@ const jsonError = (status: number, message: string): Response =>
 			status,
 		},
 	);
+
+const createApiForbiddenResponse = (): Response =>
+	jsonError(403, HOST_NOT_ALLOWED);
 
 const pageFields = {
 	'+': 'reject',
@@ -422,4 +426,4 @@ const createUiRoutes = (params: CreateUiRoutesParams) => {
 	};
 };
 
-export { createUiRoutes };
+export { createApiForbiddenResponse, createUiRoutes };

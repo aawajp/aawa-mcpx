@@ -16,9 +16,11 @@ supported. [DESIGN.md](/DESIGN.md) describes the architecture, protocol
 behavior, and planned design; [CHANGELOG.md](/CHANGELOG.md) lists changes.
 
 > [!WARNING]
-> The gateway has no client authentication and listens on all interfaces. Its
-> dashboard API also accepts cross-site requests, so a web page open in your
-> browser can call it. Run it only on a trusted network.
+> The gateway has no client authentication and listens on all interfaces. It
+> refuses requests whose host or `Origin` is not listed in `ALLOWED_HOSTS`,
+> which stops web pages in your browser from calling it, but
+> any client on the network can still send an allowed host. Run it only on a
+> trusted network.
 
 ## Prerequisites
 
@@ -106,6 +108,7 @@ tool is toggled in the dashboard.
 | Variable | Type | Default | Description |
 | --- | --- | --- | --- |
 | `PORT` | Integer from 1 to 65535 | `4567` | Listening port |
+| `ALLOWED_HOSTS` | Comma-separated host names | required | Host names clients and the dashboard use, such as `localhost,127.0.0.1,[::1]`; other hosts get HTTP 403 |
 | `MCP_MAX_SESSIONS_PER_CLIENT` | Positive integer | `10` | Retained 2025 sessions per client name/version; the oldest is dropped beyond it |
 | `NODE_ENV` | String | unset | `production` turns off the dashboard's hot reload and browser console forwarding |
 

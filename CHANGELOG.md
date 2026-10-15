@@ -22,6 +22,12 @@ Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 ### 2026-10-15
 
+#### Added
+
+- **Breaking:** Refuse `/mcp` and `/api/*` requests whose host or `Origin` is
+  not listed in the new required `ALLOWED_HOSTS` setting, which stops DNS
+  rebinding.
+
 #### Changed
 
 - Make **Refresh** reconnect a disconnected or stopped backend and contact a
