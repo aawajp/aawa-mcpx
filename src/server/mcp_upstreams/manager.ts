@@ -73,11 +73,11 @@ const createMcpUpstreamManager = (
 		const pending = backend.listRefreshes[list];
 		if (pending && pending.client === client) return pending.promise;
 		const refresh = async (): Promise<void> => {
-			const startedAt = Date.now();
 			// A failed fetch keeps the stale list and its expiry.
 			if (!(await fetchList[list](backend))) return;
+			// The list's TTL already excludes the time spent fetching it.
 			const ttl = Number(recordOf(backend[list])?.ttlMs ?? 0);
-			backend.listExpiresAt[list] = startedAt + Math.max(0, ttl);
+			backend.listExpiresAt[list] = Date.now() + Math.max(0, ttl);
 		};
 		const promise = refresh();
 		backend.listRefreshes[list] = {

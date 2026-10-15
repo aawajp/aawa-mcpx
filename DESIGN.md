@@ -179,7 +179,7 @@ server-initiated MCP messages and normally completes operations with one JSON
 response. Backend HTTP must offer Streamable HTTP with JSON or SSE `POST`
 responses; the backend's standalone `GET` event stream is not used. Backend stdio
 is supported. Backend stdio buffers and SSE events are limited to 8 MiB, and
-backend pagination to 1,000 pages after the first.
+backend pagination to 1,000 pages.
 
 A stdio backend's stdout lines that are not JSON-RPC messages are logged and
 skipped. A stdout line over the limit, or stdout closing, is a transport failure
@@ -198,7 +198,7 @@ Backend SSE lines may end in CRLF, LF, or CR.
 The gateway requests only the lists (tools, prompts, resources, resource
 templates) that a backend advertises in its capabilities. Each 2026 backend list
 is cached on its own: it expires at its fetch start time plus its TTL (the
-smallest across pages, less the time spent fetching), scoped to configured credentials, and a list without a
+smallest across pages), scoped to configured credentials, and a list without a
 TTL is stale at once. Before a public list request (`tools/list`,
 `prompts/list`, `resources/list`, `resources/templates/list`), the gateway
 re-fetches that list from every connected 2026 backend where it is stale; before

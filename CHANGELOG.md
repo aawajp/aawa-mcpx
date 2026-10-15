@@ -34,6 +34,12 @@ Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
   disabled one once without enabling it; **Refresh all** covers every backend.
 - Bring README, DESIGN and AGENTS.md in line with the current code.
 
+#### Fixed
+
+- Stop 2026 list caches from expiring early by the fetch time, limit backend
+  pagination to 1,000 pages, and mention **Refresh** in the stopped-backend
+  hint.
+
 ### 2026-10-14
 
 #### Changed

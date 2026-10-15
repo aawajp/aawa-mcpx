@@ -371,6 +371,50 @@ test('2026-07-28 lists go stale on their own and refresh only for the request ta
 	}
 });
 
+test('2026-07-28 list expiry counts the fetch time once', async () => {
+	const root = await mkdtemp(path.join(tmpdir(), 'mcpx-ttl-'));
+	let toolsRequests = 0;
+	// A 500 ms fetch with a 900 ms TTL stays fresh until 900 ms after it
+	// started; counting the fetch time twice made it stale at 400 ms.
+	const fixture = startFixtureBackend('http', CURRENT_PROTOCOL_VERSION, {
+		handle: async (message, reply) => {
+			if (message.method !== 'tools/list') return undefined;
+			toolsRequests += 1;
+			await Bun.sleep(500);
+			const result = recordOf(reply?.result);
+			if (result) result.ttlMs = 900;
+			return undefined;
+		},
+	});
+	const manager = createMcpUpstreamManager({
+		config: mcpConfigType.assert({
+			mcpServers: {
+				slow: {
+					...fixture.config,
+					timeout: 2000,
+					trafficLimit: 10000,
+				},
+			},
+		}),
+		configPath: path.join(root, 'mcp.json'),
+	});
+	try {
+		await manager.initialize();
+		expect(toolsRequests).toBe(1);
+		await manager.refreshStaleCatalogs?.({
+			method: 'tools/list',
+		});
+		expect(toolsRequests).toBe(1);
+	} finally {
+		await manager.disconnect();
+		fixture.stop();
+		await rm(root, {
+			recursive: true,
+			force: true,
+		});
+	}
+});
+
 test('2026-07-28 manual refresh updates server info, capabilities and instructions', async () => {
 	const root = await mkdtemp(path.join(tmpdir(), 'mcpx-details-'));
 	let release = '1';

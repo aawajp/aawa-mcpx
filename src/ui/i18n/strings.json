@@ -45,7 +45,7 @@
 	"status.configurationError": "Config error",
 	"status.protocolError": "Protocol negotiation failed",
 	"status.authenticationError": "Authentication failed",
-	"status.protocolRetryStopped": "Automatic retries stopped. Disable and re-enable this backend to retry.",
+	"status.protocolRetryStopped": "Automatic retries stopped. Refresh this backend, or disable and re-enable it, to retry.",
 	"status.actionRequired": "Action required",
 	"clients.title": "Clients",
 	"clients.none": "No clients seen yet.",

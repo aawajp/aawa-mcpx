@@ -54,6 +54,7 @@ type RequestOptions = {
 };
 // The largest backend message: a stdio line or an SSE event.
 const MESSAGE_SIZE_LIMIT = 8 * 1024 * 1024;
+const LIST_PAGE_LIMIT = 1000;
 // Each shutdown step waits this long for a stdio backend to exit.
 const STDIO_EXIT_WAIT_MS = 1000;
 
@@ -980,7 +981,7 @@ class ProtocolClient {
 		let cursor = first.nextCursor;
 		let ttl = Number(first.ttlMs ?? 0);
 		while (typeof cursor === 'string') {
-			if (cursors.has(cursor) || cursors.size >= 1000)
+			if (cursors.has(cursor) || cursors.size + 1 >= LIST_PAGE_LIMIT)
 				throw new Error('Backend pagination did not terminate');
 			cursors.add(cursor);
 			const page = await this.rpc(

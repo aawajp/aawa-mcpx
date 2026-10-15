@@ -419,7 +419,8 @@ const createMcpUpstreamConnections = (
 								}
 							: {
 									retry: 'stopped',
-									recovery: 'Disable and re-enable the backend to retry',
+									recovery:
+										'Refresh the backend, or disable and re-enable it, to retry',
 								}),
 					},
 					error: message,
