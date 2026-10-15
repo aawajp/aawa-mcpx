@@ -7,18 +7,9 @@ const clientInfoType = type({
 });
 type ClientInfo = typeof clientInfoType.infer;
 
-const parseClientInfo = (value: unknown): ClientInfo | undefined => {
-	if (!clientInfoType.allows(value)) return undefined;
-	return {
-		name: value.name,
-		version: value.version,
-		...(value.title !== undefined
-			? {
-					title: value.title,
-				}
-			: {}),
-	};
-};
+// Keep the whole reported object, including fields the dashboard does not show.
+const parseClientInfo = (value: unknown): ClientInfo | undefined =>
+	clientInfoType.allows(value) ? value : undefined;
 
 const formatClientInfo = (client: ClientInfo): string =>
 	client.version ? `${client.name}@${client.version}` : client.name;

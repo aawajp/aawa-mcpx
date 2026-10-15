@@ -203,12 +203,14 @@ The separate **Debug** page (`/debug`) shows client and backend traffic from the
 | `/api/debug/client` | GET | Client traffic (`?limit=&offset=&errorsOnly=`) |
 | `/api/debug/backend` | GET | One backend's traffic (`?backend=&method=&limit=&offset=&errorsOnly=`; `backend` required) |
 
-The debug queries take `limit` (positive integer, default `20`), `offset`
+The debug queries take `limit` (integer from 1 to 100, default `20`), `offset`
 (integer from 0, default `0`) and `errorsOnly` (`1` or `0`, default `0`);
 `/api/debug/backend` also takes `backend` (required) and `method`, both
 non-empty. Request bodies and queries with other fields are refused.
 
-Failed `/api/*` requests return `{ error }` with status 400 for a malformed request or a refused tool call, 403 for a host or `Origin` not in `ALLOWED_HOSTS`, 404 for an unknown backend or tool, and 500 otherwise. Toggles persist to `mcp.json`. Traffic is stored in `db/traffic.db`, which keeps the newest 10,000 records and is cleared at startup. Any other path serves the dashboard page.
+Failed `/api/*` requests return `{ error }` with status 400 for a malformed request or a refused tool call, 403 for a host or `Origin` not in `ALLOWED_HOSTS`, 404 for an unknown route, backend or tool, and 500 otherwise. Request bodies over 8 MiB, on `/mcp` too, get HTTP 413 without a body. Toggles persist to `mcp.json`. Traffic is stored in `db/traffic.db`, which keeps the newest 10,000 records and is cleared at startup.
+
+A path not listed above gets HTTP 404 with `{ error }`; a listed path with another method gets HTTP 405 with `Allow`.
 
 ## Development
 

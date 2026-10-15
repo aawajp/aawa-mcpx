@@ -41,6 +41,14 @@ Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 - Stop 2026 list caches from expiring early by the fetch time, limit backend
   pagination to 1,000 pages, and mention **Refresh** in the stopped-backend
   hint.
+- Keep the HTTP status of backend RPC errors sent over SSE, and the whole
+  client info of 2025 sessions.
+- Answer unknown paths with a JSON 404 and other methods on known paths with a
+  405 instead of the dashboard page.
+
+#### Security
+
+- Limit request bodies to 8 MiB and debug pages to 100 records.
 
 ### 2026-10-14
 

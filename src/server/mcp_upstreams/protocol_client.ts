@@ -704,8 +704,17 @@ class ProtocolClient {
 							event &&
 							event.id === id &&
 							('result' in event || 'error' in event)
-						)
+						) {
+							// Like a JSON reply, an RPC error keeps the response's HTTP status.
+							if (jsonRpcResponseType.allows(event) && event.error)
+								throw new BackendRpcError(
+									event.error.message,
+									event.error.code,
+									event.error.data,
+									response.status,
+								);
 							return event;
+						}
 					}
 					end = buffer.indexOf('\n\n');
 				}
@@ -1125,6 +1134,7 @@ export {
 	BackendTransportError,
 	isAuthenticationError,
 	isTransientBackendError,
+	MESSAGE_SIZE_LIMIT,
 	ProtocolClient,
 	ProtocolNegotiationError,
 	requiresOperatorFix,

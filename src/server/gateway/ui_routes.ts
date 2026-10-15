@@ -56,9 +56,14 @@ const jsonError = (status: number, message: string): Response =>
 const createApiForbiddenResponse = (): Response =>
 	jsonError(403, HOST_NOT_ALLOWED);
 
+// Traffic bodies can be large, so a debug page holds at most this many records.
+const PAGE_LIMIT = 100;
+
 const pageFields = {
 	'+': 'reject',
-	limit: type('string.integer.parse').to('number > 0').default('20'),
+	limit: type('string.integer.parse')
+		.to(`0 < number <= ${PAGE_LIMIT}`)
+		.default('20'),
 	offset: type('string.integer.parse').to('number >= 0').default('0'),
 	errorsOnly: type("'0' | '1'")
 		.pipe((value) => value === '1')

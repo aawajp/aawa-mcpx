@@ -1,9 +1,7 @@
 import { logger } from '@/server/logger';
 
-type RouteHandlers = Record<
-	string,
-	(request: Request) => Response | Promise<Response>
->;
+type Handler = (request: Request) => Response | Promise<Response>;
+type Route = Handler | Record<string, Handler>;
 
 const HOST_NOT_ALLOWED = 'Host or Origin is not allowed.';
 
@@ -34,22 +32,28 @@ const createHostCheck = (allowedHosts: readonly string[]) => {
 
 // Answer every handler of the given routes with `forbidden` when the request
 // fails the host check.
-const guardRoutes = <T extends Record<string, RouteHandlers>>(
+const guardRoutes = <T extends Record<string, Route>>(
 	routes: T,
 	isAllowed: (request: Request) => boolean,
 	forbidden: () => Response,
-): T =>
-	Object.fromEntries(
-		Object.entries(routes).map(([path, handlers]) => [
+): T => {
+	const guard =
+		(handler: Handler): Handler =>
+		(request) =>
+			isAllowed(request) ? handler(request) : forbidden();
+	return Object.fromEntries(
+		Object.entries(routes).map(([path, route]) => [
 			path,
-			Object.fromEntries(
-				Object.entries(handlers).map(([method, handler]) => [
-					method,
-					(request: Request) =>
-						isAllowed(request) ? handler(request) : forbidden(),
-				]),
-			),
+			typeof route === 'function'
+				? guard(route)
+				: Object.fromEntries(
+						Object.entries(route).map(([method, handler]) => [
+							method,
+							guard(handler),
+						]),
+					),
 		]),
 	) as T;
+};
 
 export { createHostCheck, guardRoutes, HOST_NOT_ALLOWED };

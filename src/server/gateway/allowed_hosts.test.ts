@@ -54,7 +54,7 @@ test('guarded routes answer a refused host with 403 before the handler runs', as
 		createMcpForbiddenResponse,
 	);
 	const api = guardRoutes(
-		{ '/api/overview': { GET: handler } },
+		{ '/api/overview': { GET: handler }, '/*': handler },
 		isAllowed,
 		createApiForbiddenResponse,
 	);
@@ -74,6 +74,9 @@ test('guarded routes answer a refused host with 403 before the handler runs', as
 	expect(await refusedApi.json()).toEqual({
 		error: 'Host or Origin is not allowed.',
 	});
+	expect((await api['/*'](request('http://evil.example/unknown'))).status).toBe(
+		403,
+	);
 	expect(calls).toBe(0);
 	expect(
 		await (await mcp['/mcp'].POST(request('http://localhost/mcp'))).text(),

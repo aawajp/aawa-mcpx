@@ -342,6 +342,7 @@ test('debug queries are parsed with their defaults and malformed ones are refuse
 		'',
 		'backend=backend&limit=0',
 		'backend=backend&limit=1.5',
+		'backend=backend&limit=101',
 		'backend=backend&offset=-1',
 		'backend=backend&errorsOnly=yes',
 		'backend=backend&page=2',

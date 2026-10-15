@@ -57,7 +57,7 @@ SDK supplies types only; the gateway implements dispatch and transports itself.
 | --- | --- |
 | `server/` | `index.ts`: entrypoint (load configuration, start upstreams and the server, handle shutdown); `traffic_store.ts`: SQLite traffic storage; `logger.ts`: console logging. |
 | `server/config/` | `schema.ts`: every user setting as ArkType schemas (environment variables and `mcp.json`); `loader.ts`: loads and persists `mcp.json`; `constants.ts`: file locations. |
-| `server/gateway/` | `server.ts`: `Bun.serve`/route wiring; `allowed_hosts.ts`: `Host`/`Origin` allowlist and route guard; `mcp_http_route.ts`: HTTP handling; `mcp_request_router.ts`: JSON-RPC dispatch/version adaptation. |
+| `server/gateway/` | `server.ts`: `Bun.serve`/route wiring; `allowed_hosts.ts`: `Host`/`Origin` allowlist and route guard; `unknown_routes.ts`: 404/405 for unhandled requests; `mcp_http_route.ts`: HTTP handling; `mcp_request_router.ts`: JSON-RPC dispatch/version adaptation. |
 | | `json_rpc.ts`: incoming envelope parsing; `mcp_session.ts`: public initialization/sessions; `client_activity.ts`: dashboard history; `mcp_handlers.ts`: upstream operations; `mcp_namespaces.ts`: applies namespaces and `[serverName]` description prefixes to catalogs; `ui_routes.ts`: UI APIs/events. |
 | `server/mcp_upstreams/` | `manager.ts`: stable gateway API/service wiring; `connections.ts`: per-backend state record, connection/recovery lifecycle; `health_checks.ts`: probes; `catalog.ts`: caches/exposure state. |
 | | `method_calls.ts`: calls/argument validation; `protocol_client.ts`: JSON-RPC, revision selection, HTTP/SSE and stdio; `tool_result.ts`: structured recovery/duplicate removal; `input_schema.ts`/`output_schema.ts`: provider schema policies; `json_schema.ts`: shared compiler; `logged_request.ts`: traffic logging around calls; `types.d.ts`: manager contracts. |
@@ -166,13 +166,14 @@ fields; removed methods return HTTP 404 with JSON-RPC method-not-found. A suppli
 A request takes the 2026 path when it is `server/discover`, carries protocol
 version metadata, or has the exact `2026-07-28` header. Any other unsupported
 header gets HTTP 400 / `-32600`.
-`/mcp` and `/api/*` requests must name a host listed in `ALLOWED_HOSTS` in
-`Host` and, when present, in `Origin`. Other requests get HTTP 403, on `/mcp`
-with a JSON-RPC error without `id`. Checking both stops DNS rebinding, because a
-rebinding page names its own host in both. Clients must accept both
-`application/json` and `text/event-stream`. Until backend initialization finishes,
-2025 messages and 2026 list requests wait; if it fails they get HTTP 503 /
-`-32603`.
+Requests other than for the dashboard pages and their assets must name a host
+listed in `ALLOWED_HOSTS` in `Host` and, when present, in `Origin`. Other
+requests get HTTP 403, for `/mcp` POST and DELETE with a JSON-RPC error without
+`id`, otherwise with `{ error }`. Checking both stops DNS rebinding, because a
+rebinding page names its own host in both. Request bodies over 8 MiB get HTTP
+413. Clients must accept both `application/json` and `text/event-stream`.
+Until backend initialization finishes, 2025 messages and 2026 list requests
+wait; if it fails they get HTTP 503 / `-32603`.
 
 Public GET event streams and stdio are not exposed. The gateway sends no
 server-initiated MCP messages and normally completes operations with one JSON
@@ -241,9 +242,11 @@ a session immediately; gateway restart clears all sessions.
 
 ### 3.4 Client identity
 
-Reported name/version is dashboard identity, not authentication identity. Identical
-pairs intentionally merge; remote authenticated differentiation is outside this
-design. Bounded activity history survives session closure/eviction and resets on restart.
+Reported name/version is dashboard identity, not authentication identity. The
+whole reported client info is kept in both revisions; the UI shows name, version
+and title. Identical pairs intentionally merge; remote authenticated
+differentiation is outside this design. Bounded activity history survives
+session closure/eviction and resets on restart.
 
 Gateway-generated logs, traffic-record identity, and dashboard contracts exclude
 session IDs; logs use reported name/version where available. The UI shows first/last

@@ -259,6 +259,56 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 	});
 }
 
+test('an SSE RPC error keeps the HTTP status of its response', async () => {
+	const client = new ProtocolClient({
+		serverName: 'stream',
+		serverConfig: {
+			type: 'http',
+			url: 'http://127.0.0.1/mcp',
+			enabled: true,
+			timeout: 1000,
+			trafficLimit: 1000,
+		},
+	});
+	client.protocolVersion = CURRENT_PROTOCOL_VERSION;
+	const fetch = spyOn(globalThis, 'fetch').mockImplementation((async (
+		_input: RequestInfo | URL,
+		init?: RequestInit,
+	) => {
+		const { id } = JSON.parse(String(init?.body));
+		return new Response(
+			`data: ${JSON.stringify({
+				jsonrpc: '2.0',
+				id,
+				error: {
+					code: -32602,
+					message: 'Invalid arguments',
+				},
+			})}\n\n`,
+			{
+				headers: {
+					'Content-Type': 'text/event-stream',
+				},
+			},
+		);
+	}) as typeof globalThis.fetch);
+	try {
+		const error = await client
+			.callTool({
+				name: 'echo',
+			})
+			.catch((error: unknown) => error);
+		expect(error).toBeInstanceOf(BackendRpcError);
+		expect(error).toMatchObject({
+			code: -32602,
+			status: 200,
+		});
+	} finally {
+		fetch.mockRestore();
+		await client.close();
+	}
+});
+
 test('a broken SSE response preserves the transport error and requests recovery', async () => {
 	const client = new ProtocolClient({
 		serverName: 'stream',

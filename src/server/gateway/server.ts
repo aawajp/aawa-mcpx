@@ -11,12 +11,17 @@ import {
 	createApiForbiddenResponse,
 	createUiRoutes,
 } from '@/server/gateway/ui_routes';
+import {
+	createUnknownRouteHandler,
+	withTrailingSlashes,
+} from '@/server/gateway/unknown_routes';
 import { logger } from '@/server/logger';
 import {
 	emptyPromptsResult,
 	emptyResourcesResult,
 	emptyToolsResult,
 } from '@/server/mcp_upstreams/catalog';
+import { MESSAGE_SIZE_LIMIT } from '@/server/mcp_upstreams/protocol_client';
 import type { McpUpstreamManager } from '@/server/mcp_upstreams/types';
 import type { TrafficStore } from '@/server/traffic_store';
 import { errorMessage } from '@/shared/common';
@@ -110,9 +115,37 @@ const startServer = async (
 	});
 	const uiShutdownController = new AbortController();
 	const isAllowedHost = createHostCheck(allowedHosts);
+	const endpoints = withTrailingSlashes({
+		...guardRoutes(
+			{
+				'/mcp': createMcpHttpRoute({
+					refreshCatalogs: mcpUpstreamManager.refreshStaleCatalogs,
+					onClientActivity: clientActivity.observe,
+					initialization,
+					mcpSessions,
+					routeRequest,
+					trafficStore,
+				}),
+			},
+			isAllowedHost,
+			createMcpForbiddenResponse,
+		),
+		...guardRoutes(
+			createUiRoutes({
+				mcpUpstreamManager,
+				buildOverview,
+				shutdownSignal: uiShutdownController.signal,
+				trafficStore,
+			}),
+			isAllowedHost,
+			createApiForbiddenResponse,
+		),
+	});
 
 	const server = Bun.serve({
 		port,
+		// Client requests share the backend message size limit; larger ones get HTTP 413.
+		maxRequestBodySize: MESSAGE_SIZE_LIMIT,
 		development: development
 			? {
 					hmr: true,
@@ -120,31 +153,18 @@ const startServer = async (
 				}
 			: false,
 		routes: {
+			...withTrailingSlashes({
+				'/': indexHtml,
+				'/debug': indexHtml,
+			}),
+			...endpoints,
 			...guardRoutes(
 				{
-					'/mcp': createMcpHttpRoute({
-						refreshCatalogs: mcpUpstreamManager.refreshStaleCatalogs,
-						onClientActivity: clientActivity.observe,
-						initialization,
-						mcpSessions,
-						routeRequest,
-						trafficStore,
-					}),
+					'/*': createUnknownRouteHandler(endpoints),
 				},
-				isAllowedHost,
-				createMcpForbiddenResponse,
-			),
-			...guardRoutes(
-				createUiRoutes({
-					mcpUpstreamManager,
-					buildOverview,
-					shutdownSignal: uiShutdownController.signal,
-					trafficStore,
-				}),
 				isAllowedHost,
 				createApiForbiddenResponse,
 			),
-			'/*': indexHtml,
 		},
 		error(err) {
 			logger.error(`Gateway server error: ${errorMessage(err)}`);

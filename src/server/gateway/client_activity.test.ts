@@ -217,3 +217,36 @@ test('client activity groups revisions and reconnects without exposing sessions'
 		client,
 	]);
 });
+
+test('2025 sessions keep the whole reported client info', async () => {
+	const observed: unknown[] = [];
+	const sessions = createMcpSessionManager({
+		maxSessionsPerClient: 10,
+		onClientActivity: (client) => observed.push(client),
+	});
+	const clientInfo = {
+		name: 'test',
+		version: '1',
+		title: 'Test',
+		description: 'Shown only in traffic',
+		icons: [
+			{
+				src: 'https://example.com/icon.png',
+			},
+		],
+	};
+	const result = await sessions.handleInitialize(
+		{
+			jsonrpc: '2.0',
+			id: 1,
+			method: 'initialize',
+			params: {
+				protocolVersion: '2025-11-25',
+				clientInfo,
+			},
+		},
+		undefined,
+	);
+	expect(observed).toEqual([clientInfo]);
+	expect(sessions.getClient(result.sessionId)).toEqual(clientInfo);
+});

@@ -109,15 +109,6 @@ const createNotificationResponse = (sessionId?: string): Response => {
 	});
 };
 
-const createMethodNotAllowedResponse = (): Response => {
-	return new Response(null, {
-		status: 405,
-		headers: {
-			Allow: 'POST, DELETE',
-		},
-	});
-};
-
 const createMcpForbiddenResponse = (): Response => {
 	const body = rpcError(undefined, RPC_ERROR.InvalidRequest, HOST_NOT_ALLOWED);
 	return createJsonResponse(body, undefined, 403);
@@ -346,9 +337,6 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 	};
 
 	return {
-		GET() {
-			return createMethodNotAllowedResponse();
-		},
 		async POST(request: Request) {
 			const sessionId = parseSessionId(request);
 			if (
