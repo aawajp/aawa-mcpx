@@ -171,9 +171,9 @@ Open `http://localhost:<PORT>/`. The summary at the top lists backends with
 their enabled and total tool counts, status, **Enable**/**Disable**, and
 **Refresh** buttons, plus
 **Refresh all**. Clicking a backend name opens its card in the Backends tab. Refreshing re-fetches catalogs and, for `2026-07-28` backends,
-server info, capabilities, and instructions. Below it are three tabs:
+server info, capabilities, and instructions; a disconnected enabled backend reconnects. Below it are three tabs:
 
-- **Backends** (default view): each backend's prompts, resources, and tools, a per-backend **Refresh**, and **Expose to clients** toggles for tools. A disabled backend shows what it last reported.
+- **Backends** (default view): each backend's prompts, resources, and tools, a per-backend **Refresh**, and **Expose to clients** toggles for tools. A disabled backend shows what it last reported; its **Refresh** contacts it once and leaves it disabled.
 - **Client**: clients grouped by reported name and version, with first and last activity and latest protocol.
 - **Tester**: call an exposed tool through a form generated from its input schema. Object, array, `anyOf`, and untyped arguments are entered as JSON.
 

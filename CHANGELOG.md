@@ -20,6 +20,13 @@ Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 ## [Unreleased]
 
+### 2026-10-15
+
+#### Changed
+
+- Make **Refresh** reconnect a disconnected or stopped backend and contact a
+  disabled one once without enabling it; **Refresh all** covers every backend.
+
 ### 2026-10-14
 
 #### Changed

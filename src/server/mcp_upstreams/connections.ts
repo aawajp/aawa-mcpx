@@ -554,51 +554,56 @@ const createMcpUpstreamConnections = (
 		waitForRateLimit,
 	});
 
+	// Abandon a scheduled reconnect, connection attempt or probe; a result that
+	// arrives later is discarded.
+	const cancelConnectionAttempt = async (
+		backend: McpUpstreamBackend,
+	): Promise<void> => {
+		backend.epoch += 1;
+		backend.probing = false;
+		clearReconnectTimer(backend);
+		backend.reconnectAttempts = 0;
+		await backend.connectingClient?.close().catch(() => undefined);
+	};
+
 	const setBackendEnabled = async (
 		backend: McpUpstreamBackend,
 		enabled: boolean,
 	): Promise<void> => {
 		const serverName = backend.serverName;
-		backend.epoch += 1;
-		clearReconnectTimer(backend);
-		backend.reconnectAttempts = 0;
-		await backend.connectingClient?.close().catch(() => undefined);
 		backend.serverConfig.enabled = enabled;
-		backend.connectionStopped = false;
-		backend.configError = false;
-		backend.startedAt = Date.now();
-		backend.hasConnected = false;
-
-		if (!enabled) {
-			backend.healthCheckReady = false;
-			backend.healthCheckFailures = 0;
-			backend.lastRequestTime = 0;
-			await closeMcpUpstreamConnection(backend, true);
+		if (enabled) {
 			setMcpUpstreamStatus({
 				backend,
 				connected: false,
 				actionRequired: false,
 			});
-			logger.info(`Disabled MCP upstream "${serverName}"`);
+			if (await startBackend(backend))
+				logger.info(`Enabled MCP upstream "${serverName}"`);
 			return;
 		}
 
+		await cancelConnectionAttempt(backend);
+		backend.healthCheckReady = false;
+		backend.healthCheckFailures = 0;
+		backend.lastRequestTime = 0;
+		await closeMcpUpstreamConnection(backend, true);
 		setMcpUpstreamStatus({
 			backend,
 			connected: false,
 			actionRequired: false,
 		});
-		if (await bringUp(backend))
-			logger.info(`Enabled MCP upstream "${serverName}"`);
+		logger.info(`Disabled MCP upstream "${serverName}"`);
 	};
 
+	// Contact a disabled backend once for the dashboard, then disconnect.
 	const probe = async (backend: McpUpstreamBackend): Promise<void> => {
 		const epoch = backend.epoch;
 		backend.probing = true;
 		try {
 			if (await connectToMcpUpstream(backend)) await refreshCatalog(backend);
 		} finally {
-			backend.probing = false;
+			if (backend.epoch === epoch) backend.probing = false;
 		}
 		if (backend.epoch !== epoch) return;
 		await closeMcpUpstreamConnection(backend);
@@ -611,22 +616,33 @@ const createMcpUpstreamConnections = (
 		});
 	};
 
+	// Gateway start, enabling and Refresh: connect an enabled backend, or contact
+	// a disabled one once for the dashboard. A pending attempt and stopped
+	// retries clear, and a new startup window opens. Returns whether the backend
+	// is up.
+	const startBackend = async (
+		backend: McpUpstreamBackend,
+	): Promise<boolean> => {
+		await cancelConnectionAttempt(backend);
+		backend.connectionStopped = false;
+		backend.configError = false;
+		backend.startedAt = Date.now();
+		backend.hasConnected = false;
+		if (backend.serverConfig.enabled) return bringUp(backend);
+		await probe(backend);
+		return false;
+	};
+
 	const initialize = async (): Promise<void> => {
 		stopped = false;
 		const allBackends = Array.from(backends.values());
-		for (const backend of allBackends) {
-			backend.startedAt = Date.now();
+		for (const backend of allBackends)
 			setMcpUpstreamStatus({
 				backend,
 				connected: false,
 				actionRequired: false,
 			});
-		}
-		const results = await Promise.allSettled(
-			allBackends.map((backend) =>
-				backend.serverConfig.enabled ? bringUp(backend) : probe(backend),
-			),
-		);
+		const results = await Promise.allSettled(allBackends.map(startBackend));
 		results.forEach((result, index) => {
 			if (result.status === 'fulfilled') return;
 			logger.warn(
@@ -689,6 +705,7 @@ const createMcpUpstreamConnections = (
 		refreshDetails,
 		setMcpUpstreamStatusError,
 		setBackendEnabled,
+		startBackend,
 		waitForRateLimit,
 	};
 };

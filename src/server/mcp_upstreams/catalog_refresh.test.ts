@@ -66,6 +66,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 					disabled: {
 						...backend,
 						enabled: false,
+						trafficLimit: 10000,
 					},
 				},
 			});
@@ -163,7 +164,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 					).status,
 				).toBe(200);
 				expect(names('other')).toEqual(['keep', 'off', 'added']);
-				expect(names('disabled')).toEqual(['keep', 'remove', 'off']);
+				expect(names('disabled')).toEqual(['keep', 'off', 'added']);
 				if (transport === 'http' && usesRequestMetadata(version)) {
 					// An earlier request can contain stale data even while in flight.
 					// The button must wait for it and then make another backend request.
@@ -227,11 +228,21 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 				);
 				expect(empty.mcpServers.other?.availableTools).toEqual([]);
 				expect(empty.mcpServers.other?.enabledTools).toEqual([]);
-				await expect(
-					manager.refreshCatalogs({
-						serverName: 'disabled',
-					}),
-				).rejects.toThrow('not available');
+				// A disabled backend is fetched once and stays disabled, also when a
+				// second Refresh replaces a running one.
+				await Promise.all([
+					manager.refreshCatalogs({ serverName: 'disabled' }),
+					manager.refreshCatalogs({ serverName: 'disabled' }),
+				]);
+				expect(names('disabled')).toEqual([]);
+				expect(
+					manager
+						.getStatuses()
+						.find((status) => status.serverName === 'disabled'),
+				).toMatchObject({
+					enabled: false,
+					connected: false,
+				});
 				await expect(
 					manager.refreshCatalogs({
 						serverName: 'unknown',

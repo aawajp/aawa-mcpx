@@ -136,14 +136,7 @@ const createMcpUpstreamManager = (
 	}): Promise<void> => {
 		const serverName = refreshParams?.serverName;
 		const names =
-			serverName !== undefined
-				? [serverName]
-				: Array.from(backends.values())
-						.filter(
-							(backend) =>
-								backend.serverConfig.enabled && backend.status?.connected,
-						)
-						.map((backend) => backend.serverName);
+			serverName !== undefined ? [serverName] : Array.from(backends.keys());
 		await Promise.all(
 			names.map(async (name) => {
 				const backend = backends.get(name);
@@ -153,8 +146,13 @@ const createMcpUpstreamManager = (
 				await Promise.allSettled(
 					Object.values(backend.listRefreshes).map(({ promise }) => promise),
 				);
-				if (!backend.serverConfig.enabled || !backend.client)
-					throw new Error(`MCP upstream "${name}" is not available`);
+				// A backend without a connection starts as at gateway start: an
+				// enabled one reconnects, a disabled one is contacted once and stays
+				// disabled.
+				if (!backend.client) {
+					await connections.startBackend(backend);
+					return;
+				}
 				await connections.refreshDetails(backend);
 				await refreshCatalog(backend);
 			}),

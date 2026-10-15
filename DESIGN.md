@@ -85,12 +85,13 @@ retry policy; this is the gateway's own:
 | Anything else, such as a negotiation failure or a stdio command that cannot start | Stop | Retry without limit |
 
 The startup window lets backends that start after the gateway connect. A
-stopped backend shows the error with "Action required"; disable and re-enable
-it to retry. Transport failures retire the client and schedule recovery,
+stopped backend shows the error with "Action required"; its **Refresh**, or
+disabling and re-enabling it, starts it again. Transport failures retire the client and schedule recovery,
 including lost initialized HTTP sessions. Failed tool calls are never replayed,
 because their side effects may have completed.
-At startup, the gateway connects to each disabled backend once, fetches its
-server details and catalogs for the dashboard, and disconnects. It does not
+At startup and on its **Refresh**, the gateway connects to a disabled backend
+once, fetches its server details and catalogs for the dashboard, and
+disconnects; the backend stays disabled. It does not
 retry, health-check, or expose such a backend.
 
 Retry delays are jittered: **5–10**, **10–20**, **20–40**, then **30–60 seconds**,

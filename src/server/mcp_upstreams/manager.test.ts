@@ -10,6 +10,8 @@ import {
 import { logger } from '@/server/logger';
 import { createMcpUpstreamManager } from '@/server/mcp_upstreams/manager';
 import { ProtocolClient } from '@/server/mcp_upstreams/protocol_client';
+import { fixtureReply } from '@/server/mcp_upstreams/protocol_fixture';
+import { CURRENT_PROTOCOL_VERSION, recordOf } from '@/shared/mcp_protocol';
 import type { McpUpstreamStatus } from '@/shared/ui_api';
 
 import { expect, spyOn, test } from 'bun:test';
@@ -608,6 +610,62 @@ test('every configured backend has a status as soon as startup begins', async ()
 	} finally {
 		await manager.disconnect();
 		warn.mockRestore();
+		error.mockRestore();
+		await rm(testRoot, {
+			recursive: true,
+			force: true,
+		});
+	}
+});
+
+test('refresh starts a stopped backend again', async () => {
+	const testRoot = await mkdtemp(path.join(tmpdir(), 'mcpx-refresh-'));
+	const error = spyOn(logger, 'error').mockImplementation(() => undefined);
+	let authorized = false;
+	const endpoint = Bun.serve({
+		port: 0,
+		hostname: '127.0.0.1',
+		async fetch(request) {
+			if (!authorized)
+				return new Response('Unauthorized', {
+					status: 401,
+				});
+			const message = recordOf(await request.json()) ?? {};
+			return Response.json(fixtureReply(message, CURRENT_PROTOCOL_VERSION));
+		},
+	});
+	const configPath = path.join(testRoot, 'mcp.json');
+	const config = mcpConfigType.assert({
+		mcpServers: {
+			mock: {
+				type: 'http',
+				url: endpoint.url.href,
+				enabled: true,
+			},
+		},
+	});
+	await writeFile(configPath, JSON.stringify(config));
+	const manager = createMcpUpstreamManager({
+		config,
+		configPath,
+	});
+	try {
+		await manager.initialize();
+		expect(manager.getStatuses()[0]).toMatchObject({
+			connected: false,
+			actionRequired: true,
+		});
+		authorized = true;
+		await manager.refreshCatalogs({
+			serverName: 'mock',
+		});
+		expect(manager.getStatuses()[0]).toMatchObject({
+			connected: true,
+			actionRequired: false,
+		});
+	} finally {
+		await manager.disconnect();
+		endpoint.stop(true);
 		error.mockRestore();
 		await rm(testRoot, {
 			recursive: true,
