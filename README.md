@@ -179,6 +179,9 @@ server info, capabilities, and instructions; a disconnected enabled backend reco
 - **Client**: clients grouped by reported name and version, with first and last activity and latest protocol.
 - **Tester**: call an exposed tool through a form generated from its input schema. Object, array, `anyOf`, and untyped arguments are entered as JSON.
 
+Backend URLs are shown with query values replaced by `***`, so API keys stay
+hidden while the parameter names remain visible.
+
 The separate **Debug** page (`/debug`) shows client and backend traffic from the current run, with filters.
 
 ## Endpoints

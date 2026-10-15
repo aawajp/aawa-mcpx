@@ -36,6 +36,8 @@ Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 #### Fixed
 
+- Hide query values, such as API keys, in backend URLs that the dashboard API
+  returns.
 - Stop 2026 list caches from expiring early by the fetch time, limit backend
   pagination to 1,000 pages, and mention **Refresh** in the stopped-backend
   hint.

@@ -58,6 +58,16 @@ const createMcpUpstreamBackend = (
 	listRefreshes: {},
 });
 
+// Query values can carry credentials such as an API key, so the status shows
+// the parameter names with their values replaced.
+const redactQueryValues = (value: string): string => {
+	const url = new URL(value);
+	const params = new URLSearchParams();
+	for (const key of url.searchParams.keys()) params.append(key, '***');
+	url.search = params.toString();
+	return url.href;
+};
+
 const transportFields = (
 	config: McpUpstreamServer['serverConfig'],
 ):
@@ -77,7 +87,7 @@ const transportFields = (
 	}
 	return {
 		type: 'http',
-		url: config.url,
+		url: redactQueryValues(config.url),
 	};
 };
 

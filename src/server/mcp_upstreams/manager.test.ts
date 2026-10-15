@@ -574,7 +574,7 @@ test('every configured backend has a status as soon as startup begins', async ()
 	const error = spyOn(logger, 'error').mockImplementation(() => undefined);
 	const backend = (enabled: boolean) => ({
 		type: 'http',
-		url: 'http://127.0.0.1:1/mcp',
+		url: 'http://127.0.0.1:1/mcp?apiKey=secret&scope=a&scope=b',
 		enabled,
 	});
 	const manager = createMcpUpstreamManager({
@@ -593,19 +593,17 @@ test('every configured backend has a status as soon as startup begins', async ()
 				serverName: status.serverName,
 				connected: status.connected,
 				error: status.error,
+				url: status.type === 'http' ? status.url : undefined,
 			})),
-		).toEqual([
-			{
-				serverName: 'first',
+		).toEqual(
+			['first', 'second'].map((serverName) => ({
+				serverName,
 				connected: false,
 				error: undefined,
-			},
-			{
-				serverName: 'second',
-				connected: false,
-				error: undefined,
-			},
-		]);
+				// Query values, such as API keys, are never shown.
+				url: 'http://127.0.0.1:1/mcp?apiKey=***&scope=***&scope=***',
+			})),
+		);
 		await initialization;
 	} finally {
 		await manager.disconnect();
