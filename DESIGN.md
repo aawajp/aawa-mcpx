@@ -534,16 +534,105 @@ Nothing in this section is approved for implementation unless it says so.
 
 ### 7.1 Security
 
-**Status: next; needs its own design.** The gateway has no client
-authentication: any client that reaches a host in `ALLOWED_HOSTS` can list and
-call every exposed tool, and the dashboard API is open the same way. Planned:
+**Status: next; design decided, implemented in the order below.** Today the
+gateway has no client authentication: any client that reaches a host in
+`ALLOWED_HOSTS` can list and call every exposed tool, and the dashboard and
+its API are open the same way.
 
-- Client authentication with OAuth2/OIDC.
-- Granular tool permissions: which backends and tools each client may list and
-  call.
-- Browser login for the dashboard, built on the OAuth2/OIDC mechanism.
+| Term | Meaning |
+| --- | --- |
+| Identity provider (IdP) | OAuth 2.1 authorization server and OpenID provider; owns users and roles |
+| User, role | An IdP user (human or machine) holding any of the gateway's IdP roles is linked; a role is only a set of users that permissions are given to |
+| Admin | A user with a role listed in `ADMIN_ROLES` |
+| Backend enabled, tool enabled | The existing server-wide toggles (`enabled`, `enabledTools` in `mcp.json`); not permissions |
+| Backend permission | Per user or role: the backend's prompts, resources and resource templates |
+| Tool permission | Per user or role: one tool |
+| Usable | Tool: backend enabled, tool enabled, tool permission. Prompts and resources: backend enabled, backend permission |
 
-HTTP Basic authentication is not planned.
+**General.** OIDC is mandatory: the gateway does not start without the
+settings below (**Breaking**). `PUBLIC_URL` and `OIDC_ISSUER` must be `https`
+unless the host is `localhost`, `127.0.0.1` or `::1`; the gateway may serve
+plain HTTP behind a TLS proxy. Users and roles are managed in the IdP only.
+**Sync** in the dashboard reads linked users and their roles through a
+read-only IdP service account (provider-specific API); role changes apply at
+the next sync, and there is no periodic sync. Users a sync finds unlinked, deactivated or locked stay stored as
+unlinked: keys and permissions are kept without effect, sessions are closed.
+Nothing sensitive is stored in files: secrets only in the environment, API
+keys only as hashes, sessions only in memory. A new SQLite database (separate
+from traffic) holds users, roles, key hashes and permissions; all of it is
+held in memory and written on change. `mcp.json` is unchanged.
+
+**Dashboard login.** OIDC authorization code flow with PKCE as a confidential
+client (`/auth/login`, `/auth/callback`, `/auth/logout`) with ID token and
+`iss` validation, admins only; roles
+come from the ID token claim `OIDC_ROLES_CLAIM`, so the first admin can log in
+before any sync. Server-side session in memory, cookie `HttpOnly`, `Secure`,
+`SameSite=Lax`, matching `Origin` required on non-GET `/api/*`, limits 8 h
+absolute and 1 h idle by default. Pages redirect to the login; `/api/*`
+answers `401`. Login for other users is out of scope.
+
+**`/mcp` credentials.** Every request on every protocol version carries
+`Authorization: Bearer <credential>` and is checked first, without calling
+the IdP and regardless of backends or permissions. Missing or invalid gets
+`401` with `WWW-Authenticate: Bearer resource_metadata=…`;
+`/.well-known/oauth-protected-resource/mcp` serves RFC 9728 metadata.
+
+| Credential | Recognized by | Check |
+| --- | --- | --- |
+| API key `<keyId>_<secret>` | Starts with a UUID and `_` | UUIDv7 key ID looked up, SHA-256 of the secret (32 random bytes, base64url) compared with `timingSafeEqual`, not revoked or expired, user linked |
+| OAuth access token | Anything else | JWT signature against the issuer's JWKS (cached, refetched for an unknown key ID), `iss`, `exp`, `aud` contains `OIDC_AUDIENCE`, user linked |
+
+Only JWT access tokens work (opaque ones would need introspection per
+request), so MCP clients use a client ID pre-registered at the IdP unless it
+issues JWTs to dynamically registered clients. An admin creates API keys per
+user, with a name and optional expiry; a key is shown once and can be
+revoked. Sessions (`2025-06-18`, `2025-11-25`) belong to their user, another
+user's credential gets `404`; at most 10 per user, oldest dropped, replacing
+`MCP_MAX_SESSIONS_PER_CLIENT` (**Breaking**). Backends never see client
+credentials.
+
+**Permissions.** A user has a permission given to them or to any of their
+roles; nothing is allowed until given. Backend and tool permissions are
+independent. Admins get no tools automatically but can edit their own. Toggles
+and permissions never change each other; permissions are stored by backend
+and tool name and survive a disabled or unreachable backend or tool. Lists
+contain only usable items. Calls are checked in order:
+
+| Case | Answer |
+| --- | --- |
+| Tool unknown, hidden ([4.2](#42-input-schemas-and-arguments)), or tool or backend disabled, with or without permission | Today's unknown-tool error (`-32602`, [4.5](#45-tool-call-errors)) |
+| Tool and backend enabled, no tool permission | HTTP `403` (MCP authorization spec, insufficient permissions), without `insufficient_scope` |
+| Usable | Forwarded |
+
+`prompts/get` and `resources/read` follow the same order with the backend
+permission and today's errors ([3.8](#38-namespaces-and-resource-routing)).
+Permission changes and syncs send `list_changed` notifications. No
+permissions for single prompts or resources.
+
+**Auth tab** (right of **Debug**): **Users** lists linked users (name, login
+name, roles, last seen) with **Sync**; each user folds out API keys (name,
+key ID start, created, expires, last used, status; **New key** shows the key
+once with a copy button; **Revoke** confirms and keeps the key listed) and
+permissions with a badge per role that gives each. **Roles** lists roles,
+their users and permissions. Traffic shows the user and key name per request.
+
+**Settings** (environment variables): `PUBLIC_URL` (external origin: redirect
+and resource URI, `Origin` check), `OIDC_ISSUER`, `OIDC_CLIENT_ID`,
+`OIDC_CLIENT_SECRET`, `OIDC_AUDIENCE`, `OIDC_SCOPES` (extra login and
+metadata scopes), `OIDC_ROLES_CLAIM`, `ADMIN_ROLES`,
+`DASHBOARD_SESSION_MAX_AGE`, `DASHBOARD_SESSION_IDLE_TIMEOUT`,
+`DIRECTORY_CLIENT_ID`, `DIRECTORY_CLIENT_SECRET` (sync account). New
+dependencies: `openid-client`, `jose`.
+
+**Not planned:** user or role management in the gateway, password login,
+HTTP Basic authentication.
+
+| Step | Implementation order |
+| --- | --- |
+| 1 | Dashboard OIDC login; OIDC settings mandatory |
+| 2 | **Auth** tab with linked users, roles and **Sync** |
+| 3 | `/mcp` credential check (OAuth and API keys), API key management, user in traffic; clients see no tools until step 4 |
+| 4 | Backend and tool permissions: dashboard and enforcement |
 
 ### 7.2 Interactive MCP requests
 

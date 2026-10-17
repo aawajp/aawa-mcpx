@@ -20,6 +20,13 @@ Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 ## [Unreleased]
 
+### 2026-10-17
+
+#### Changed
+
+- Plan the security design: OIDC dashboard login, OAuth access tokens and API
+  keys on `/mcp`, and backend and tool permissions per user and role.
+
 ### 2026-10-15
 
 #### Added
