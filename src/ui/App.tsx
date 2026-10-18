@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { errorMessage } from '@/shared/common';
-import { type OverviewResponse, overviewResponseType } from '@/shared/ui_api';
+import {
+	type OverviewResponse,
+	overviewResponseType,
+	UI_PAGE_PATHS,
+} from '@/shared/ui_api';
 import { postJson } from '@/ui/api/client';
 import { t } from '@/ui/i18n';
 import { BackendsSection } from '@/ui/sections/BackendsSection';
@@ -22,7 +26,7 @@ const isMainTab = (value: string | null): value is MainTab =>
 	MAIN_TABS.some((tab) => tab === value);
 
 const resolveRoute = (): 'main' | 'debug' =>
-	window.location.pathname.startsWith('/debug') ? 'debug' : 'main';
+	window.location.pathname.startsWith(UI_PAGE_PATHS.debug) ? 'debug' : 'main';
 
 export default function App() {
 	const [overview, setOverview] = useState<OverviewResponse | null>(null);
@@ -114,7 +118,7 @@ export default function App() {
 
 	const navigate = useCallback((target: 'main' | 'debug') => {
 		setRoute(target);
-		const path = target === 'debug' ? '/debug' : '/';
+		const path = UI_PAGE_PATHS[target];
 		if (window.location.pathname !== path) {
 			window.history.pushState({}, '', path);
 		}

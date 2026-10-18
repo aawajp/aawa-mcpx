@@ -169,7 +169,7 @@ ambiguous are escaped; see [namespaces](/DESIGN.md#38-namespaces-and-resource-ro
 
 ## Dashboard
 
-Open `http://localhost:<PORT>/`. The summary at the top lists backends with
+Open `http://localhost:<PORT>/ui` (`/` redirects there). The summary at the top lists backends with
 their enabled and total tool counts, status, **Enable**/**Disable**, and
 **Refresh** buttons, plus
 **Refresh all**. Clicking a backend name opens its card in the Backends tab. Refreshing re-fetches catalogs and, for `2026-07-28` backends,
@@ -182,7 +182,7 @@ server info, capabilities, and instructions; a disconnected enabled backend reco
 Backend URLs are shown with query values replaced by `***`, so API keys stay
 hidden while the parameter names remain visible.
 
-The separate **Debug** page (`/debug`) shows client and backend traffic from the current run, with filters.
+The separate **Debug** page (`/ui/debug`) shows client and backend traffic from the current run, with filters.
 
 ## Endpoints
 
@@ -190,8 +190,9 @@ The separate **Debug** page (`/debug`) shows client and backend traffic from the
 | --- | --- | --- |
 | `/mcp` | POST | MCP JSON-RPC endpoint (Streamable HTTP) |
 | `/mcp` | DELETE | Terminate a 2025 MCP session |
-| `/` | GET | Dashboard |
-| `/debug` | GET | Debug page |
+| `/` | GET | Redirect to `/ui` |
+| `/ui` | GET | Dashboard |
+| `/ui/debug` | GET | Debug page |
 | `/api/overview` | GET | Dashboard snapshot |
 | `/api/events` | GET | SSE stream of dashboard updates |
 | `/api/backends/toggle` | POST | Enable or disable a backend (`{ serverName, enabled }`) |

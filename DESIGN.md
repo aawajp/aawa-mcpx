@@ -23,8 +23,8 @@ overview, setup, and operations; [CHANGELOG.md](/CHANGELOG.md) records changes.
 | JSON-RPC message | Request, notification, or response; distinct from an HTTP request/response. |
 | MCP client | External client using `/mcp`. |
 | MCP upstream | Configured backend MCP server. |
-| UI | React dashboard served by the gateway. |
-| UI API | Dashboard HTTP API under `/api/*`, separate from MCP routes. |
+| UI | React dashboard pages under `/ui` (`/` redirects there), served by the gateway. |
+| UI API | Dashboard HTTP API under `/api/*`, separate from MCP routes. Paths the MCP spec does not define go under `/api`. |
 
 ## 2. Runtime architecture
 
@@ -166,7 +166,7 @@ fields; removed methods return HTTP 404 with JSON-RPC method-not-found. A suppli
 A request takes the 2026 path when it is `server/discover`, carries protocol
 version metadata, or has the exact `2026-07-28` header. Any other unsupported
 header gets HTTP 400 / `-32600`.
-Requests other than for the dashboard pages and their assets must name a host
+Requests other than for `/`, the dashboard pages and their assets must name a host
 listed in `ALLOWED_HOSTS` in `Host` and, when present, in `Origin`. Other
 requests get HTTP 403, for `/mcp` POST and DELETE with a JSON-RPC error without
 `id`, otherwise with `{ error }`. Checking both stops DNS rebinding, because a
@@ -558,18 +558,24 @@ read-only IdP service account (provider-specific API); role changes apply at
 the next sync, and there is no periodic sync. Users a sync finds unlinked, deactivated or locked stay stored as
 unlinked: keys and permissions are kept without effect, sessions are closed.
 Nothing sensitive is stored in files: secrets only in the environment, API
-keys only as hashes, sessions only in memory. A new SQLite database (separate
-from traffic) holds users, roles, key hashes and permissions; all of it is
-held in memory and written on change. `mcp.json` is unchanged.
+keys and session IDs only as hashes. A new SQLite database `db/main.db`
+(separate from traffic, kept across restarts, schema versioned with
+`PRAGMA user_version`) holds dashboard sessions, users, roles, key hashes and
+permissions; all but sessions are held in memory and written on change.
+`mcp.json` is unchanged.
 
 **Dashboard login.** OIDC authorization code flow with PKCE as a confidential
-client (`/auth/login`, `/auth/callback`, `/auth/logout`) with ID token and
+client (`/api/auth/login`, `/api/auth/callback`, `/api/auth/logout`) with ID token and
 `iss` validation, admins only; roles
 come from the ID token claim `OIDC_ROLES_CLAIM`, so the first admin can log in
-before any sync. Server-side session in memory, cookie `HttpOnly`, `Secure`,
-`SameSite=Lax`, matching `Origin` required on non-GET `/api/*`, limits 8 h
-absolute and 1 h idle by default. Pages redirect to the login; `/api/*`
-answers `401`. Login for other users is out of scope.
+before any sync. Server-side sessions in `db/main.db` survive restarts; the
+last-used time is written at most once a minute. At startup, sessions past a
+limit, from another `OIDC_ISSUER` or `OIDC_CLIENT_ID`, or without a role in
+`ADMIN_ROLES` are deleted. Cookie `HttpOnly`, `Secure`, `SameSite=Lax`;
+`Origin` must match `PUBLIC_URL` on non-GET `/api/*`; limits 8 h absolute and
+1 h idle by default. Pages redirect to the login and return to the page
+afterwards; `/api/*` answers `401`, except `/api/health` (probes). Login for
+other users is out of scope.
 
 **`/mcp` credentials.** Every request on every protocol version carries
 `Authorization: Bearer <credential>` and is checked first, without calling
@@ -620,7 +626,7 @@ their users and permissions. Traffic shows the user and key name per request.
 and resource URI, `Origin` check), `OIDC_ISSUER`, `OIDC_CLIENT_ID`,
 `OIDC_CLIENT_SECRET`, `OIDC_AUDIENCE`, `OIDC_SCOPES` (extra login and
 metadata scopes), `OIDC_ROLES_CLAIM`, `ADMIN_ROLES`,
-`DASHBOARD_SESSION_MAX_AGE`, `DASHBOARD_SESSION_IDLE_TIMEOUT`,
+`UI_SESSION_MAX_AGE`, `UI_SESSION_IDLE_TIMEOUT`,
 `DIRECTORY_CLIENT_ID`, `DIRECTORY_CLIENT_SECRET` (sync account). New
 dependencies: `openid-client`, `jose`.
 
@@ -629,10 +635,11 @@ HTTP Basic authentication.
 
 | Step | Implementation order |
 | --- | --- |
-| 1 | Dashboard OIDC login; OIDC settings mandatory |
-| 2 | **Auth** tab with linked users, roles and **Sync** |
-| 3 | `/mcp` credential check (OAuth and API keys), API key management, user in traffic; clients see no tools until step 4 |
-| 4 | Backend and tool permissions: dashboard and enforcement |
+| 1 | `db/main.db` with schema versions, no tables yet |
+| 2 | Dashboard OIDC login with sessions in `db/main.db`; OIDC settings mandatory |
+| 3 | **Auth** tab with linked users, roles and **Sync** |
+| 4 | `/mcp` credential check (OAuth and API keys), API key management, user in traffic; clients see no tools until step 5 |
+| 5 | Backend and tool permissions: dashboard and enforcement |
 
 ### 7.2 Interactive MCP requests
 

@@ -29,6 +29,7 @@ import {
 	CURRENT_PROTOCOL_VERSION,
 	SUPPORTED_PROTOCOL_VERSIONS,
 } from '@/shared/mcp_protocol';
+import { UI_PAGE_PATHS } from '@/shared/ui_api';
 import indexHtml from '@/ui/index.html';
 
 const CLIENT_ACTIVITY_HISTORY_LIMIT = 200;
@@ -153,9 +154,15 @@ const startServer = async (
 				}
 			: false,
 		routes: {
+			'/': new Response(null, {
+				status: 302,
+				headers: {
+					Location: UI_PAGE_PATHS.main,
+				},
+			}),
 			...withTrailingSlashes({
-				'/': indexHtml,
-				'/debug': indexHtml,
+				[UI_PAGE_PATHS.main]: indexHtml,
+				[UI_PAGE_PATHS.debug]: indexHtml,
 			}),
 			...endpoints,
 			...guardRoutes(

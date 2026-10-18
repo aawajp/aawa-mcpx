@@ -20,6 +20,13 @@ Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 ## [Unreleased]
 
+### 2026-10-18
+
+#### Changed
+
+- **Breaking:** Serve the dashboard at `/ui` and the debug page at
+  `/ui/debug`; `/` redirects to `/ui`.
+
 ### 2026-10-17
 
 #### Changed

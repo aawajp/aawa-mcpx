@@ -17,6 +17,12 @@ const implementationInfoType = type({
 	'[string]': 'unknown',
 });
 
+// Dashboard pages; everything else the dashboard uses lives under /api.
+const UI_PAGE_PATHS = {
+	main: '/ui',
+	debug: '/ui/debug',
+} as const;
+
 const capabilitiesInfoType = type('Record<string, unknown>');
 
 const clientActivityType = type({
@@ -122,4 +128,5 @@ export {
 	backendTrafficResponseType,
 	overviewResponseType,
 	trafficPageType,
+	UI_PAGE_PATHS,
 };
