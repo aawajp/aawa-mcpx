@@ -2,11 +2,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
+import { createTrafficStore, MAX_TRAFFIC_RECORDS } from '@/server/db/traffic';
 import { logger } from '@/server/logger';
-import {
-	createTrafficStore,
-	MAX_TRAFFIC_RECORDS,
-} from '@/server/traffic_store';
 import { trafficPageType } from '@/shared/ui_api';
 
 import { Database } from 'bun:sqlite';

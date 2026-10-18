@@ -2,11 +2,11 @@ import { type } from 'arktype';
 
 import { setInterval as setIntervalAsync } from 'node:timers/promises';
 
+import type { TrafficStore } from '@/server/db/traffic';
 import { HOST_NOT_ALLOWED } from '@/server/gateway/allowed_hosts';
 import { logger } from '@/server/logger';
 import { BackendRpcError } from '@/server/mcp_upstreams/protocol_client';
 import type { McpUpstreamManager } from '@/server/mcp_upstreams/types';
-import type { TrafficStore } from '@/server/traffic_store';
 import { errorMessage } from '@/shared/common';
 import { RPC_ERROR } from '@/shared/mcp_protocol';
 import { jsonObjectType } from '@/shared/mcp_schemas';

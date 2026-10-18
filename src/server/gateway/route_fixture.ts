@@ -1,5 +1,6 @@
 import type { Tool } from '@modelcontextprotocol/client';
 
+import type { TrafficStore } from '@/server/db/traffic';
 import { createHandlers } from '@/server/gateway/mcp_handlers';
 import { createMcpHttpRoute } from '@/server/gateway/mcp_http_route';
 import { createMcpRequestRouter } from '@/server/gateway/mcp_request_router';
@@ -10,7 +11,6 @@ import type {
 	EnabledTool,
 	McpUpstreamManager,
 } from '@/server/mcp_upstreams/types';
-import type { TrafficStore } from '@/server/traffic_store';
 import { toolHeaderParameters } from '@/shared/mcp_protocol';
 
 import { mock } from 'bun:test';

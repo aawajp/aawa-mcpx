@@ -22,6 +22,10 @@ Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 ### 2026-10-18
 
+#### Added
+
+- Add the main database `db/main.db` with versioned schema migrations.
+
 #### Changed
 
 - **Breaking:** Serve the dashboard at `/ui` and the debug page at

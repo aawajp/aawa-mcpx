@@ -1,5 +1,6 @@
 import { type } from 'arktype';
 
+import type { TrafficStore } from '@/server/db/traffic';
 import { HOST_NOT_ALLOWED } from '@/server/gateway/allowed_hosts';
 import {
 	getJsonRpcId,
@@ -16,7 +17,6 @@ import type { RouteRequest } from '@/server/gateway/mcp_request_router';
 import type { createMcpSessionManager } from '@/server/gateway/mcp_session';
 import { logger } from '@/server/logger';
 import type { CatalogRequest } from '@/server/mcp_upstreams/types';
-import type { TrafficStore } from '@/server/traffic_store';
 import { withCancellation } from '@/shared/cancellation';
 import {
 	type ClientInfo,

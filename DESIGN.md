@@ -55,7 +55,8 @@ SDK supplies types only; the gateway implements dispatch and transports itself.
 
 | Layer | Modules and responsibilities |
 | --- | --- |
-| `server/` | `index.ts`: entrypoint (load configuration, start upstreams and the server, handle shutdown); `traffic_store.ts`: SQLite traffic storage; `logger.ts`: console logging. |
+| `server/` | `index.ts`: entrypoint (load configuration, start upstreams and the server, handle shutdown); `logger.ts`: console logging. |
+| `server/db/` | `main.ts`: the gateway's own SQLite database and schema versions; `traffic.ts`: SQLite traffic storage. |
 | `server/config/` | `schema.ts`: every user setting as ArkType schemas (environment variables and `mcp.json`); `loader.ts`: loads and persists `mcp.json`; `constants.ts`: file locations. |
 | `server/gateway/` | `server.ts`: `Bun.serve`/route wiring; `allowed_hosts.ts`: `Host`/`Origin` allowlist and route guard; `unknown_routes.ts`: 404/405 for unhandled requests; `mcp_http_route.ts`: HTTP handling; `mcp_request_router.ts`: JSON-RPC dispatch/version adaptation. |
 | | `json_rpc.ts`: incoming envelope parsing; `mcp_session.ts`: public initialization/sessions; `client_activity.ts`: dashboard history; `mcp_handlers.ts`: upstream operations; `mcp_namespaces.ts`: applies namespaces and `[serverName]` description prefixes to catalogs; `ui_routes.ts`: UI APIs/events. |
@@ -505,7 +506,8 @@ copied across protocol boundaries.
 | State | Storage and lifetime |
 | --- | --- |
 | Backend/tool exposure | `mcp.json`: read once. A tool catalog fetch or dashboard change that alters `enabled`, `enabledTools`, or `availableTools` writes the file as read with only those fields changed (no defaults added, in place, so a single-file Docker mount keeps working); unchanged state is not written. External edits are not reread or merged. Disable keeps tool settings, catalogs, and server details, and the dashboard still shows them. MCP clients get no catalog from a disabled backend or one with a configuration error. |
-| Traffic | `server/traffic_store.ts` stores current-run request/response records in the `traffic` table of `db/traffic.db`, keeping the newest 10,000 records; the table is cleared at startup and written with `synchronous=NORMAL`. JSON-RPC errors and tool results with `isError: true` count as errors. A failed write is printed to the console and never changes the reply. |
+| Main database | `server/db/main.ts` opens `db/main.db` at startup, kept across restarts (WAL, foreign keys on). The schema version is `PRAGMA user_version`: migrations missing from the file run in order, each in its own transaction; a version newer than the code stops startup. No tables yet; [7.1](#71-security) adds them. |
+| Traffic | `server/db/traffic.ts` stores current-run request/response records in the `traffic` table of `db/traffic.db`, keeping the newest 10,000 records; the table is cleared at startup and written with `synchronous=NORMAL`. JSON-RPC errors and tool results with `isError: true` count as errors. A failed write is printed to the console and never changes the reply. |
 | Sessions/client activity | In-memory state with the retention limits in [3.3](#33-sessions) and [3.4](#34-client-identity); cleared on restart. |
 
 ## 6. Validation policy
@@ -558,10 +560,9 @@ read-only IdP service account (provider-specific API); role changes apply at
 the next sync, and there is no periodic sync. Users a sync finds unlinked, deactivated or locked stay stored as
 unlinked: keys and permissions are kept without effect, sessions are closed.
 Nothing sensitive is stored in files: secrets only in the environment, API
-keys and session IDs only as hashes. A new SQLite database `db/main.db`
-(separate from traffic, kept across restarts, schema versioned with
-`PRAGMA user_version`) holds dashboard sessions, users, roles, key hashes and
-permissions; all but sessions are held in memory and written on change.
+keys and session IDs only as hashes. The main database ([5](#5-persistence))
+holds dashboard sessions, users, roles, key hashes and permissions; all but
+sessions are held in memory and written on change.
 `mcp.json` is unchanged.
 
 **Dashboard login.** OIDC authorization code flow with PKCE as a confidential
@@ -635,11 +636,10 @@ HTTP Basic authentication.
 
 | Step | Implementation order |
 | --- | --- |
-| 1 | `db/main.db` with schema versions, no tables yet |
-| 2 | Dashboard OIDC login with sessions in `db/main.db`; OIDC settings mandatory |
-| 3 | **Auth** tab with linked users, roles and **Sync** |
-| 4 | `/mcp` credential check (OAuth and API keys), API key management, user in traffic; clients see no tools until step 5 |
-| 5 | Backend and tool permissions: dashboard and enforcement |
+| 1 | Dashboard OIDC login with sessions in `db/main.db`; OIDC settings mandatory |
+| 2 | **Auth** tab with linked users, roles and **Sync** |
+| 3 | `/mcp` credential check (OAuth and API keys), API key management, user in traffic; clients see no tools until step 4 |
+| 4 | Backend and tool permissions: dashboard and enforcement |
 
 ### 7.2 Interactive MCP requests
 

@@ -1,7 +1,7 @@
+import type { TrafficStore } from '@/server/db/traffic';
 import { createUiRoutes } from '@/server/gateway/ui_routes';
 import { BackendRpcError } from '@/server/mcp_upstreams/protocol_client';
 import type { McpUpstreamManager } from '@/server/mcp_upstreams/types';
-import type { TrafficStore } from '@/server/traffic_store';
 
 import { expect, test } from 'bun:test';
 

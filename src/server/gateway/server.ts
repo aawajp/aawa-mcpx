@@ -1,3 +1,4 @@
+import type { TrafficStore } from '@/server/db/traffic';
 import { createHostCheck, guardRoutes } from '@/server/gateway/allowed_hosts';
 import { createClientActivityTracker } from '@/server/gateway/client_activity';
 import { createHandlers } from '@/server/gateway/mcp_handlers';
@@ -23,7 +24,6 @@ import {
 } from '@/server/mcp_upstreams/catalog';
 import { MESSAGE_SIZE_LIMIT } from '@/server/mcp_upstreams/protocol_client';
 import type { McpUpstreamManager } from '@/server/mcp_upstreams/types';
-import type { TrafficStore } from '@/server/traffic_store';
 import { errorMessage } from '@/shared/common';
 import {
 	CURRENT_PROTOCOL_VERSION,

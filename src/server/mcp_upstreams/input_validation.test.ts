@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import { mcpConfigType } from '@/server/config/schema';
+import type { TrafficStore } from '@/server/db/traffic';
 import { createHandlers } from '@/server/gateway/mcp_handlers';
 import { createMcpRequestRouter } from '@/server/gateway/mcp_request_router';
 import { createMcpSessionManager } from '@/server/gateway/mcp_session';
@@ -17,7 +18,6 @@ import { createMcpUpstreamOperations } from '@/server/mcp_upstreams/method_calls
 import { ProtocolClient } from '@/server/mcp_upstreams/protocol_client';
 import { startFixtureBackend } from '@/server/mcp_upstreams/protocol_fixture';
 import type { McpUpstreamServer } from '@/server/mcp_upstreams/types';
-import type { TrafficStore } from '@/server/traffic_store';
 import {
 	CURRENT_PROTOCOL_VERSION,
 	recordOf,

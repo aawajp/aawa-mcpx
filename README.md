@@ -132,7 +132,7 @@ docker compose up --build
 ```
 
 Compose passes `.env` to the container and mounts `mcp.json` (configuration and
-tool state) and `db/` (traffic log), both read-write. To run the image manually:
+tool state) and `db/` (main database and traffic log), both read-write. To run the image manually:
 
 ```bash
 docker build -t aawa-mcpx .
@@ -209,7 +209,7 @@ The debug queries take `limit` (integer from 1 to 100, default `20`), `offset`
 `/api/debug/backend` also takes `backend` (required) and `method`, both
 non-empty. Request bodies and queries with other fields are refused.
 
-Failed `/api/*` requests return `{ error }` with status 400 for a malformed request or a refused tool call, 403 for a host or `Origin` not in `ALLOWED_HOSTS`, 404 for an unknown route, backend or tool, and 500 otherwise. Request bodies over 8 MiB, on `/mcp` too, get HTTP 413 without a body. Toggles persist to `mcp.json`. Traffic is stored in `db/traffic.db`, which keeps the newest 10,000 records and is cleared at startup.
+Failed `/api/*` requests return `{ error }` with status 400 for a malformed request or a refused tool call, 403 for a host or `Origin` not in `ALLOWED_HOSTS`, 404 for an unknown route, backend or tool, and 500 otherwise. Request bodies over 8 MiB, on `/mcp` too, get HTTP 413 without a body. Toggles persist to `mcp.json`. Traffic is stored in `db/traffic.db`, which keeps the newest 10,000 records and is cleared at startup. `db/main.db` holds the gateway's own data and is kept across restarts.
 
 A path not listed above gets HTTP 404 with `{ error }`; a listed path with another method gets HTTP 405 with `Allow`.
 
