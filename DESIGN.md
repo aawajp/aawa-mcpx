@@ -67,7 +67,7 @@ SDK supplies types only; the gateway implements dispatch and transports itself.
 | `server/db/` | `main.ts`: the gateway's own SQLite database and schema versions; `access.ts`: users, roles, permissions and API keys; `ui_sessions.ts`: dashboard session storage; `traffic.ts`: SQLite traffic storage. |
 | `server/config/` | `schema.ts`: every user setting as ArkType schemas (environment variables and `mcp.json`); `loader.ts`: loads and persists `mcp.json`; `constants.ts`: file locations. |
 | `server/gateway/` | `server.ts`: `Bun.serve`/route wiring; `allowed_hosts.ts`: `Host`/`Origin` allowlist and route guard; `unknown_routes.ts`: 404/405 for unhandled requests; `mcp_http_route.ts`: HTTP handling; `mcp_request_router.ts`: JSON-RPC dispatch/version adaptation. |
-| | `json_rpc.ts`: incoming envelope parsing; `mcp_session.ts`: public initialization/sessions; `client_activity.ts`: dashboard history; `mcp_handlers.ts`: upstream operations and permission checks; `mcp_namespaces.ts`: applies namespaces and `[serverName]` description prefixes to catalogs; `ui_routes.ts`: UI APIs/events; `tester_routes.ts`: the dashboard Tester; `http.ts`: JSON error answers and query and body parsing. |
+| | `json_rpc.ts`: incoming envelope parsing; `mcp_session.ts`: public initialization/sessions; `client_activity.ts`: dashboard history; `mcp_handlers.ts`: upstream operations and permission checks; `mcp_namespaces.ts`: applies namespaces, public-name titles and `[serverName]` description prefixes to catalogs; `ui_routes.ts`: UI APIs/events; `tester_routes.ts`: the dashboard Tester; `http.ts`: JSON error answers and query and body parsing. |
 | `server/mcp_upstreams/` | `manager.ts`: stable gateway API/service wiring; `connections.ts`: per-backend state record, connection/recovery lifecycle; `health_checks.ts`: probes; `catalog.ts`: caches/exposure state. |
 | | `method_calls.ts`: calls/argument validation; `protocol_client.ts`: JSON-RPC, revision selection, HTTP/SSE and stdio; `tool_result.ts`: structured recovery/duplicate removal; `input_schema.ts`/`output_schema.ts`: provider schema policies; `json_schema.ts`: shared compiler; `logged_request.ts`: traffic logging around calls; `types.d.ts`: manager contracts. |
 | `shared/` | `mcp_protocol.ts`: revision registry, header encoding, `x-mcp-header` rules; `mcp_metadata.ts`: request-metadata validators; `mcp_namespaces.ts`: namespace and resource-URI codec; `mcp_schemas.ts`: MCP validators; `mcp_results.ts`: result types; `mcp_output_schema.ts`: object wrappers for 2025 clients. |
@@ -505,7 +505,11 @@ and [2026](https://modelcontextprotocol.io/specification/2026-07-28/basic/utilit
 | Resources | `aawa-mcpx://resource/<namespace>/<encoded-original-uri>` |
 | Resource templates | `aawa-mcpx://template/<namespace>/<original-template>` |
 
-Ordinary names stay readable. Ambiguous backend names (including `__`, a trailing
+Tools and prompts get their public name as `title`, and tools with
+`annotations` as `annotations.title` too; the backend's titles reach only the
+dashboard. Clients show a title before the name, so a backend's own title
+would hide which backend owns the item. Descriptions start with
+`[serverName]`. Ordinary names stay readable. Ambiguous backend names (including `__`, a trailing
 `_`, or exactly `.` or `..`), names outside `A-Za-z0-9_.-`, and the reserved
 `mcpx-` prefix use `mcpx-` followed by four hex digits per UTF-16 code unit. The
 dashboard uses the same codec for tool toggles. Resource wrappers use the same

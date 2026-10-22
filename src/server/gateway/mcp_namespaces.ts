@@ -26,32 +26,45 @@ type NamespaceResourceParams = {
 	resource: Resource;
 };
 
-// Descriptions start with the backend that owns the item.
+// Descriptions start with the backend that owns the item. Titles are the
+// public name, so clients that show titles keep items grouped by backend.
 const describe = (serverName: string, description?: string): string =>
 	description ? `[${serverName}] ${description}` : `[${serverName}]`;
 
 const namespaceTool = (params: NamespaceToolParams): Tool => {
 	const { serverName, tool } = params;
+	const name = addPrefix({
+		serverName,
+		name: tool.name,
+	});
 
 	return {
 		...tool,
-		name: addPrefix({
-			serverName,
-			name: tool.name,
-		}),
+		name,
+		title: name,
+		...(tool.annotations
+			? {
+					annotations: {
+						...tool.annotations,
+						title: name,
+					},
+				}
+			: {}),
 		description: describe(serverName, tool.description),
 	};
 };
 
 const namespacePrompt = (params: NamespacePromptParams): Prompt => {
 	const { serverName, prompt } = params;
+	const name = addPrefix({
+		serverName,
+		name: prompt.name,
+	});
 
 	return {
 		...prompt,
-		name: addPrefix({
-			serverName,
-			name: prompt.name,
-		}),
+		name,
+		title: name,
 		description: describe(serverName, prompt.description),
 	};
 };

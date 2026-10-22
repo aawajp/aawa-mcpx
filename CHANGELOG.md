@@ -34,6 +34,8 @@ Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 - Make the Clients and Auth tables sortable by column.
 - Add `MCP_MAX_SESSIONS_PER_USER`, which limits a user's 2025
   MCP sessions of all clients.
+- Show each tool's full name, backend name, backend titles and description in
+  the Backends tab.
 
 #### Changed
 
@@ -71,6 +73,8 @@ Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
   in bytes, and a backend's paginated list to 32 MiB.
 - Escape control characters in log lines, so a reported client name cannot
   add lines.
+- Send tools and prompts with their public name as title, so clients keep them
+  grouped by backend.
 
 ### 2026-10-18
 

@@ -285,7 +285,9 @@ Point your MCP client to `http://localhost:<PORT>/mcp`:
 }
 ```
 
-Tools and prompts appear as `serverName__itemName`. Resources appear as
+Tools and prompts appear as `serverName__itemName`, and that name is also their
+title (`title`, and a tool's `annotations.title`): clients that show titles,
+such as Claude Code, then keep them grouped by backend. Resources appear as
 `aawa-mcpx://resource/<namespace>/<encoded-original-uri>`, and resource templates
 as `aawa-mcpx://template/<namespace>/<original-template>`. Names that would be
 ambiguous are escaped; see [namespaces](/DESIGN.md#38-namespaces-and-resource-routing).
@@ -303,7 +305,7 @@ their enabled and total tool counts, status, **Enable**/**Disable**, and
 **Refresh all**. Clicking a backend name opens its card in the Backends tab. Refreshing re-fetches catalogs and, for `2026-07-28` backends,
 server info, capabilities, and instructions; a disconnected enabled backend reconnects. Below it are the tabs:
 
-- **Backends** (default view): each backend's prompts, resources, and tools, a per-backend **Refresh**, and **Expose to clients** toggles for tools. A disabled backend shows what it last reported; its **Refresh** contacts it once and leaves it disabled.
+- **Backends** (default view): each backend's prompts, resources, and tools, a per-backend **Refresh**, and **Expose to clients** toggles for tools. Prompts and tools show the name clients call; an opened tool shows its full name in Claude Code (`mcp__<server>__…`, where `<server>` is the gateway's key in the client config), and the backend's own name, titles and description. A disabled backend shows what it last reported; its **Refresh** contacts it once and leaves it disabled.
 - **Clients**: one row per MCP client (reported name and version), user and protocol, with first and last activity.
 - **Tester**: send an MCP request to `/mcp` as the logged-in admin (the superadmin, or with the OIDC admin's access token) and see the full request and response.
 - **Auth** (with a login method on): users, roles, API keys and permissions; see [Authentication](#authentication).

@@ -1,17 +1,37 @@
 import { type ReactNode, useState } from 'react';
 
+import { addPrefix } from '@/shared/mcp_namespaces';
 import type { Tool } from '@/shared/ui_api';
 import { Card, CardContent } from '@/ui/base_components/card';
 import { JsonPreview } from '@/ui/components/JsonPreview';
-import { t } from '@/ui/i18n';
+import { type StringKey, t } from '@/ui/i18n';
 
 type ToolCardProps<T extends Tool> = {
+	serverName: string;
 	tool: T;
 	renderAction?: (tool: T) => ReactNode;
 };
 
-const ToolCard = <T extends Tool>({ tool, renderAction }: ToolCardProps<T>) => {
+// A backend's tool under the name clients call. Details show the backend's own
+// name, titles and description; clients get the name as title instead.
+const ToolCard = <T extends Tool>({
+	serverName,
+	tool,
+	renderAction,
+}: ToolCardProps<T>) => {
 	const [open, setOpen] = useState(false);
+	const name = addPrefix({
+		serverName,
+		name: tool.name,
+	});
+	// Claude Code's form; <server> is the gateway's key in the client config.
+	const details: [StringKey, string | undefined][] = [
+		['tool.fullName', `mcp__<server>__${name}`],
+		['tool.backendName', tool.name],
+		['tool.backendTitle', tool.title],
+		['tool.annotationsTitle', tool.annotations?.title],
+		['tool.description', tool.description],
+	];
 	return (
 		<Card className="gap-0 border border-sky-400/35 bg-slate-900/45 py-0 shadow-[0_6px_18px_rgba(2,6,23,0.35)]">
 			<div className="flex items-center gap-2 pr-3">
@@ -27,17 +47,26 @@ const ToolCard = <T extends Tool>({ tool, renderAction }: ToolCardProps<T>) => {
 					>
 						▸
 					</span>
-					<span className="truncate leading-tight">{tool.name}</span>
+					<span className="truncate leading-tight">{name}</span>
 				</button>
 				{renderAction ? renderAction(tool) : null}
 			</div>
 			{open ? (
 				<CardContent className="space-y-2 px-3 pb-2">
-					{tool.description ? (
-						<p className="text-muted-foreground whitespace-pre-wrap">
-							{tool.description}
-						</p>
-					) : null}
+					<table className="border-collapse">
+						<tbody>
+							{details.map(([label, value]) => (
+								<tr key={label}>
+									<th className="whitespace-nowrap border px-2 py-1 text-left align-top font-semibold">
+										{t(label)}
+									</th>
+									<td className="whitespace-pre-wrap border px-2 py-1">
+										{value ?? '—'}
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
 					<div className="space-y-1">
 						<h4 className="font-semibold text-slate-200">
 							{t('tool.inputSchema')}
@@ -59,12 +88,14 @@ const ToolCard = <T extends Tool>({ tool, renderAction }: ToolCardProps<T>) => {
 };
 
 type Props<T extends Tool> = {
+	serverName: string;
 	tools: T[];
 	emptyLabel: string;
 	renderAction?: (tool: T) => ReactNode;
 };
 
 const ToolList = <T extends Tool>({
+	serverName,
 	tools,
 	emptyLabel,
 	renderAction,
@@ -76,7 +107,12 @@ const ToolList = <T extends Tool>({
 	return (
 		<div className="grid gap-2">
 			{tools.map((tool) => (
-				<ToolCard key={tool.name} tool={tool} renderAction={renderAction} />
+				<ToolCard
+					key={tool.name}
+					serverName={serverName}
+					tool={tool}
+					renderAction={renderAction}
+				/>
 			))}
 		</div>
 	);

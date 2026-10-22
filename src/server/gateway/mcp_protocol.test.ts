@@ -239,6 +239,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 		expect(result?.tools).toEqual([
 			{
 				name: 'backend__echo',
+				title: 'backend__echo',
 				description: '[backend]',
 				inputSchema: {
 					type: 'object',

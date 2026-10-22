@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 
+import { addPrefix } from '@/shared/mcp_namespaces';
 import type { BackendOverview, McpUpstreamStatus } from '@/shared/ui_api';
 import {
 	Card,
@@ -203,7 +204,10 @@ const BackendsSection = ({
 								<ItemList
 									items={backend.prompts.prompts.map((prompt) => ({
 										key: prompt.name,
-										title: prompt.name,
+										title: addPrefix({
+											serverName: backend.serverName,
+											name: prompt.name,
+										}),
 										description: prompt.description,
 									}))}
 									emptyLabel={t('list.empty.prompts')}
@@ -235,6 +239,7 @@ const BackendsSection = ({
 							/>
 							{backend.tools.tools.length ? (
 								<ToolList
+									serverName={backend.serverName}
 									tools={backend.tools.tools}
 									emptyLabel={t('list.empty.tools')}
 									renderAction={(tool) => renderToolToggle(backend, tool.name)}
@@ -243,7 +248,10 @@ const BackendsSection = ({
 								<ItemList
 									items={backend.availableTools.map((name) => ({
 										key: name,
-										title: name,
+										title: addPrefix({
+											serverName: backend.serverName,
+											name,
+										}),
 									}))}
 									emptyLabel={t('list.empty.tools')}
 									renderAction={(name) => renderToolToggle(backend, name)}
