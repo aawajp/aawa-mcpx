@@ -20,6 +20,12 @@ Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 ## [Unreleased]
 
+### 2026-10-22
+
+#### Changed
+
+- Update React to 19.3.1 and ArkType to 2.2.8.
+
 ### 2026-10-18
 
 #### Added

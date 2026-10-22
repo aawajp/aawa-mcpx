@@ -2,10 +2,7 @@
 	"include": ["src/**/*", "*.json", "*.jsonc", "*.ts"],
 	"compilerOptions": {
 		"paths": {
-			"@/*": ["./src/*"],
-			"@modelcontextprotocol/sdk/*": [
-				"./node_modules/@modelcontextprotocol/sdk/dist/esm/*"
-			]
+			"@/*": ["./src/*"]
 		},
 		"allowImportingTsExtensions": false, // import without extensions
 		"allowJs": false,
