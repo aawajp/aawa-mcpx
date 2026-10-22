@@ -180,8 +180,9 @@ Public GET event streams and stdio are not exposed. The gateway sends no
 server-initiated MCP messages and normally completes operations with one JSON
 response. Backend HTTP must offer Streamable HTTP with JSON or SSE `POST`
 responses; the backend's standalone `GET` event stream is not used. Backend stdio
-is supported. Backend stdio buffers and SSE events are limited to 8 MiB, and
-backend pagination to 1,000 pages.
+is supported. Backend HTTP JSON bodies, stdio lines and SSE events are limited to
+8 MiB, counted in bytes, and backend pagination to 1,000 pages and 32 MiB of
+items as JSON in all.
 
 A stdio backend's stdout lines that are not JSON-RPC messages are logged and
 skipped. A stdout line over the limit, or stdout closing, is a transport failure
@@ -245,12 +246,15 @@ a session immediately; gateway restart clears all sessions.
 
 Reported name/version is dashboard identity, not authentication identity. The
 whole reported client info is kept in both revisions; the UI shows name, version
-and title. Identical pairs intentionally merge; remote authenticated
+and title. Name, version and title are at most 256 characters and the whole
+client info at most 64 KiB as JSON; longer ones are refused (`-32602`).
+Identical pairs intentionally merge; remote authenticated
 differentiation is outside this design. Bounded activity history survives
 session closure/eviction and resets on restart.
 
 Gateway-generated logs, traffic-record identity, and dashboard contracts exclude
-session IDs; logs use reported name/version where available. The UI shows first/last
+session IDs; logs use reported name/version where available. The logger writes
+control characters as JSON escapes, so a reported name cannot add log lines. The UI shows first/last
 activity and latest protocol, without connection status.
 
 ### 3.5 `2026-07-28` HTTP metadata and headers
@@ -507,7 +511,7 @@ copied across protocol boundaries.
 | --- | --- |
 | Backend/tool exposure | `mcp.json`: read once. A tool catalog fetch or dashboard change that alters `enabled`, `enabledTools`, or `availableTools` writes the file as read with only those fields changed (no defaults added, in place, so a single-file Docker mount keeps working); unchanged state is not written. External edits are not reread or merged. Disable keeps tool settings, catalogs, and server details, and the dashboard still shows them. MCP clients get no catalog from a disabled backend or one with a configuration error. |
 | Main database | `server/db/main.ts` opens `db/main.db` at startup, kept across restarts (WAL, foreign keys on). The schema version is `PRAGMA user_version`: migrations missing from the file run in order, each in its own transaction; a version newer than the code stops startup. No tables yet; [7.1](#71-security) adds them. |
-| Traffic | `server/db/traffic.ts` stores current-run request/response records in the `traffic` table of `db/traffic.db`, keeping the newest 10,000 records; the table is cleared at startup and written with `synchronous=NORMAL`. JSON-RPC errors and tool results with `isError: true` count as errors. A failed write is printed to the console and never changes the reply. |
+| Traffic | `server/db/traffic.ts` stores current-run request/response records in the `traffic` table of `db/traffic.db`, keeping the newest 10,000 records of at most 512 MiB stored text in all; a request or response over 256 KiB is stored as `{ truncated: true, bytes, start }` with its first 16,384 characters, and a client label, method or protocol version over 256 characters as its first 256 and `…` (backend names stay whole), while the message itself is unchanged. The table is cleared at startup and written with `synchronous=NORMAL`. JSON-RPC errors and tool results with `isError: true` count as errors. A failed write is printed to the console and never changes the reply. |
 | Sessions/client activity | In-memory state with the retention limits in [3.3](#33-sessions) and [3.4](#34-client-identity); cleared on restart. |
 
 ## 6. Validation policy

@@ -107,6 +107,60 @@ test('initialization retains the newest sessions per name/version without idle e
 	}
 });
 
+test('client names over 256 characters or client info over 64 KiB are refused', async () => {
+	const sessions = createMcpSessionManager({
+		maxSessionsPerClient: 10,
+	});
+	const initialize = (clientInfo: Record<string, unknown>) =>
+		sessions.handleInitialize(
+			{
+				jsonrpc: '2.0',
+				id: 1,
+				method: 'initialize',
+				params: {
+					protocolVersion: '2025-11-25',
+					clientInfo,
+				},
+			},
+			undefined,
+		);
+	const name = 'a'.repeat(256);
+	expect(
+		(
+			await initialize({
+				name,
+				version: name,
+				title: name,
+			})
+		).sessionId,
+	).toBeString();
+	for (const clientInfo of [
+		{
+			name: `${name}a`,
+			version: '1',
+		},
+		{
+			name: 'agent',
+			version: `${name}a`,
+		},
+		{
+			name: 'agent',
+			version: '1',
+			title: `${name}a`,
+		},
+		{
+			name: 'agent',
+			version: '1',
+			description: 'ä'.repeat(32 * 1024),
+		},
+	]) {
+		const refused = await initialize(clientInfo);
+		expect(refused.sessionId).toBeUndefined();
+		expect(refused.status).toBe(400);
+	}
+	expect(sessions.activeCount()).toBe(1);
+});
+
 test('session lifecycle and rejection logs omit transport identifiers', async () => {
 	const messages: string[] = [];
 	const info = spyOn(logger, 'info').mockImplementation((message) => {

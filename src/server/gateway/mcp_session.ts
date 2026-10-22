@@ -8,6 +8,8 @@ import {
 } from '@/server/gateway/json_rpc';
 import { logger } from '@/server/logger';
 import {
+	CLIENT_INFO_BYTES,
+	CLIENT_NAME_LENGTH,
 	type ClientInfo,
 	formatClientInfo,
 	parseClientInfo,
@@ -124,7 +126,7 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 				payload: rpcError(
 					request.id,
 					RPC_ERROR.InvalidParams,
-					'Client info must include string name and version fields.',
+					`Client info must include string name and version fields of at most ${CLIENT_NAME_LENGTH} characters, and be at most ${CLIENT_INFO_BYTES} bytes as JSON.`,
 				),
 			};
 		const protocolVersion = negotiateProtocolVersion(requested.protocolVersion);

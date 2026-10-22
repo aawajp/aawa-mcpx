@@ -259,6 +259,8 @@ test('backend lifecycle preserves tool exposure state', async () => {
 		typeof createMcpUpstreamManager
 	> | null = null;
 	let runtimeManager: ReturnType<typeof createMcpUpstreamManager> | null = null;
+	// Restored even when an assertion fails.
+	const close = spyOn(ProtocolClient.prototype, 'close');
 
 	try {
 		await writeConfig(false);
@@ -362,7 +364,7 @@ test('backend lifecycle preserves tool exposure state', async () => {
 			warning.mockRestore();
 			returnedCount = 2;
 		}
-		const close = spyOn(ProtocolClient.prototype, 'close');
+		close.mockClear();
 		await writeFile(
 			configPath,
 			`${JSON.stringify(
@@ -452,9 +454,9 @@ test('backend lifecycle preserves tool exposure state', async () => {
 		close.mockClear();
 		await runtimeManager.disconnect();
 		expect(close).toHaveBeenCalledTimes(1);
-		close.mockRestore();
 		runtimeManager = null;
 	} finally {
+		close.mockRestore();
 		await startupDisabledManager?.disconnect();
 		await runtimeManager?.disconnect();
 		mockServer.stop(true);

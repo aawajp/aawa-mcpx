@@ -196,7 +196,7 @@ server info, capabilities, and instructions; a disconnected enabled backend reco
 Backend URLs are shown with query values replaced by `***`, so API keys stay
 hidden while the parameter names remain visible.
 
-The separate **Debug** page (`/ui/debug`) shows client and backend traffic from the current run, with filters.
+The separate **Debug** page (`/ui/debug`) shows client and backend traffic from the current run, with filters. A request or response over 256 KiB shows only its size and start, and a client, method or protocol version over 256 characters only its start.
 
 ## Endpoints
 
@@ -223,7 +223,7 @@ The debug queries take `limit` (integer from 1 to 100, default `20`), `offset`
 `/api/debug/backend` also takes `backend` (required) and `method`, both
 non-empty. Request bodies and queries with other fields are refused.
 
-Failed `/api/*` requests return `{ error }` with status 400 for a malformed request or a refused tool call, 403 for a host or `Origin` not in `ALLOWED_HOSTS`, 404 for an unknown route, backend or tool, and 500 otherwise. Request bodies over 8 MiB, on `/mcp` too, get HTTP 413 without a body. Toggles persist to `mcp.json`. Traffic is stored in `db/traffic.db`, which keeps the newest 10,000 records and is cleared at startup. `db/main.db` holds the gateway's own data and is kept across restarts.
+Failed `/api/*` requests return `{ error }` with status 400 for a malformed request or a refused tool call, 403 for a host or `Origin` not in `ALLOWED_HOSTS`, 404 for an unknown route, backend or tool, and 500 otherwise. Request bodies over 8 MiB, on `/mcp` too, get HTTP 413 without a body; backend HTTP JSON bodies, stdio lines and SSE events are limited to 8 MiB too, counted in bytes, and a backend's paginated list to 32 MiB in all. Toggles persist to `mcp.json`. Traffic is stored in `db/traffic.db`, which keeps the newest 10,000 records of at most 512 MiB in all and is cleared at startup. `db/main.db` holds the gateway's own data and is kept across restarts.
 
 A path not listed above gets HTTP 404 with `{ error }`; a listed path with another method gets HTTP 405 with `Allow`.
 

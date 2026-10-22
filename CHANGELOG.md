@@ -37,10 +37,22 @@ Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 - Exit with code 78 on configuration errors and 75 on temporary startup
   failures, with one log line, and restart the Compose container at most 3
   times.
+- Refuse MCP client names, versions and titles over 256 characters and client
+  info over 64 KiB (`-32602`).
+- Store traffic requests and responses over 256 KiB as their size and start,
+  and clients, methods and protocol versions over 256 characters as their
+  start, and keep at most 512 MiB of traffic.
 
 #### Removed
 
 - **Breaking:** Remove the `start` script; use `bun dev` or the container.
+
+#### Fixed
+
+- Limit backend HTTP responses, stdio lines and SSE events to 8 MiB, counted
+  in bytes, and a backend's paginated list to 32 MiB.
+- Escape control characters in log lines, so a reported client name cannot
+  add lines.
 
 ### 2026-10-18
 

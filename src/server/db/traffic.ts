@@ -8,8 +8,21 @@ import type { TrafficPage, TrafficRecord } from '@/shared/ui_api';
 
 import { Database } from 'bun:sqlite';
 
-// Only the newest records are kept, so a long run cannot fill the disk.
-const MAX_TRAFFIC_RECORDS = 10_000;
+// Only the newest records are kept, so a long run cannot fill the disk: at
+// most `records`, of at most `bytes` of stored text in all. A request or
+// response over `bodyBytes` is stored as its size and its start, and a
+// client, method or protocol version over TEXT_LENGTH characters as its
+// start; the message itself is unchanged. Backend names come from mcp.json
+// and stay whole, as Debug looks traffic up by them.
+const TRAFFIC_LIMITS = {
+	records: 10_000,
+	bytes: 512 * 1024 * 1024,
+	bodyBytes: 256 * 1024,
+};
+type TrafficLimits = typeof TRAFFIC_LIMITS;
+// Characters of a stored body's start; at most 4 bytes each.
+const TRUNCATED_START_LENGTH = 16 * 1024;
+const TEXT_LENGTH = 256;
 
 type TrafficKind = TrafficRecord['kind'];
 type TrafficEventType = TrafficRecord['eventType'];
@@ -47,6 +60,26 @@ type TrafficStore = {
 	}) => TrafficPage;
 };
 
+const storedBody = (value: unknown, limit: number): string => {
+	const text = JSON.stringify(value ?? {});
+	const bytes = Buffer.byteLength(text);
+	return bytes > limit
+		? JSON.stringify({
+				truncated: true,
+				bytes,
+				start: text.slice(0, TRUNCATED_START_LENGTH),
+			})
+		: text;
+};
+
+// Clients choose methods and protocol versions, and name themselves.
+const storedText = (value: string | undefined): string | null =>
+	value === undefined
+		? null
+		: value.length > TEXT_LENGTH
+			? `${value.slice(0, TEXT_LENGTH)}…`
+			: value;
+
 const safeParse = (value: string): unknown => {
 	try {
 		return JSON.parse(value);
@@ -55,7 +88,10 @@ const safeParse = (value: string): unknown => {
 	}
 };
 
-const createTrafficStore = (dbPath: string): TrafficStore => {
+const createTrafficStore = (
+	dbPath: string,
+	limits: TrafficLimits = TRAFFIC_LIMITS,
+): TrafficStore => {
 	const dbDir = path.dirname(dbPath);
 	if (!existsSync(dbDir)) {
 		try {
@@ -83,6 +119,7 @@ const createTrafficStore = (dbPath: string): TrafficStore => {
 			is_error INTEGER NOT NULL,
 			request TEXT,
 			response TEXT,
+			bytes INTEGER NOT NULL,
 			created_at INTEGER NOT NULL
 		);
 	`);
@@ -96,9 +133,19 @@ const createTrafficStore = (dbPath: string): TrafficStore => {
 		'CREATE INDEX IF NOT EXISTS idx_traffic_backend_peer_method_error_id ON traffic(kind, peer, method, is_error, id DESC);',
 	);
 	const insertStmt = db.prepare(
-		'INSERT INTO traffic (kind, peer, method, related_method, event_type, is_error, request, response, created_at, protocol_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+		'INSERT INTO traffic (kind, peer, method, related_method, event_type, is_error, request, response, bytes, created_at, protocol_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
 	);
-	const pruneStmt = db.prepare('DELETE FROM traffic WHERE id <= ?');
+	const pruneStmt = db.prepare<{ bytes: number }, [number]>(
+		'DELETE FROM traffic WHERE id <= ? RETURNING bytes',
+	);
+	const pruneOldestStmt = db.prepare<{ bytes: number }, []>(
+		'DELETE FROM traffic WHERE id = (SELECT MIN(id) FROM traffic) RETURNING bytes',
+	);
+	// The table starts empty on each start.
+	let storedBytes = 0;
+	const forget = (rows: { bytes: number }[]) => {
+		for (const row of rows) storedBytes -= row.bytes;
+	};
 	// A tool result with isError: true is logged as is (backend) or inside a
 	// JSON-RPC response (client); both count as errors.
 	const isErrorResponse = (value: unknown): boolean => {
@@ -163,19 +210,34 @@ const createTrafficStore = (dbPath: string): TrafficStore => {
 		const event = classifyEvent(params);
 		// Logging is for debugging; a failed write never changes the reply.
 		try {
+			const request = storedBody(params.request, limits.bodyBytes);
+			const response = storedBody(params.response, limits.bodyBytes);
+			const texts = {
+				peer: kind === 'client' ? (storedText(peer) ?? '') : peer,
+				method: storedText(params.method),
+				relatedMethod: storedText(event.relatedMethod),
+				protocolVersion: storedText(params.protocolVersion),
+			};
+			const bytes = [request, response, ...Object.values(texts)].reduce(
+				(sum, text) => sum + Buffer.byteLength(text ?? ''),
+				0,
+			);
 			const { lastInsertRowid } = insertStmt.run(
 				kind,
-				peer,
-				params.method ?? null,
-				event.relatedMethod ?? null,
+				texts.peer,
+				texts.method,
+				texts.relatedMethod,
 				event.eventType,
 				event.isError,
-				JSON.stringify(params.request ?? {}),
-				JSON.stringify(params.response ?? {}),
+				request,
+				response,
+				bytes,
 				Date.now(),
-				params.protocolVersion ?? null,
+				texts.protocolVersion,
 			);
-			pruneStmt.run(Number(lastInsertRowid) - MAX_TRAFFIC_RECORDS);
+			storedBytes += bytes;
+			forget(pruneStmt.all(Number(lastInsertRowid) - limits.records));
+			while (storedBytes > limits.bytes) forget(pruneOldestStmt.all());
 		} catch (error) {
 			logger.error(`Traffic log write failed: ${errorMessage(error)}`);
 		}
@@ -266,4 +328,4 @@ const createTrafficStore = (dbPath: string): TrafficStore => {
 };
 
 export type { LogBackendTrafficParams, LogClientTrafficParams, TrafficStore };
-export { createTrafficStore, MAX_TRAFFIC_RECORDS };
+export { createTrafficStore, TRAFFIC_LIMITS };
