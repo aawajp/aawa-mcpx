@@ -25,14 +25,22 @@ test('backend enabled setting defaults to true', () => {
 	expect(disabledConfig.mcpServers.mock?.enabled).toBe(false);
 });
 
-test('environment settings are parsed with their defaults and invalid values are refused', () => {
-	expect(environmentType.assert({ ALLOWED_HOSTS: 'localhost' })).toEqual({
+// Every setting is required: the committed `.env` holds the defaults.
+const baseEnvironment = {
+	PORT: '4567',
+	ALLOWED_HOSTS: 'localhost',
+	MCP_MAX_SESSIONS_PER_CLIENT: '10',
+};
+
+test('environment settings are parsed and missing or invalid values are refused', () => {
+	expect(environmentType.assert(baseEnvironment)).toEqual({
 		PORT: 4567,
 		ALLOWED_HOSTS: ['localhost'],
 		MCP_MAX_SESSIONS_PER_CLIENT: 10,
 	});
 	expect(
 		environmentType.assert({
+			...baseEnvironment,
 			PORT: '8080',
 			ALLOWED_HOSTS: ' mcpx.lan, 192.168.1.10,[fd00::1] ,',
 			MCP_MAX_SESSIONS_PER_CLIENT: '3',
@@ -48,6 +56,8 @@ test('environment settings are parsed with their defaults and invalid values are
 	for (const env of [
 		{},
 		{ ALLOWED_HOSTS: '' },
+		{ PORT: undefined },
+		{ MCP_MAX_SESSIONS_PER_CLIENT: undefined },
 		{ ALLOWED_HOSTS: ' , ' },
 		{ PORT: '' },
 		{ PORT: 'abc' },
@@ -60,7 +70,16 @@ test('environment settings are parsed with their defaults and invalid values are
 		{ ALLOWED_HOSTS: 'fd00::1' },
 		{ MCP_MAX_SESSIONS_PER_CLIENT: '0' },
 	])
-		expect(() => environmentType.assert(env)).toThrow();
+		expect(() =>
+			environmentType.assert(
+				Object.keys(env).length === 0
+					? env
+					: {
+							...baseEnvironment,
+							...env,
+						},
+			),
+		).toThrow();
 });
 
 test('mcp.json refuses unknown keys, non-HTTP URLs and empty commands', () => {

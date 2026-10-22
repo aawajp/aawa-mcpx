@@ -2,7 +2,7 @@
 
 # Whitelist - explicitly allow files to git
 !/.dockerignore
-!/.env.example
+!/.env
 !.gitignore
 !/AGENTS.md
 !/CHANGELOG.md

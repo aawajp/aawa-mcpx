@@ -76,9 +76,16 @@ doc in the same change.
   JSON Schema, which ArkType cannot import.
 - Compile input schemas on catalog fetch, reuse validators on calls, and avoid
   repeated validation of the same request or catalog data within that lifecycle.
-- Tests never read or write local private files such as `.env`, `mcp.json`, or
-  `db/`. Pass file paths explicitly and use temporary folders under the OS temp
-  directory; never change the working directory.
+- Define every environment variable read through `process.env` in the
+  committed `.env` and in `environmentType`: alphabetical, a blank line between
+  settings, and a comment above each. Leave optional values empty rather than
+  using placeholders, and add no defaults in code. The OS variables passed on
+  to stdio backends (`HOME`, `PATH` and the like) are not settings.
+  `NODE_ENV` stays commented out in `.env`: the dev script and `compose.yaml`
+  set it, as Bun picks `.env.<NODE_ENV>` from the process environment.
+- Tests never read or write local private files such as `.env.local`,
+  `mcp.json`, or `db/`. Pass file paths explicitly and use temporary folders
+  under the OS temp directory; never change the working directory.
 
 ## Boundary checks
 

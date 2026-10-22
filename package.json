@@ -10,8 +10,7 @@
 		"css": "tailwindcss -i ./src/ui/index.css -o ./.tailwind/index.css",
 		"css:watch": "tailwindcss -i ./src/ui/index.css -o ./.tailwind/index.css --watch=always",
 		"dev": "bun run css && bun run --parallel css:watch dev:server",
-		"dev:server": "bun --env-file=.env --hot src/server/index.ts",
-		"start": "bun run css && bun --env-file=.env src/server/index.ts",
+		"dev:server": "NODE_ENV=development bun --hot src/server/index.ts",
 		"test": "bun test",
 		"lint": "bun check && biome check --fix"
 	},

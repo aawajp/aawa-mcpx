@@ -27,6 +27,17 @@ Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 - Update React to 19.3.1 and ArkType to 2.2.8.
 - Give dashboard buttons one style and cards less padding, and drop the unused
   dark theme.
+- **Breaking:** Commit the default settings as `.env` (replacing
+  `.env.example`) and let Bun load env files itself; keep secrets in
+  `.env.local`, which is mounted into the container next to the image's
+  `.env`.
+- **Breaking:** Require every setting, with no defaults in code.
+- Set `NODE_ENV` in the dev script and `compose.yaml` instead of `.env`, and
+  turn on hot reload and console forwarding only with `NODE_ENV=development`.
+
+#### Removed
+
+- **Breaking:** Remove the `start` script; use `bun dev` or the container.
 
 ### 2026-10-18
 

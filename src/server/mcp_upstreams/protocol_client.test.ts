@@ -1,3 +1,7 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
 import { createHandlers } from '@/server/gateway/mcp_handlers';
 import { createMcpRequestRouter } from '@/server/gateway/mcp_request_router';
 import { createMcpSessionManager } from '@/server/gateway/mcp_session';
@@ -1143,6 +1147,43 @@ test('an unruly stdio backend keeps working, logs stderr and is killed on close'
 		info.mockRestore();
 		warn.mockRestore();
 		await client.close();
+	}
+});
+
+test('fixture stdio backends never load env files', async () => {
+	const root = await mkdtemp(path.join(tmpdir(), 'mcpx-env-'));
+	try {
+		await writeFile(path.join(root, '.env'), 'SENTINEL_ENV=seen');
+		await writeFile(path.join(root, '.env.local'), 'SENTINEL_LOCAL=seen');
+		const probe = path.join(root, 'probe.ts');
+		await writeFile(
+			probe,
+			'process.stdout.write(JSON.stringify(Object.keys(process.env).filter((name) => name.startsWith("SENTINEL")).sort()))',
+		);
+		const { command, args } = startFixtureBackend('stdio', '2025-11-25')
+			.config as { command: string; args: string[] };
+		// The fixture's Bun options, with the probe in place of the fixture.
+		const options = args.slice(
+			0,
+			args.findIndex((arg) => arg.endsWith('protocol_fixture.ts')),
+		);
+		const run = async (bunOptions: string[]) => {
+			const child = Bun.spawn([command, ...bunOptions, probe], {
+				cwd: root,
+				env: {
+					PATH: process.env.PATH,
+				},
+			});
+			return JSON.parse(await new Response(child.stdout).text());
+		};
+		// Without the options, Bun loads both files.
+		expect(await run([])).toEqual(['SENTINEL_ENV', 'SENTINEL_LOCAL']);
+		expect(await run(options)).toEqual([]);
+	} finally {
+		await rm(root, {
+			recursive: true,
+			force: true,
+		});
 	}
 });
 

@@ -88,7 +88,7 @@ Stdio backend:
 | `command` | stdio | Non-empty string | Server executable (required) |
 | `args` | stdio | Array of strings | Command-line arguments |
 | `env` | stdio | Object of strings | Literal environment variables for the process; of the gateway's own environment only `HOME`, `PATH`, `SHELL`, `USER`, `LOGNAME`, `TMPDIR`, `SystemRoot` and `TEMP` are passed on |
-| `cwd` | stdio | String | Working directory for the process |
+| `cwd` | stdio | String | Working directory for the process; give a backend run with Bun its own, or Bun loads the gateway's env files, `.env.local` included |
 | `timeout` | Both | Positive integer | Request timeout in ms; default `10000` |
 | `enabled` | Both | Boolean | Keep the backend connected and expose it; default `true`. A disabled backend is contacted once at startup and on its **Refresh** so the dashboard can show its details |
 | `trafficLimit` | Both | Positive integer | Requests per second to the backend, including catalog fetches and health probes; default `1` |
@@ -109,18 +109,19 @@ tool is toggled in the dashboard.
 | `PORT` | Integer from 1 to 65535 | `4567` | Listening port |
 | `ALLOWED_HOSTS` | Comma-separated host names | required | Host names clients and the dashboard use, such as `localhost,127.0.0.1,[::1]`; other hosts get HTTP 403 |
 | `MCP_MAX_SESSIONS_PER_CLIENT` | Positive integer | `10` | Retained 2025 sessions per client name/version; the oldest is dropped beyond it |
-| `NODE_ENV` | String | unset | `production` turns off the dashboard's hot reload and browser console forwarding |
+| `NODE_ENV` | String | `development` with `bun run dev`, `production` in `compose.yaml` | `development` turns on the dashboard's hot reload and browser console forwarding; not set in `.env`, as Bun picks `.env.<NODE_ENV>` from the process environment |
 
-`bun start` and `bun dev` read these from `.env`, and Docker Compose passes
-`.env` to the container. Start from `.env.example` when creating `.env`.
+The committed `.env` lists every setting with its default, except `NODE_ENV`. Keep secrets and
+local values in `.env.local`, which git ignores; Bun loads it after `.env`, so
+its values win, both for `bun dev` and in the container (but not for
+`bun test`). The image contains `.env`; mount `.env.local` into `/home/app`.
 
 ## Run the gateway
 
 ### Local
 
 ```bash
-bun dev     # hot reload
-bun start   # normal run
+bun dev   # hot reload
 ```
 
 Bun runs the TypeScript source directly.
@@ -131,19 +132,20 @@ Bun runs the TypeScript source directly.
 docker compose up --build
 ```
 
-Compose passes `.env` to the container and mounts `mcp.json` (configuration and
-tool state) and `db/` (main database and traffic log), both read-write. To run the image manually:
+Compose mounts `.env.local` read-only, and `mcp.json` (configuration and
+tool state) and `db/` (main database and traffic log) read-write. To run the
+image manually:
 
 ```bash
 docker build -t aawa-mcpx .
-docker run -p 4567:4567 -v $(pwd)/mcp.json:/home/app/mcp.json:rw -v $(pwd)/db:/home/app/db aawa-mcpx
+docker run -p 4567:4567 -v $(pwd)/.env.local:/home/app/.env.local:ro -v $(pwd)/mcp.json:/home/app/mcp.json:rw -v $(pwd)/db:/home/app/db aawa-mcpx
 ```
 
 ### Apple container CLI
 
 ```bash
 container build -t local/aawa-mcpx:latest .
-container create --env-file=.env --user=1000:1000 --publish=4567:4567 --volume=./mcp.json:/home/app/mcp.json --volume=./db:/home/app/db --name aawa-mcpx local/aawa-mcpx:latest
+container create --user=1000:1000 --publish=4567:4567 --volume=./.env.local:/home/app/.env.local --volume=./mcp.json:/home/app/mcp.json --volume=./db:/home/app/db --name aawa-mcpx local/aawa-mcpx:latest
 container start aawa-mcpx
 ```
 

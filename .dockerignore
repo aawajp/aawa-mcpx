@@ -1,6 +1,7 @@
 *
 
 # Whitelist - explicitly allow files to image build context
+!/.env
 !/bun.lock
 !/bun-env.d.ts
 !/bunfig.toml

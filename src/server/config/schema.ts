@@ -7,9 +7,11 @@ const hostNameType = type('string').narrow(
 		ctx.mustBe('a lowercase host name without scheme or port'),
 );
 
-// Gateway settings from environment variables; Bun also loads them from `.env`.
+// Gateway settings from environment variables, which Bun also loads from the
+// env files; the committed `.env` holds every setting, so none has a default
+// here.
 const environmentType = type({
-	PORT: type('string.integer.parse').to('1 <= number <= 65535').default('4567'),
+	PORT: type('string.integer.parse').to('1 <= number <= 65535'),
 	ALLOWED_HOSTS: type('string')
 		.pipe((value) =>
 			value
@@ -18,9 +20,7 @@ const environmentType = type({
 				.filter((host) => host !== ''),
 		)
 		.to(hostNameType.array().atLeastLength(1)),
-	MCP_MAX_SESSIONS_PER_CLIENT: type('string.integer.parse')
-		.to('number > 0')
-		.default('10'),
+	MCP_MAX_SESSIONS_PER_CLIENT: type('string.integer.parse').to('number > 0'),
 	'NODE_ENV?': 'string',
 });
 
