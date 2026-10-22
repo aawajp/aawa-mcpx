@@ -34,19 +34,19 @@ const ToolCard = <T extends Tool>({ tool, renderAction }: ToolCardProps<T>) => {
 			{open ? (
 				<CardContent className="space-y-2 px-3 pb-2">
 					{tool.description ? (
-						<p className="text-sm text-muted-foreground whitespace-pre-wrap">
+						<p className="text-muted-foreground whitespace-pre-wrap">
 							{tool.description}
 						</p>
 					) : null}
 					<div className="space-y-1">
-						<h4 className="text-sm font-semibold text-slate-200">
+						<h4 className="font-semibold text-slate-200">
 							{t('tool.inputSchema')}
 						</h4>
 						<JsonPreview data={tool.inputSchema} />
 					</div>
 					{tool.outputSchema !== undefined ? (
 						<div className="space-y-1">
-							<h4 className="text-sm font-semibold text-slate-200">
+							<h4 className="font-semibold text-slate-200">
 								{t('tool.outputSchema')}
 							</h4>
 							<JsonPreview data={tool.outputSchema} />
@@ -70,7 +70,7 @@ const ToolList = <T extends Tool>({
 	renderAction,
 }: Props<T>) => {
 	if (!tools.length) {
-		return <p className="text-sm text-muted-foreground">{emptyLabel}</p>;
+		return <p className="text-muted-foreground">{emptyLabel}</p>;
 	}
 
 	return (

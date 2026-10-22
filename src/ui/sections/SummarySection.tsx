@@ -1,6 +1,7 @@
 import { flushSync } from 'react-dom';
 
 import type { OverviewResponse } from '@/shared/ui_api';
+import { Button } from '@/ui/base_components/button';
 import {
 	Card,
 	CardContent,
@@ -35,6 +36,15 @@ const SUMMARY_COLUMNS = [
 	},
 ] as const;
 
+// The endpoints listed under APIs, with their descriptions.
+const API_LINKS = [
+	['/mcp', 'protocol.api.mcp'],
+	['/api/overview', 'protocol.api.overview'],
+	['/api/events', 'protocol.api.events'],
+	['/api/health', 'protocol.api.health'],
+	['/api/debug', 'protocol.api.debug'],
+] as const;
+
 type Props = {
 	overview: OverviewResponse | null;
 	onRefresh: (serverName?: string) => void;
@@ -59,8 +69,8 @@ const SummarySection = ({
 
 	return (
 		<div className="grid gap-4 sm:grid-cols-[2fr_1fr]">
-			<Card className="w-full gap-2 py-3">
-				<CardContent className="space-y-2 w-full px-4">
+			<Card className="w-full">
+				<CardContent className="space-y-2 w-full">
 					<div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
 						<div className="flex items-baseline gap-3">
 							<CardTitle>{t('backends.title')}</CardTitle>
@@ -71,28 +81,25 @@ const SummarySection = ({
 								</span>
 							</div>
 						</div>
-						<div className="flex items-center gap-2 text-sm">
-							<button
+						<div className="flex items-center gap-2">
+							<Button
 								type="button"
 								onClick={() => onRefresh()}
 								disabled={isRefreshing}
-								className="inline-flex items-center rounded-md border px-2.5 py-0.5 leading-tight font-medium hover:bg-muted transition"
 							>
 								{t('backends.refreshAll')}
-							</button>
+							</Button>
 							{isRefreshing ? (
-								<span className="text-xs text-muted-foreground">
+								<span className="text-muted-foreground">
 									{t('backends.loading')}
 								</span>
 							) : null}
-							{error ? (
-								<span className="text-xs text-rose-300">{error}</span>
-							) : null}
+							{error ? <span className="text-rose-300">{error}</span> : null}
 						</div>
 					</div>
 					<div className="space-y-2 w-full">
 						{backends.length ? (
-							<table className="w-full border-separate border-spacing-y-1 text-sm">
+							<table className="w-full border-separate border-spacing-y-1">
 								<thead className="text-muted-foreground">
 									<tr>
 										{SUMMARY_COLUMNS.map((column) => (
@@ -151,82 +158,36 @@ const SummarySection = ({
 								</tbody>
 							</table>
 						) : (
-							<p className="text-sm text-muted-foreground">
-								{t('backends.none')}
-							</p>
+							<p className="text-muted-foreground">{t('backends.none')}</p>
 						)}
 					</div>
 				</CardContent>
 			</Card>
-			<Card className="gap-2 py-3">
-				<CardHeader className="gap-0.5 px-4">
+			<Card>
+				<CardHeader className="gap-0.5">
 					<CardTitle>{t('protocol.title')}</CardTitle>
 					<CardDescription>{t('protocol.subtitle')}</CardDescription>
 				</CardHeader>
-				<CardContent className="space-y-2 w-full px-4">
+				<CardContent className="space-y-2 w-full">
 					<div className="font-semibold">
 						{overview?.supportedProtocolVersions?.map((version) => (
 							<div key={version}>{version}</div>
 						)) ?? '—'}
 					</div>
-					<div className="space-y-1 text-sm">
+					<div className="space-y-1">
 						<div className="font-semibold">{t('protocol.apisTitle')}</div>
 						<ul className="list-disc space-y-1 pl-5">
-							<li>
-								<a
-									className="text-sky-300 hover:text-cyan-200 hover:underline"
-									href="/mcp"
-								>
-									/mcp
-								</a>{' '}
-								<span className="text-muted-foreground">
-									{t('protocol.api.mcp')}
-								</span>
-							</li>
-							<li>
-								<a
-									className="text-sky-300 hover:text-cyan-200 hover:underline"
-									href="/api/overview"
-								>
-									/api/overview
-								</a>{' '}
-								<span className="text-muted-foreground">
-									{t('protocol.api.overview')}
-								</span>
-							</li>
-							<li>
-								<a
-									className="text-sky-300 hover:text-cyan-200 hover:underline"
-									href="/api/events"
-								>
-									/api/events
-								</a>{' '}
-								<span className="text-muted-foreground">
-									{t('protocol.api.events')}
-								</span>
-							</li>
-							<li>
-								<a
-									className="text-sky-300 hover:text-cyan-200 hover:underline"
-									href="/api/health"
-								>
-									/api/health
-								</a>{' '}
-								<span className="text-muted-foreground">
-									{t('protocol.api.health')}
-								</span>
-							</li>
-							<li>
-								<a
-									className="text-sky-300 hover:text-cyan-200 hover:underline"
-									href="/api/debug"
-								>
-									/api/debug
-								</a>{' '}
-								<span className="text-muted-foreground">
-									{t('protocol.api.debug')}
-								</span>
-							</li>
+							{API_LINKS.map(([path, label]) => (
+								<li key={path}>
+									<a
+										className="text-sky-300 hover:text-cyan-200 hover:underline"
+										href={path}
+									>
+										{path}
+									</a>{' '}
+									<span className="text-muted-foreground">{t(label)}</span>
+								</li>
+							))}
 						</ul>
 					</div>
 				</CardContent>

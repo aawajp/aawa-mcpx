@@ -16,6 +16,7 @@ import {
 	trafficPageType,
 } from '@/shared/ui_api';
 import { getJson } from '@/ui/api/client';
+import { Button } from '@/ui/base_components/button';
 import {
 	Card,
 	CardContent,
@@ -75,9 +76,7 @@ const getRelatedMethod = (record: TrafficRecord): string => {
 
 const TrafficTable = ({ records }: { records: TrafficRecord[] }) => {
 	if (!records.length) {
-		return (
-			<p className="text-sm text-muted-foreground">{t('debug.table.empty')}</p>
-		);
+		return <p className="text-muted-foreground">{t('debug.table.empty')}</p>;
 	}
 
 	return (
@@ -85,7 +84,7 @@ const TrafficTable = ({ records }: { records: TrafficRecord[] }) => {
 			{records.map((record) => (
 				<div key={record.id} className="rounded-lg border p-4 space-y-3">
 					<div className="flex flex-wrap items-center justify-between gap-3">
-						<div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm min-w-0">
+						<div className="flex flex-wrap items-center gap-x-4 gap-y-2 min-w-0">
 							<div className="text-muted-foreground">
 								{new Date(record.createdAt).toLocaleString()}
 							</div>
@@ -93,12 +92,12 @@ const TrafficTable = ({ records }: { records: TrafficRecord[] }) => {
 								{record.peer}
 							</div>
 							<span
-								className={`rounded border px-2 py-1 text-xs ${EVENT_TYPE_BADGES[record.eventType].className}`}
+								className={`rounded border px-2 py-0.5 leading-tight ${EVENT_TYPE_BADGES[record.eventType].className}`}
 							>
 								{t(EVENT_TYPE_BADGES[record.eventType].label)}
 							</span>
 						</div>
-						<div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+						<div className="flex flex-wrap items-center gap-2 text-muted-foreground">
 							<span>{record.protocolVersion ?? '—'}</span>
 							<span>
 								{t('traffic.header.related')}: {getRelatedMethod(record)}
@@ -111,13 +110,13 @@ const TrafficTable = ({ records }: { records: TrafficRecord[] }) => {
 
 					<div className="grid gap-3 2xl:grid-cols-2">
 						<div className="space-y-2">
-							<div className="text-xs font-medium text-muted-foreground">
+							<div className="font-medium text-muted-foreground">
 								{t('traffic.header.request')}
 							</div>
 							<JsonPreview data={record.request} />
 						</div>
 						<div className="space-y-2">
-							<div className="text-xs font-medium text-muted-foreground">
+							<div className="font-medium text-muted-foreground">
 								{t('traffic.header.response')}
 							</div>
 							<JsonPreview data={record.response} />
@@ -142,37 +141,32 @@ const PaginationControls = ({
 }) => {
 	const totalPages = Math.max(1, Math.ceil(total / limit));
 	return (
-		<div className="flex items-center gap-2 text-xs text-muted-foreground">
-			<button
+		<div className="flex items-center gap-2 text-muted-foreground">
+			<Button
 				type="button"
 				onClick={() => onPageChange(Math.max(0, page - 1))}
-				className="rounded border px-2 py-1"
 				disabled={page === 0}
 			>
 				{t('pagination.prev')}
-			</button>
+			</Button>
 			<span>
 				{t('pagination.page')} {page + 1} / {totalPages}
 			</span>
-			<button
+			<Button
 				type="button"
 				onClick={() => onPageChange(Math.min(totalPages - 1, page + 1))}
-				className="rounded border px-2 py-1"
 				disabled={page + 1 >= totalPages}
 			>
 				{t('pagination.next')}
-			</button>
+			</Button>
 		</div>
 	);
 };
 
-const filterButtonClass = (active: boolean): string => {
-	return `inline-flex h-8 items-center rounded-md border px-3 py-1 text-xs font-medium transition ${
-		active
-			? 'bg-muted border-foreground text-foreground'
-			: 'text-muted-foreground hover:bg-muted'
-	}`;
-};
+const filterButtonClass = (active: boolean): string =>
+	active
+		? 'bg-muted border-foreground text-foreground'
+		: 'text-muted-foreground';
 
 const TrafficErrorFilter = ({
 	errorsOnly,
@@ -183,14 +177,14 @@ const TrafficErrorFilter = ({
 }) => (
 	<div className="flex items-center gap-2">
 		{[false, true].map((value) => (
-			<button
+			<Button
 				key={String(value)}
 				type="button"
 				onClick={() => onChange(value)}
 				className={filterButtonClass(errorsOnly === value)}
 			>
 				{t(value ? 'debug.errorsOnly' : 'debug.showAll')}
-			</button>
+			</Button>
 		))}
 	</div>
 );
@@ -342,7 +336,7 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 	}, [activeTab, backendName]);
 
 	return (
-		<div className="app-shell container mx-auto max-w-[1600px] p-6 space-y-6">
+		<div className="app-shell container mx-auto max-w-[1600px] p-4 space-y-4">
 			<header className="space-y-2">
 				<div>
 					<h1 className="text-3xl font-bold">{t('debug.title')}</h1>
@@ -351,28 +345,20 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 			</header>
 
 			<div className="flex items-center gap-2">
-				<button
-					type="button"
-					onClick={() => onNavigate('main')}
-					className="inline-flex items-center rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted transition"
-				>
+				<Button type="button" onClick={() => onNavigate('main')}>
 					{t('debug.back')}
-				</button>
-				<button
-					type="button"
-					onClick={reloadActiveTab}
-					className="inline-flex items-center rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted transition"
-				>
+				</Button>
+				<Button type="button" onClick={reloadActiveTab}>
 					{t('debug.refresh')}
-				</button>
+				</Button>
 				{debugError ? (
-					<span className="text-xs text-rose-300">{debugError}</span>
+					<span className="text-rose-300">{debugError}</span>
 				) : null}
 			</div>
 
 			<div role="tablist" aria-label={t('debug.title')} className="flex gap-2">
 				{(['client', 'backend'] as const).map((tab) => (
-					<button
+					<Button
 						key={tab}
 						id={`${tabsId}-${tab}-tab`}
 						role="tab"
@@ -401,10 +387,10 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 						}}
 					>
 						{t(tab === 'client' ? 'debug.client.title' : 'debug.backend.title')}
-					</button>
+					</Button>
 				))}
 			</div>
-			<div className="space-y-6">
+			<div className="space-y-4">
 				<Card
 					id={`${tabsId}-client-panel`}
 					role="tabpanel"
@@ -453,7 +439,7 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 						<label className="flex items-center gap-3">
 							{t('debug.backend.title')}
 							<select
-								className="rounded border bg-background p-2"
+								className="rounded border bg-background px-2 py-0.5"
 								value={backendName}
 								onChange={(event) => setSelectedBackend(event.target.value)}
 							>
@@ -475,7 +461,7 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 										<h3 className="backend-name backend-name-strong text-lg break-all">
 											{entry.name}
 										</h3>
-										<p className="text-xs text-muted-foreground break-all">
+										<p className="text-muted-foreground break-all">
 											{t('debug.gatewayPrefix')} {entry.name}
 										</p>
 									</div>
@@ -493,9 +479,9 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 												}))
 											}
 											placeholder={t('debug.method.placeholder')}
-											className="h-8 min-w-56 flex-1 rounded border px-2 py-1 text-xs"
+											className="min-w-56 flex-1 rounded border px-2 py-0.5"
 										/>
-										<button
+										<Button
 											type="button"
 											onClick={() =>
 												void loadBackendPage(
@@ -505,10 +491,9 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 													entry.errorsOnly,
 												)
 											}
-											className="inline-flex h-8 items-center rounded-md border px-3 py-1 text-xs font-medium hover:bg-muted transition"
 										>
-											{t('backends.refresh')}
-										</button>
+											{t('debug.refresh')}
+										</Button>
 										<TrafficErrorFilter
 											errorsOnly={entry.errorsOnly}
 											onChange={(errorsOnly) => {

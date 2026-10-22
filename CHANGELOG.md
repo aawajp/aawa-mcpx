@@ -25,6 +25,8 @@ Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 #### Changed
 
 - Update React to 19.3.1 and ArkType to 2.2.8.
+- Give dashboard buttons one style and cards less padding, and drop the unused
+  dark theme.
 
 ### 2026-10-18
 

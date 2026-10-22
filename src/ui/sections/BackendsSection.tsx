@@ -7,6 +7,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from '@/ui/base_components/card';
+import { CHECKBOX_CLASS } from '@/ui/base_components/classes';
 import { BackendRefreshButton } from '@/ui/components/BackendRefreshButton';
 import { BackendToggleButton } from '@/ui/components/BackendToggleButton';
 import { EnabledToolCount } from '@/ui/components/EnabledToolCount';
@@ -70,7 +71,7 @@ const BackendsSection = ({
 	isToolPending,
 }: Props) => {
 	const renderToolToggle = (backend: McpUpstreamStatus, toolName: string) => (
-		<label className="inline-flex items-center gap-2 text-xs font-medium text-slate-200">
+		<label className="inline-flex items-center gap-2 font-medium text-slate-200">
 			<input
 				type="checkbox"
 				aria-label={`${t('tools.toggle')}: ${toolName}`}
@@ -83,7 +84,7 @@ const BackendsSection = ({
 						enabled: event.target.checked,
 					})
 				}
-				className="h-4 w-4 rounded border border-sky-400/50 bg-slate-950"
+				className={CHECKBOX_CLASS}
 			/>
 			{t('tools.toggle')}
 		</label>
@@ -91,20 +92,20 @@ const BackendsSection = ({
 
 	return (
 		<section className="space-y-4">
-			<h2 className="text-2xl font-semibold">{t('backends.sectionTitle')}</h2>
+			<h2 className="text-2xl font-semibold">{t('backends.title')}</h2>
 			{backends.map((backend) => (
 				<Card
 					key={backend.serverName}
 					id={backend.serverName}
-					className="scroll-mt-4 gap-3 py-4"
+					className="scroll-mt-4"
 				>
-					<CardHeader className="flex flex-col items-stretch gap-1 px-4">
+					<CardHeader className="flex flex-col items-stretch gap-1">
 						<div className="grid items-start gap-x-6 gap-y-2 sm:grid-cols-[minmax(0,1fr)_auto]">
 							<div className="min-w-0">
 								<CardTitle className="backend-name backend-name-strong text-2xl truncate">
 									{backend.serverName}
 								</CardTitle>
-								<div className="flex flex-wrap gap-x-4 break-all text-sm">
+								<div className="flex flex-wrap gap-x-4 break-all">
 									<Field label="type">{backend.type}</Field>
 									<Field label={backendEndpoint(backend).key}>
 										{backendEndpoint(backend).value}
@@ -114,7 +115,7 @@ const BackendsSection = ({
 									</Field>
 								</div>
 							</div>
-							<div className="flex items-center gap-2 text-sm">
+							<div className="flex items-center gap-2">
 								<EnabledToolCount backend={backend} withLabel />
 								<StatusBadge
 									connected={backend.connected}
@@ -139,24 +140,24 @@ const BackendsSection = ({
 							</div>
 						</div>
 						{backend.error ? (
-							<p className="text-sm text-rose-300">{backend.error}</p>
+							<p className="text-rose-300">{backend.error}</p>
 						) : null}
 						{backend.errorState === 'protocol' ? (
-							<p className="text-sm text-amber-300">
+							<p className="text-amber-300">
 								{t('status.protocolRetryStopped')}
 							</p>
 						) : null}
 						{backend.actionRequired ? (
-							<p className="text-xs font-semibold text-rose-200">
+							<p className="font-semibold text-rose-200">
 								{t('status.actionRequired')}
 							</p>
 						) : null}
 					</CardHeader>
-					<CardContent className="space-y-4 px-4 pt-0">
+					<CardContent className="space-y-4 pt-0">
 						{backend.implementation ||
 						backend.capabilities ||
 						backend.instructions ? (
-							<div className="grid items-start gap-2 text-sm sm:grid-cols-3">
+							<div className="grid items-start gap-2 sm:grid-cols-3">
 								{backend.implementation ? (
 									<details className="rounded border border-muted px-2 py-1">
 										<summary className="cursor-pointer font-medium">

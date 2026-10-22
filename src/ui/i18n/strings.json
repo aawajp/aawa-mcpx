@@ -26,7 +26,6 @@
 	"protocol.api.health": "Health status",
 	"protocol.api.debug": "Traffic viewer",
 	"tools.toggle": "Expose to clients",
-	"backends.sectionTitle": "Backends",
 	"implementation.fold": "Reported server info",
 	"capabilities.fold": "Reported capabilities",
 	"instructions.title": "Instructions",

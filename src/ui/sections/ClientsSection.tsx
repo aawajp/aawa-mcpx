@@ -12,7 +12,7 @@ const ClientsSection = ({ clients }: { clients: ClientActivity[] }) => (
 	<section className="space-y-4">
 		<h2 className="text-2xl font-semibold">{t('clients.title')}</h2>
 		{clients.length === 0 ? (
-			<p className="text-sm text-muted-foreground">{t('clients.none')}</p>
+			<p className="text-muted-foreground">{t('clients.none')}</p>
 		) : (
 			<div className="grid gap-3">
 				{[...clients]
@@ -29,21 +29,21 @@ const ClientsSection = ({ clients }: { clients: ClientActivity[] }) => (
 									<CardDescription>{entry.client.title}</CardDescription>
 								) : null}
 							</CardHeader>
-							<CardContent className="grid gap-3 pt-0 text-sm sm:grid-cols-3">
+							<CardContent className="grid gap-3 pt-0 sm:grid-cols-3">
 								<div>
-									<div className="text-xs text-muted-foreground">
+									<div className="text-muted-foreground">
 										{t('clients.protocol')}
 									</div>
 									{entry.protocolVersion}
 								</div>
 								<div>
-									<div className="text-xs text-muted-foreground">
+									<div className="text-muted-foreground">
 										{t('clients.firstSeen')}
 									</div>
 									{new Date(entry.firstSeen).toLocaleString()}
 								</div>
 								<div>
-									<div className="text-xs text-muted-foreground">
+									<div className="text-muted-foreground">
 										{t('clients.lastSeen')}
 									</div>
 									{new Date(entry.lastSeen).toLocaleString()}

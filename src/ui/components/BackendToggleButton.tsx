@@ -1,4 +1,5 @@
 import type { McpUpstreamStatus } from '@/shared/ui_api';
+import { Button } from '@/ui/base_components/button';
 import { t } from '@/ui/i18n';
 
 type Props = {
@@ -8,7 +9,7 @@ type Props = {
 };
 
 const BackendToggleButton = ({ backend, isPending, onToggle }: Props) => (
-	<button
+	<Button
 		type="button"
 		disabled={isPending}
 		onClick={() =>
@@ -18,14 +19,14 @@ const BackendToggleButton = ({ backend, isPending, onToggle }: Props) => (
 			})
 		}
 		aria-pressed={backend.enabled}
-		className="inline-flex w-20 items-center justify-center rounded-md border px-1 py-0.5 leading-tight font-medium transition hover:bg-muted disabled:cursor-wait disabled:opacity-50"
+		className="w-20 px-1 disabled:cursor-wait"
 	>
 		{isPending
 			? t('backends.updating')
 			: backend.enabled
 				? t('backends.disable')
 				: t('backends.enable')}
-	</button>
+	</Button>
 );
 
 export { BackendToggleButton };

@@ -14,7 +14,7 @@ type Props = {
 
 const ItemList = ({ items, emptyLabel, renderAction }: Props) => {
 	if (!items.length) {
-		return <p className="text-sm text-muted-foreground">{emptyLabel}</p>;
+		return <p className="text-muted-foreground">{emptyLabel}</p>;
 	}
 	return (
 		<ul className="space-y-2">
@@ -25,7 +25,7 @@ const ItemList = ({ items, emptyLabel, renderAction }: Props) => {
 						{renderAction ? renderAction(item.key) : null}
 					</div>
 					{item.description ? (
-						<p className="text-sm text-muted-foreground">{item.description}</p>
+						<p className="text-muted-foreground">{item.description}</p>
 					) : null}
 				</li>
 			))}

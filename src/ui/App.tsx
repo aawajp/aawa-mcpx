@@ -7,6 +7,7 @@ import {
 	UI_PAGE_PATHS,
 } from '@/shared/ui_api';
 import { postJson } from '@/ui/api/client';
+import { Button } from '@/ui/base_components/button';
 import { t } from '@/ui/i18n';
 import { BackendsSection } from '@/ui/sections/BackendsSection';
 import { BackendTesterSection } from '@/ui/sections/BackendTesterSection';
@@ -131,15 +132,6 @@ export default function App() {
 		} catch {}
 	}, []);
 
-	const tabClassName = (tab: MainTab): string => {
-		const base =
-			'inline-flex items-center rounded-md border px-3 py-2 text-sm font-medium transition';
-		if (mainTab === tab) {
-			return `${base} border-sky-400/60 bg-sky-500/20 text-sky-100 shadow-sm`;
-		}
-		return `${base} hover:bg-muted`;
-	};
-
 	return (
 		<>
 			{route === 'debug' ? (
@@ -161,23 +153,23 @@ export default function App() {
 					/>
 					<div className="flex items-center gap-2">
 						{MAIN_TABS.map((tab) => (
-							<button
+							<Button
 								key={tab}
 								type="button"
 								onClick={() => selectMainTab(tab)}
-								className={tabClassName(tab)}
+								className={
+									mainTab === tab
+										? 'border-sky-400/60 bg-sky-500/20 text-sky-100 shadow-sm'
+										: ''
+								}
 								aria-pressed={mainTab === tab}
 							>
 								{t(`main.tab.${tab}`)}
-							</button>
+							</Button>
 						))}
-						<button
-							type="button"
-							onClick={() => navigate('debug')}
-							className="inline-flex items-center rounded-md border px-3 py-2 text-sm font-medium transition hover:bg-muted"
-						>
+						<Button type="button" onClick={() => navigate('debug')}>
 							{t('debug.title')}
-						</button>
+						</Button>
 					</div>
 
 					{mainTab === 'tester' ? (
@@ -207,7 +199,7 @@ export default function App() {
 					) : null}
 				</div>
 			)}
-			<footer className="container mx-auto max-w-6xl px-6 pb-6 pt-2 text-center text-sm text-muted-foreground">
+			<footer className="container mx-auto max-w-6xl px-6 pb-6 pt-2 text-center text-muted-foreground">
 				<p>
 					© {new Date().getFullYear()}{' '}
 					<a href="https://aawa.jp">Aawa Technologies</a> / Mikael Nakajima
