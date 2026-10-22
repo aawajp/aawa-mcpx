@@ -22,6 +22,19 @@ Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 ### 2026-10-22
 
+#### Added
+
+- **Breaking:** Add a dashboard login, with OpenID Connect (`ENABLE_OIDC`) or
+  a superadmin password (`ENABLE_SUPERADMIN`, on by default), and require
+  credentials on `/mcp` whenever a login method is on: machines' API keys or
+  OAuth access tokens.
+- Add the Auth tab: Local and OIDC users, roles synced from tokens and assigned
+  in the dashboard, API keys for machines, and backend and tool permissions
+  per user and role.
+- Make the Clients and Auth tables sortable by column.
+- Add `MCP_MAX_SESSIONS_PER_USER`, which limits a user's 2025
+  MCP sessions of all clients.
+
 #### Changed
 
 - Update React to 19.3.1 and ArkType to 2.2.8.
@@ -42,6 +55,11 @@ Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 - Store traffic requests and responses over 256 KiB as their size and start,
   and clients, methods and protocol versions over 256 characters as their
   start, and keep at most 512 MiB of traffic.
+- **Breaking:** Make the Tester send any MCP request through `/mcp` as the
+  logged-in admin (`/api/tester/mcp`), and remove `/api/tools/call`.
+- Show one Clients row per MCP client, user and protocol.
+- **Breaking:** Answer `/api/health` with only `{"status":"ok"}`; backend
+  statuses stay on `/api/overview`.
 
 #### Removed
 

@@ -1,6 +1,5 @@
 import type { TrafficStore } from '@/server/db/traffic';
 import { createUiRoutes } from '@/server/gateway/ui_routes';
-import { BackendRpcError } from '@/server/mcp_upstreams/protocol_client';
 import type { McpUpstreamManager } from '@/server/mcp_upstreams/types';
 
 import { expect, test } from 'bun:test';
@@ -134,23 +133,12 @@ test('dashboard API errors are JSON with the reason and a client status', async 
 	const routes = createUiRoutes({
 		buildOverview: () => ({}),
 		mcpUpstreamManager: {
-			...catalogOf('known', ['echo', 'disabled']),
+			...catalogOf('known', ['echo']),
 			async refreshCatalogs(): Promise<void> {
 				throw new Error('Catalog fetch failed');
 			},
 			async toggleTool(): Promise<string[]> {
 				throw new Error('Config write failed');
-			},
-			getEnabledTool(params: { toolName: string }) {
-				if (params.toolName === 'disabled')
-					throw new BackendRpcError(
-						'Tool "disabled" is unknown or disabled',
-						-32602,
-					);
-				return params;
-			},
-			async callTool() {
-				throw new BackendRpcError('Backend exploded', -32603);
 			},
 		} as unknown as McpUpstreamManager,
 		shutdownSignal: new AbortController().signal,
@@ -160,8 +148,7 @@ test('dashboard API errors are JSON with the reason and a client status', async 
 		path:
 			| '/api/backends/refresh'
 			| '/api/backends/toggle'
-			| '/api/tools/toggle'
-			| '/api/tools/call',
+			| '/api/tools/toggle',
 		body: unknown,
 	) => {
 		const response = await routes[path].POST(
@@ -206,39 +193,6 @@ test('dashboard API errors are JSON with the reason and a client status', async 
 		},
 	]);
 	expect(
-		await post('/api/tools/call', {
-			serverName: 'missing',
-			toolName: 'echo',
-		}),
-	).toEqual([
-		404,
-		{
-			error: 'Unknown MCP upstream "missing"',
-		},
-	]);
-	expect(
-		await post('/api/tools/call', {
-			serverName: 'known',
-			toolName: 'disabled',
-		}),
-	).toEqual([
-		400,
-		{
-			error: 'Tool "disabled" is unknown or disabled',
-		},
-	]);
-	expect(
-		await post('/api/tools/call', {
-			serverName: 'known',
-			toolName: 'echo',
-		}),
-	).toEqual([
-		500,
-		{
-			error: 'Backend exploded',
-		},
-	]);
-	expect(
 		await post('/api/tools/toggle', {
 			serverName: 'known',
 			toolName: 'echo',
@@ -260,13 +214,6 @@ test('dashboard API errors are JSON with the reason and a client status', async 
 			error: 'Catalog fetch failed',
 		},
 	]);
-	const [status, body] = await post('/api/tools/call', {
-		serverName: 'known',
-	});
-	expect(status).toBe(400);
-	expect(body.error).toStartWith(
-		'Invalid request body: toolName must be a string',
-	);
 });
 
 test('shutdown closes active UI event streams', async () => {
@@ -294,6 +241,49 @@ test('shutdown closes active UI event streams', async () => {
 	expect(await reader.read()).toEqual({
 		done: true,
 		value: undefined,
+	});
+});
+
+test('a UI event stream ends once its session is no longer valid', async () => {
+	let loggedIn = true;
+	const checked: Request[] = [];
+	const routes = createUiRoutes({
+		buildOverview: () => ({
+			status: 'ok',
+		}),
+		mcpUpstreamManager: {} as unknown as McpUpstreamManager,
+		shutdownSignal: new AbortController().signal,
+		trafficStore: {} as unknown as TrafficStore,
+		isLoggedIn: (request) => {
+			checked.push(request);
+			return loggedIn;
+		},
+	});
+	const request = new Request('http://localhost/api/events');
+	const reader = (await routes['/api/events'].GET(request)).body?.getReader();
+	if (!reader) throw new Error('Expected UI event stream response body');
+	expect((await reader.read()).done).toBe(false);
+	loggedIn = false;
+	expect(await reader.read()).toEqual({
+		done: true,
+		value: undefined,
+	});
+	expect(checked).toEqual([request]);
+});
+
+test('the health check answers only that the gateway serves', async () => {
+	const routes = createUiRoutes({
+		buildOverview: () => ({}),
+		mcpUpstreamManager: catalogOf('backend', [
+			'secret_tool',
+		]) as unknown as McpUpstreamManager,
+		shutdownSignal: new AbortController().signal,
+		trafficStore: {} as unknown as TrafficStore,
+	});
+	const response = await routes['/api/health'].GET();
+	expect(response.status).toBe(200);
+	expect(await response.json()).toEqual({
+		status: 'ok',
 	});
 });
 

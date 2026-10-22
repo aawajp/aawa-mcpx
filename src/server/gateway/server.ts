@@ -1,3 +1,7 @@
+import { createAccessRoutes } from '@/server/auth/access_routes';
+import type { McpAuth } from '@/server/auth/mcp_auth';
+import type { UiAuth } from '@/server/auth/ui_auth';
+import type { AccessStore } from '@/server/db/access';
 import type { TrafficStore } from '@/server/db/traffic';
 import { createHostCheck, guardRoutes } from '@/server/gateway/allowed_hosts';
 import { createClientActivityTracker } from '@/server/gateway/client_activity';
@@ -8,6 +12,7 @@ import {
 } from '@/server/gateway/mcp_http_route';
 import { createMcpRequestRouter } from '@/server/gateway/mcp_request_router';
 import { createMcpSessionManager } from '@/server/gateway/mcp_session';
+import { createTesterRoutes } from '@/server/gateway/tester_routes';
 import {
 	createApiForbiddenResponse,
 	createUiRoutes,
@@ -29,7 +34,7 @@ import {
 	CURRENT_PROTOCOL_VERSION,
 	SUPPORTED_PROTOCOL_VERSIONS,
 } from '@/shared/mcp_protocol';
-import { UI_PAGE_PATHS } from '@/shared/ui_api';
+import { DASHBOARD_PATHS, UI_PAGE_PATHS, userLabel } from '@/shared/ui_api';
 import indexHtml from '@/ui/index.html';
 
 const CLIENT_ACTIVITY_HISTORY_LIMIT = 200;
@@ -39,12 +44,22 @@ type StartServerParams = {
 	allowedHosts: readonly string[];
 	development: boolean;
 	maxSessionsPerClient: number;
+	maxSessionsPerUser: number;
 	mcpUpstreamManager: McpUpstreamManager;
 	trafficStore: TrafficStore;
+	// Without these (ENABLE_OIDC=false and ENABLE_SUPERADMIN=false) the
+	// dashboard needs no login and /mcp no credentials.
+	auth?: {
+		ui: UiAuth;
+		mcp: McpAuth;
+		access: AccessStore;
+	};
 	initialization?: Promise<void>;
 };
 
 type ServerInstance = {
+	// The listening port, chosen by the system for port 0.
+	port: number;
 	stop: () => Promise<void>;
 };
 
@@ -56,9 +71,11 @@ const startServer = async (
 		development,
 		initialization = Promise.resolve(),
 		maxSessionsPerClient,
+		maxSessionsPerUser,
 		mcpUpstreamManager,
 		port,
 		trafficStore,
+		auth,
 	} = params;
 	const handlers = createHandlers({
 		mcpUpstreamManager,
@@ -69,6 +86,7 @@ const startServer = async (
 	const mcpSessions = createMcpSessionManager({
 		onClientActivity: clientActivity.observe,
 		maxSessionsPerClient,
+		maxSessionsPerUser,
 	});
 
 	// All data is cached - no network calls, pure synchronous
@@ -99,7 +117,13 @@ const startServer = async (
 						rawResources.get(status.serverName) ?? emptyResourcesResult(),
 				};
 			});
-		const clients = clientActivity.list();
+		const clients = clientActivity.list(
+			auth
+				? new Map(
+						auth.access.listUsers().map((user) => [user.id, userLabel(user)]),
+					)
+				: undefined,
+		);
 
 		return {
 			protocolVersion: CURRENT_PROTOCOL_VERSION,
@@ -116,28 +140,53 @@ const startServer = async (
 	});
 	const uiShutdownController = new AbortController();
 	const isAllowedHost = createHostCheck(allowedHosts);
+	// Probes call /api/health without a login.
+	const { [DASHBOARD_PATHS.health]: healthRoute, ...dashboardRoutes } =
+		createUiRoutes({
+			mcpUpstreamManager,
+			buildOverview,
+			shutdownSignal: uiShutdownController.signal,
+			trafficStore,
+			isLoggedIn: auth?.ui.isLoggedIn,
+		});
+	const mcpRoute = createMcpHttpRoute({
+		refreshCatalogs: mcpUpstreamManager.refreshStaleCatalogs,
+		onClientActivity: clientActivity.observe,
+		initialization,
+		mcpSessions,
+		routeRequest,
+		trafficStore,
+		authenticate: auth?.mcp.authenticate,
+	});
+	const appRoutes = {
+		...dashboardRoutes,
+		...createTesterRoutes({
+			mcpRoute,
+			auth,
+		}),
+	};
 	const endpoints = withTrailingSlashes({
 		...guardRoutes(
 			{
-				'/mcp': createMcpHttpRoute({
-					refreshCatalogs: mcpUpstreamManager.refreshStaleCatalogs,
-					onClientActivity: clientActivity.observe,
-					initialization,
-					mcpSessions,
-					routeRequest,
-					trafficStore,
-				}),
+				'/mcp': mcpRoute,
 			},
 			isAllowedHost,
 			createMcpForbiddenResponse,
 		),
 		...guardRoutes(
-			createUiRoutes({
-				mcpUpstreamManager,
-				buildOverview,
-				shutdownSignal: uiShutdownController.signal,
-				trafficStore,
-			}),
+			{
+				[DASHBOARD_PATHS.health]: healthRoute,
+				...(auth
+					? {
+							...auth.mcp.routes,
+							...auth.ui.routes,
+							...auth.ui.protect({
+								...appRoutes,
+								...createAccessRoutes(auth.access, auth.ui),
+							}),
+						}
+					: appRoutes),
+			},
 			isAllowedHost,
 			createApiForbiddenResponse,
 		),
@@ -163,6 +212,7 @@ const startServer = async (
 			...withTrailingSlashes({
 				[UI_PAGE_PATHS.main]: indexHtml,
 				[UI_PAGE_PATHS.debug]: indexHtml,
+				[UI_PAGE_PATHS.login]: indexHtml,
 			}),
 			...endpoints,
 			...guardRoutes(
@@ -193,6 +243,7 @@ const startServer = async (
 	};
 
 	return {
+		port: server.port ?? port,
 		stop,
 	};
 };

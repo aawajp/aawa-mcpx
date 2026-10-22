@@ -1,4 +1,5 @@
 import {
+	type ReactNode,
 	useCallback,
 	useEffect,
 	useEffectEvent,
@@ -10,6 +11,7 @@ import {
 import { errorMessage } from '@/shared/common';
 import {
 	backendTrafficResponseType,
+	DASHBOARD_PATHS,
 	overviewResponseType,
 	type TrafficPage,
 	type TrafficRecord,
@@ -191,9 +193,10 @@ const TrafficErrorFilter = ({
 
 type DebugPageProps = {
 	onNavigate: (route: 'main') => void;
+	session: ReactNode;
 };
 
-const DebugPage = ({ onNavigate }: DebugPageProps) => {
+const DebugPage = ({ onNavigate, session }: DebugPageProps) => {
 	const tabsId = useId();
 	const [activeTab, setActiveTab] = useState<'client' | 'backend'>('client');
 	const [selectedBackend, setSelectedBackend] = useState('');
@@ -210,7 +213,9 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 	const loadDebugSummary = useCallback(async () => {
 		try {
 			setDebugError(null);
-			const data = overviewResponseType.assert(await getJson('/api/overview'));
+			const data = overviewResponseType.assert(
+				await getJson(DASHBOARD_PATHS.overview),
+			);
 			const nextEntries: Record<string, BackendEntry> = {};
 			data.backends.forEach((entry) => {
 				nextEntries[entry.serverName] = {
@@ -236,7 +241,7 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 			try {
 				const data = trafficPageType.assert(
 					await getJson(
-						`/api/debug/client?${trafficQuery({
+						`${DASHBOARD_PATHS.clientTraffic}?${trafficQuery({
 							page,
 							errorsOnly,
 						})}`,
@@ -266,7 +271,7 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 			try {
 				const data = backendTrafficResponseType.assert(
 					await getJson(
-						`/api/debug/backend?${trafficQuery({
+						`${DASHBOARD_PATHS.backendTraffic}?${trafficQuery({
 							page,
 							errorsOnly: errorsOnly ?? false,
 							backend,
@@ -337,11 +342,12 @@ const DebugPage = ({ onNavigate }: DebugPageProps) => {
 
 	return (
 		<div className="app-shell container mx-auto max-w-[1600px] p-4 space-y-4">
-			<header className="space-y-2">
-				<div>
+			<header className="flex items-start justify-between gap-3">
+				<div className="space-y-2">
 					<h1 className="text-3xl font-bold">{t('debug.title')}</h1>
 					<p className="text-muted-foreground">{t('debug.client.subtitle')}</p>
 				</div>
+				{session}
 			</header>
 
 			<div className="flex items-center gap-2">

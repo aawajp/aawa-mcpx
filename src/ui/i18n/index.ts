@@ -5,4 +5,5 @@ type StringKey = keyof Strings;
 
 const t = (key: StringKey): string => stringsJson[key];
 
+export type { StringKey };
 export { t };

@@ -1,5 +1,6 @@
 import { type } from 'arktype';
 
+import type { McpPrincipal } from '@/server/auth/mcp_auth';
 import type { TrafficStore } from '@/server/db/traffic';
 import { HOST_NOT_ALLOWED } from '@/server/gateway/allowed_hosts';
 import {
@@ -41,6 +42,7 @@ import {
 
 type ClientTrafficEntry = Parameters<TrafficStore['logClientTraffic']>[0] & {
 	sessionId?: string;
+	user?: string;
 };
 
 type McpSessionManager = ReturnType<typeof createMcpSessionManager>;
@@ -76,8 +78,11 @@ type CreateMcpHttpRouteParams = {
 	onClientActivity?: (
 		client: ClientInfo | undefined,
 		protocolVersion: string,
+		userId?: string,
 	) => void;
 	refreshCatalogs?: (request: CatalogRequest) => Promise<void>;
+	// Identifies the user, or answers the request when credentials fail.
+	authenticate?: (request: Request) => Promise<McpPrincipal | Response>;
 };
 
 const createJsonResponse = (
@@ -245,6 +250,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 		version?: string,
 		mirrors?: Record<string, string>,
 		disconnect?: AbortSignal,
+		principal?: McpPrincipal,
 	): Promise<RouteResult> => {
 		const controller = new AbortController();
 		const signal = usesRequestMetadata(version)
@@ -281,6 +287,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 					sessionId,
 					protocolVersion: version,
 					mirroredHeaders: mirrors,
+					principal,
 					signal: message.method === 'initialize' ? undefined : signal,
 				}),
 				signal,
@@ -320,15 +327,18 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 		// Later 2025-11-25 / 2025-06-18 messages use the initialized session.
 		return mcpSessions.getProtocolVersion(entry.sessionId);
 	};
-	const logClientTraffic = (entry: ClientTrafficEntry): void => {
+	const logTraffic = (entry: ClientTrafficEntry): void => {
 		const requestParams = recordOf(recordOf(entry.request)?.params);
 		const metadata = recordOf(requestParams?._meta);
 		const client = usesRequestMetadata(entry.protocolVersion)
 			? parseClientInfo(metadata?.[CLIENT_INFO_META])
 			: mcpSessions.getClient(entry.sessionId);
+		const clientLabel = client && formatClientInfo(client);
 		// Store the version now so subsequent session changes cannot rewrite history.
 		trafficStore.logClientTraffic({
-			client: client && formatClientInfo(client),
+			client: entry.user
+				? `${entry.user} / ${clientLabel ?? 'unknown'}`
+				: clientLabel,
 			method: entry.method,
 			request: entry.request,
 			response: entry.response,
@@ -336,9 +346,69 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 		});
 	};
 
+	// The request's user, or the response refusing it; another user's session
+	// counts as unknown.
+	const authenticateRequest = async (
+		request: Request,
+		sessionId: string | undefined,
+	): Promise<McpPrincipal | Response | undefined> => {
+		if (!params.authenticate) return undefined;
+		const principal = await params.authenticate(request);
+		if (principal instanceof Response) return principal;
+		if (sessionId && !mcpSessions.isOwnedBy(sessionId, principal.userId))
+			return createJsonResponse(
+				rpcError(
+					undefined,
+					RPC_ERROR.InvalidRequest,
+					'Unknown MCP session. Please re-initialize by calling initialize.',
+				),
+				undefined,
+				404,
+			);
+		return principal;
+	};
+
+	// A refused request still shows its client: from MCP 2026-07-28 request
+	// metadata, an initialize request, or the session it names.
+	const observeRefusedClient = async (
+		request: Request,
+		sessionId: string | undefined,
+	): Promise<void> => {
+		const body = recordOf(await request.json().catch(() => undefined));
+		const requestParams = recordOf(body?.params);
+		const metadata = requestParams?._meta;
+		if (requestMetadataType.allows(metadata)) {
+			params.onClientActivity?.(
+				metadata[CLIENT_INFO_META],
+				metadata[PROTOCOL_VERSION_META],
+			);
+			return;
+		}
+		const client =
+			body?.method === 'initialize'
+				? parseClientInfo(requestParams?.clientInfo)
+				: mcpSessions.getClient(sessionId);
+		const version =
+			body?.method === 'initialize'
+				? requestParams?.protocolVersion
+				: mcpSessions.getProtocolVersion(sessionId);
+		if (client && typeof version === 'string')
+			params.onClientActivity?.(client, version);
+	};
+
 	return {
 		async POST(request: Request) {
 			const sessionId = parseSessionId(request);
+			const principal = await authenticateRequest(request, sessionId);
+			if (principal instanceof Response) {
+				await observeRefusedClient(request, sessionId);
+				return principal;
+			}
+			const logClientTraffic = (entry: ClientTrafficEntry): void =>
+				logTraffic({
+					...entry,
+					user: principal?.userId,
+				});
 			if (
 				!acceptsContentType(request, 'application/json') ||
 				!acceptsContentType(request, 'text/event-stream')
@@ -492,7 +562,11 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 				}
 				// Metadata is already validated; activity tracking needs no second
 				// parse/validation of client identity and grants it no capabilities.
-				params.onClientActivity?.(metadata[CLIENT_INFO_META], version);
+				params.onClientActivity?.(
+					metadata[CLIENT_INFO_META],
+					version,
+					principal?.userId,
+				);
 				try {
 					const result = await routeCancellableRequest(
 						message,
@@ -505,6 +579,7 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 							),
 						),
 						request.signal,
+						principal,
 					);
 					if (!result.payload) return createCancelledResponse();
 					logClientTraffic({
@@ -656,6 +731,9 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 					jsonRpcRequest,
 					sessionId,
 					mcpSessions.getProtocolVersion(sessionId),
+					undefined,
+					undefined,
+					principal,
 				);
 				if (!routeResult.payload) return createCancelledResponse();
 				const responseSessionId = routeResult.sessionId ?? sessionId;
@@ -722,6 +800,8 @@ const createMcpHttpRoute = (params: CreateMcpHttpRouteParams) => {
 					},
 				});
 			const sessionId = parseSessionId(request);
+			const principal = await authenticateRequest(request, sessionId);
+			if (principal instanceof Response) return principal;
 			const closeResult = mcpSessions.close(sessionId);
 			if (closeResult.status === 202) {
 				return new Response(null, {

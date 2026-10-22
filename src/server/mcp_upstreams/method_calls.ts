@@ -103,8 +103,8 @@ const createMcpUpstreamOperations = (
 		const { serverName, tool, validateInput, headerParameters } =
 			callParams.tool;
 		const { server, client } = connectedBackend(serverName, signal);
-		// The catalog compiled the schema once. Both dashboard and MCP calls
-		// validate their arguments here exactly once, before any backend work.
+		// The catalog compiled the schema once. Calls validate their arguments
+		// here exactly once, before any backend work.
 		const inputIssue = validateInput(args);
 		if (inputIssue) {
 			if (inputIssue.reason !== 'schema_mismatch')

@@ -1,6 +1,10 @@
 import { logger } from '@/server/logger';
 
-type Handler = (request: Request) => Response | Promise<Response>;
+// Bun passes the server too, for the client's address.
+type Handler = (
+	request: Request,
+	server: Bun.Server<undefined>,
+) => Response | Promise<Response>;
 type Route = Handler | Record<string, Handler>;
 
 const HOST_NOT_ALLOWED = 'Host or Origin is not allowed.';
@@ -39,8 +43,8 @@ const guardRoutes = <T extends Record<string, Route>>(
 ): T => {
 	const guard =
 		(handler: Handler): Handler =>
-		(request) =>
-			isAllowed(request) ? handler(request) : forbidden();
+		(request, server) =>
+			isAllowed(request) ? handler(request, server) : forbidden();
 	return Object.fromEntries(
 		Object.entries(routes).map(([path, route]) => [
 			path,

@@ -5,11 +5,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import { mcpConfigType } from '@/server/config/schema';
-import type { TrafficStore } from '@/server/db/traffic';
 import { createHandlers } from '@/server/gateway/mcp_handlers';
 import { createMcpRequestRouter } from '@/server/gateway/mcp_request_router';
 import { createMcpSessionManager } from '@/server/gateway/mcp_session';
-import { createUiRoutes } from '@/server/gateway/ui_routes';
 import { logger } from '@/server/logger';
 import { createMcpUpstreamBackend } from '@/server/mcp_upstreams/connections';
 import { createInputSchemaCompiler } from '@/server/mcp_upstreams/input_schema';
@@ -218,6 +216,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 				expect(compilations).toBeGreaterThan(0);
 				const sessions = createMcpSessionManager({
 					maxSessionsPerClient: 10,
+					maxSessionsPerUser: 100,
 				});
 				const route = createMcpRequestRouter({
 					handlers: createHandlers({
@@ -341,32 +340,6 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 						});
 					expect(invoke.mock.calls).toHaveLength(sent);
 				}
-				const ui = createUiRoutes({
-					mcpUpstreamManager: manager,
-					buildOverview: () => ({}),
-					shutdownSignal: new AbortController().signal,
-					trafficStore: {} as unknown as TrafficStore,
-				});
-				const uiCall = (args: unknown) =>
-					ui['/api/tools/call'].POST(
-						new Request('http://localhost/api/tools/call', {
-							method: 'POST',
-							body: JSON.stringify({
-								serverName: 'fixture',
-								toolName: 'echo',
-								arguments: args,
-							}),
-						}),
-					);
-				const sent = invoke.mock.calls.length;
-				expect((await uiCall([])).status).toBe(400);
-				expect((await (await uiCall({})).json()).result).toMatchObject({
-					isError: true,
-				});
-				expect(invoke.mock.calls).toHaveLength(sent);
-				expect((await (await uiCall(valid)).json()).result).not.toHaveProperty(
-					'isError',
-				);
 				expect(compile.mock.calls).toHaveLength(compilations);
 				// Refresh changes constraints and repairs an unusable tool. Same $id
 				// is legal: new catalog objects get independent compiled validators.
@@ -396,18 +369,22 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 						.filter(({ serverName }) => serverName === 'fixture')
 						.map(({ tool }) => tool.name),
 				).toEqual(['echo', 'bad0']);
-				expect((await (await uiCall(valid)).json()).result).toMatchObject({
+				const callEcho = (args: Record<string, unknown>) =>
+					manager.callTool({
+						tool: manager.getEnabledTool({
+							serverName: 'fixture',
+							toolName: 'echo',
+						}),
+						args,
+					});
+				expect(await callEcho(valid)).toMatchObject({
 					isError: true,
 				});
 				expect(
-					(
-						await (
-							await uiCall({
-								...valid,
-								count: 10,
-							})
-						).json()
-					).result,
+					await callEcho({
+						...valid,
+						count: 10,
+					}),
 				).not.toHaveProperty('isError');
 				expect(
 					await manager.callTool({

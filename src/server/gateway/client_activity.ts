@@ -1,24 +1,34 @@
 import type { ClientInfo } from '@/shared/client_info';
 import type { ClientActivity } from '@/shared/ui_api';
 
+// The user is kept by ID, so the list shows its current label.
+type ClientEntry = Omit<ClientActivity, 'user'>;
+
 const createClientActivityTracker = (limit: number) => {
-	const clients = new Map<string, ClientActivity>();
+	const clients = new Map<string, ClientEntry>();
 	const observe = (
 		reported: ClientInfo | undefined,
 		protocolVersion: string,
+		userId?: string,
 	): void => {
 		// MCP 2026-07-28 allows the whole clientInfo object to be omitted.
 		const client = reported ?? {
 			name: 'unknown',
 			version: 'unknown',
 		};
-		// Identify an application by its reported name/version.
-		const key = JSON.stringify([client.name, client.version]);
+		// One entry per application (reported name/version), user and protocol.
+		const key = JSON.stringify([
+			client.name,
+			client.version,
+			userId,
+			protocolVersion,
+		]);
 		const previous = clients.get(key);
 		const now = Date.now();
 		clients.delete(key);
 		clients.set(key, {
 			client,
+			userId,
 			protocolVersion,
 			firstSeen: previous?.firstSeen ?? now,
 			lastSeen: now,
@@ -30,7 +40,19 @@ const createClientActivityTracker = (limit: number) => {
 	};
 	return {
 		observe,
-		list: (): ClientActivity[] => Array.from(clients.values()).reverse(),
+		// Newest first; a user missing from `userLabels` (deleted) shows its ID.
+		list: (userLabels?: Map<string, string>): ClientActivity[] =>
+			Array.from(clients.values())
+				.reverse()
+				.map(({ userId, ...entry }) =>
+					userId === undefined
+						? entry
+						: {
+								...entry,
+								user: userLabels?.get(userId) ?? userId,
+								userId,
+							},
+				),
 	};
 };
 

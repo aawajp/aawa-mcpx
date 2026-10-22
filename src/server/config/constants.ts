@@ -9,8 +9,8 @@ const MAIN_DATABASE_FILENAME = path.join('db', 'main.db');
 const EXIT_CODES = {
 	// Not recoverable: an unexpected error.
 	unexpected: 1,
-	// Recoverable: a temporary startup failure, such as a busy port
-	// (EX_TEMPFAIL).
+	// Recoverable: a temporary startup failure, such as an unreachable IdP or a
+	// busy port (EX_TEMPFAIL).
 	temporary: 75,
 	// Not recoverable: a setting, mcp.json or the main database must be fixed
 	// first (EX_CONFIG).

@@ -1059,31 +1059,42 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 
 test('POST checks Accept before reading the body', async () => {
 	const { route } = fixture();
-	const post = (headers: Record<string, string>) =>
-		route.POST(
-			new Request('http://localhost:4567/mcp', {
-				method: 'POST',
-				headers: {
-					'MCP-Protocol-Version': '2025-11-25',
-					...headers,
+	const post = async (accept: string) => {
+		const request = new Request('http://localhost:4567/mcp', {
+			method: 'POST',
+			headers: {
+				Accept: accept,
+				'MCP-Protocol-Version': '2025-11-25',
+			},
+			body: JSON.stringify({
+				jsonrpc: '2.0',
+				id: 1,
+				method: 'initialize',
+				params: {
+					protocolVersion: '2025-11-25',
+					clientInfo: {
+						name: 'accept',
+						version: '1',
+					},
 				},
-				body: '{}',
 			}),
-		);
-	for (const value of ['application/json', 'text/event-stream'])
-		expect(
-			(
-				await post({
-					Accept: value,
-				})
-			).status,
-		).toBe(400);
-	// */* passes the check; the empty body then fails.
-	const passed = await post({
-		Accept: '*/*',
-	});
-	expect(passed.status).toBe(400);
-	expect((await passed.json()).error.code).toBe(-32600);
+		});
+		const response = await route.POST(request);
+		return {
+			status: response.status,
+			bodyUsed: request.bodyUsed,
+		};
+	};
+	for (const accept of ['application/json, text/event-stream', '*/*'])
+		expect(await post(accept)).toEqual({
+			status: 200,
+			bodyUsed: true,
+		});
+	for (const accept of ['application/json', 'text/event-stream', 'text/html'])
+		expect(await post(accept)).toEqual({
+			status: 400,
+			bodyUsed: false,
+		});
 });
 
 test('unknown protocol version headers without request metadata get HTTP 400', async () => {

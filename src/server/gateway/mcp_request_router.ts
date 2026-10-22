@@ -1,11 +1,15 @@
 import { type } from 'arktype';
 
+import type { McpPrincipal } from '@/server/auth/mcp_auth';
 import {
 	type IncomingJsonRpcRequest,
 	type RouteResult,
 	rpcError,
 } from '@/server/gateway/json_rpc';
-import type { createHandlers } from '@/server/gateway/mcp_handlers';
+import {
+	AccessDeniedError,
+	type createHandlers,
+} from '@/server/gateway/mcp_handlers';
 import { BackendRpcError } from '@/server/mcp_upstreams/protocol_client';
 import { sessionRequestMetadataType } from '@/shared/mcp_metadata';
 import {
@@ -52,6 +56,8 @@ type RouteOptions = {
 	protocolVersion?: string;
 	mirroredHeaders?: Record<string, string>;
 	signal?: AbortSignal;
+	// The authenticated user; absent when /mcp requires no credentials.
+	principal?: McpPrincipal;
 };
 
 type RouteRequest = (
@@ -65,6 +71,7 @@ type CreateMcpRequestRouterParams = {
 	handleInitialize: (
 		request: IncomingJsonRpcRequest,
 		incomingSessionId: string | undefined,
+		userId?: string,
 	) => Promise<RouteResult>;
 };
 
@@ -146,7 +153,9 @@ const createMcpRequestRouter = (
 		request: IncomingJsonRpcRequest,
 		options: RouteOptions,
 	): Promise<RouteResult> => {
-		const { sessionId, protocolVersion, mirroredHeaders, signal } = options;
+		const { sessionId, protocolVersion, mirroredHeaders, principal, signal } =
+			options;
+		const access = principal?.access;
 		signal?.throwIfAborted();
 		const clientVersion =
 			protocolVersion !== undefined && isProtocolVersion(protocolVersion)
@@ -175,7 +184,7 @@ const createMcpRequestRouter = (
 				),
 			};
 		if (request.method === 'initialize')
-			return await handleInitialize(request, sessionId);
+			return await handleInitialize(request, sessionId, principal?.userId);
 		const invalid = requireSession(sessionId, request.id);
 		if (invalid) return invalid;
 		const bodyParams = recordOf(request.params);
@@ -220,11 +229,11 @@ const createMcpRequestRouter = (
 		});
 		switch (request.method) {
 			case 'tools/list':
-				return success(handlers.listTools(clientVersion));
+				return success(handlers.listTools(clientVersion, access));
 			case 'prompts/list':
-				return success(handlers.listPrompts());
+				return success(handlers.listPrompts(access));
 			case 'resources/list':
-				return success(handlers.listResources());
+				return success(handlers.listResources(access));
 			case 'tools/call':
 			case 'prompts/get': {
 				if (!namedArgumentsParamsType.allows(request.params))
@@ -239,6 +248,7 @@ const createMcpRequestRouter = (
 					metadata: recordOf(callParams._meta),
 					mirroredHeaders,
 					signal,
+					access,
 				};
 				if (request.method === 'prompts/get')
 					return success(
@@ -247,7 +257,7 @@ const createMcpRequestRouter = (
 							name: callParams.name,
 						}),
 					);
-				const tool = handlers.resolveTool(callParams.name);
+				const tool = handlers.resolveTool(callParams.name, access);
 				if (withRequestMetadata) {
 					// MCP 2026-07-28 mirrors annotated arguments in headers; they must match.
 					if (tool.headerParameters instanceof Error)
@@ -294,11 +304,12 @@ const createMcpRequestRouter = (
 						metadata: recordOf(resourceParams._meta),
 						mirroredHeaders,
 						signal,
+						access,
 					}),
 				);
 			}
 			case 'resources/templates/list':
-				return success(handlers.listResourceTemplates());
+				return success(handlers.listResourceTemplates(access));
 			case 'resources/subscribe':
 			case 'resources/unsubscribe':
 				return unsupported('Resource subscriptions not supported');
@@ -323,10 +334,21 @@ const createMcpRequestRouter = (
 			result = await route(request, options);
 			signal?.throwIfAborted();
 		} catch (error) {
-			if (!(error instanceof BackendRpcError)) throw error;
-			result = {
-				payload: rpcError(request.id, error.code, error.message, error.data),
-			};
+			if (error instanceof AccessDeniedError)
+				result = {
+					// The MCP authorization spec answers missing permissions with 403.
+					status: 403,
+					payload: rpcError(
+						request.id,
+						RPC_ERROR.InvalidRequest,
+						error.message,
+					),
+				};
+			else if (error instanceof BackendRpcError)
+				result = {
+					payload: rpcError(request.id, error.code, error.message, error.data),
+				};
+			else throw error;
 		}
 		if (!result.payload) return result;
 		if ('error' in result.payload) {
@@ -337,7 +359,7 @@ const createMcpRequestRouter = (
 				// Keep 2025 RPC responses at their existing HTTP status; MCP 2026-07-28
 				// requires 404 for unknown methods and 400 for its metadata errors.
 				status: usesRequestMetadata(protocolVersion)
-					? (errorHttpStatus(code) ?? result.status)
+					? (result.status ?? errorHttpStatus(code))
 					: result.status,
 				payload: {
 					...result.payload,

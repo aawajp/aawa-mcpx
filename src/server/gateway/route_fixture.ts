@@ -1,6 +1,8 @@
 import type { Tool } from '@modelcontextprotocol/client';
 
+import type { McpPrincipal } from '@/server/auth/mcp_auth';
 import type { TrafficStore } from '@/server/db/traffic';
+import type { createClientActivityTracker } from '@/server/gateway/client_activity';
 import { createHandlers } from '@/server/gateway/mcp_handlers';
 import { createMcpHttpRoute } from '@/server/gateway/mcp_http_route';
 import { createMcpRequestRouter } from '@/server/gateway/mcp_request_router';
@@ -40,15 +42,21 @@ const toolLookup =
 		return found;
 	};
 
+type ClientActivityTracker = ReturnType<typeof createClientActivityTracker>;
+
 // Wires the public /mcp route like the server does.
 const createRouteFixture = (
 	manager: McpUpstreamManager,
 	options: {
 		refreshCatalogs?: (request: CatalogRequest) => Promise<void>;
+		authenticate?: (request: Request) => Promise<McpPrincipal | Response>;
+		onClientActivity?: ClientActivityTracker['observe'];
 	} = {},
 ) => {
 	const sessions = createMcpSessionManager({
 		maxSessionsPerClient: 10,
+		maxSessionsPerUser: 100,
+		onClientActivity: options.onClientActivity,
 	});
 	const handlers = createHandlers({
 		mcpUpstreamManager: manager,
@@ -62,6 +70,8 @@ const createRouteFixture = (
 	);
 	const route = createMcpHttpRoute({
 		refreshCatalogs: options.refreshCatalogs,
+		authenticate: options.authenticate,
+		onClientActivity: options.onClientActivity,
 		mcpSessions: sessions,
 		routeRequest,
 		trafficStore: {

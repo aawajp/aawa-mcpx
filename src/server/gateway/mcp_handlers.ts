@@ -7,6 +7,7 @@ import type {
 	ReadResourceResult,
 } from '@modelcontextprotocol/client';
 
+import type { Access } from '@/server/db/access';
 import {
 	namespacePrompt,
 	namespaceResource,
@@ -47,6 +48,7 @@ type CallToolHandlerParams = {
 
 type GetPromptHandlerParams = {
 	name: string;
+	access?: Access;
 	args: Record<string, unknown>;
 	metadata?: Record<string, unknown>;
 	mirroredHeaders?: Record<string, string>;
@@ -55,10 +57,14 @@ type GetPromptHandlerParams = {
 
 type ReadResourceHandlerParams = {
 	uri: string;
+	access?: Access;
 	metadata?: Record<string, unknown>;
 	mirroredHeaders?: Record<string, string>;
 	signal?: AbortSignal;
 };
+
+// An enabled tool or backend the user has no permission for.
+class AccessDeniedError extends Error {}
 
 // A malformed name or URI is the client's error.
 const parseOrInvalid = <T>(parse: () => T): T => {
@@ -88,13 +94,15 @@ const createHandlers = (params: CreateHandlersParams) => {
 	// annotations.
 	const listTools = (
 		clientProtocolVersion?: ProtocolVersion,
+		access?: Access,
 	): ListToolsResult => ({
 		tools: mcpUpstreamManager
 			.listEnabledTools()
 			.filter(
-				({ headerParameters }) =>
-					!usesRequestMetadata(clientProtocolVersion) ||
-					!(headerParameters instanceof Error),
+				({ headerParameters, serverName, tool }) =>
+					(!usesRequestMetadata(clientProtocolVersion) ||
+						!(headerParameters instanceof Error)) &&
+					(!access || access.allowsTool(serverName, tool.name)),
 			)
 			.map(({ serverName, tool }) =>
 				namespaceTool({
@@ -104,18 +112,46 @@ const createHandlers = (params: CreateHandlersParams) => {
 			),
 	});
 
-	// The enabled tool behind a namespaced name; a client error otherwise.
-	const resolveTool = (name: string): EnabledTool => {
+	// The enabled tool behind a namespaced name; a client error otherwise, and
+	// a refusal when the user has no permission for it.
+	const resolveTool = (name: string, access?: Access): EnabledTool => {
 		const parsed = parseOrInvalid(() => parsePrefix(name));
-		return mcpUpstreamManager.getEnabledTool({
+		const tool = mcpUpstreamManager.getEnabledTool({
 			serverName: parsed.serverName,
 			toolName: parsed.originalName,
 		});
+		if (access && !access.allowsTool(tool.serverName, tool.tool.name))
+			throw new AccessDeniedError(`Tool "${name}" is not permitted`);
+		return tool;
 	};
 
-	const listPrompts = (): ListPromptsResult => {
+	// Unknown or disabled backends keep their usual errors; only an enabled
+	// backend without permission is refused here.
+	const checkBackend = (serverName: string, access?: Access): void => {
+		if (
+			access &&
+			!access.allowsBackend(serverName) &&
+			mcpUpstreamManager
+				.getStatuses()
+				.some((status) => status.serverName === serverName && status.enabled)
+		)
+			throw new AccessDeniedError(`Backend "${serverName}" is not permitted`);
+	};
+
+	const allowedBackends = <T>(
+		entries: Iterable<[string, T]>,
+		access?: Access,
+	): [string, T][] =>
+		[...entries].filter(
+			([serverName]) => !access || access.allowsBackend(serverName),
+		);
+
+	const listPrompts = (access?: Access): ListPromptsResult => {
 		const prompts: ListPromptsResult['prompts'] = [];
-		const allPrompts = mcpUpstreamManager.listEnabledPrompts();
+		const allPrompts = allowedBackends(
+			mcpUpstreamManager.listEnabledPrompts(),
+			access,
+		);
 
 		for (const [serverName, serverPromptsResult] of allPrompts) {
 			for (const prompt of serverPromptsResult.prompts) {
@@ -133,9 +169,12 @@ const createHandlers = (params: CreateHandlersParams) => {
 		};
 	};
 
-	const listResources = (): ListResourcesResult => {
+	const listResources = (access?: Access): ListResourcesResult => {
 		const resources: ListResourcesResult['resources'] = [];
-		const allResources = mcpUpstreamManager.listEnabledResources();
+		const allResources = allowedBackends(
+			mcpUpstreamManager.listEnabledResources(),
+			access,
+		);
 
 		for (const [serverName, serverResourcesResult] of allResources) {
 			for (const resource of serverResourcesResult.resources) {
@@ -153,13 +192,15 @@ const createHandlers = (params: CreateHandlersParams) => {
 		};
 	};
 
-	const listResourceTemplates = (): ListResourceTemplatesResult => {
+	const listResourceTemplates = (
+		access?: Access,
+	): ListResourceTemplatesResult => {
 		const resourceTemplates: ListResourceTemplatesResult['resourceTemplates'] =
 			[];
-		for (const [
-			serverName,
-			result,
-		] of mcpUpstreamManager.listEnabledResourceTemplates())
+		for (const [serverName, result] of allowedBackends(
+			mcpUpstreamManager.listEnabledResourceTemplates(),
+			access,
+		))
 			for (const resourceTemplate of result.resourceTemplates)
 				resourceTemplates.push(
 					namespaceResourceTemplate({
@@ -227,6 +268,7 @@ const createHandlers = (params: CreateHandlersParams) => {
 	): Promise<GetPromptResult> => {
 		const { name, args } = request;
 		const parsed = parseOrInvalid(() => parsePrefix(name));
+		checkBackend(parsed.serverName, request.access);
 
 		const result = await mcpUpstreamManager.getPrompt({
 			serverName: parsed.serverName,
@@ -257,6 +299,7 @@ const createHandlers = (params: CreateHandlersParams) => {
 	): Promise<ReadResourceResult> => {
 		const { uri } = request;
 		const parsed = parseOrInvalid(() => parseResourceUri(uri));
+		checkBackend(parsed.serverName, request.access);
 
 		// Links and template instances need not appear in resources/list. Route
 		// by namespace, leaving resource existence checks to the owning backend.
@@ -287,4 +330,4 @@ const createHandlers = (params: CreateHandlersParams) => {
 	};
 };
 
-export { createHandlers };
+export { AccessDeniedError, createHandlers };

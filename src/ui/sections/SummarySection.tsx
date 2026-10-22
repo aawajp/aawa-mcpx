@@ -1,6 +1,6 @@
 import { flushSync } from 'react-dom';
 
-import type { OverviewResponse } from '@/shared/ui_api';
+import { DASHBOARD_PATHS, type OverviewResponse } from '@/shared/ui_api';
 import { Button } from '@/ui/base_components/button';
 import {
 	Card,
@@ -39,10 +39,10 @@ const SUMMARY_COLUMNS = [
 // The endpoints listed under APIs, with their descriptions.
 const API_LINKS = [
 	['/mcp', 'protocol.api.mcp'],
-	['/api/overview', 'protocol.api.overview'],
-	['/api/events', 'protocol.api.events'],
-	['/api/health', 'protocol.api.health'],
-	['/api/debug', 'protocol.api.debug'],
+	[DASHBOARD_PATHS.overview, 'protocol.api.overview'],
+	[DASHBOARD_PATHS.events, 'protocol.api.events'],
+	[DASHBOARD_PATHS.health, 'protocol.api.health'],
+	[DASHBOARD_PATHS.debug, 'protocol.api.debug'],
 ] as const;
 
 type Props = {
