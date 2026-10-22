@@ -216,6 +216,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 
 				const sessions = createMcpSessionManager({
 					maxSessionsPerClient: 10,
+					maxSessionsPerUser: 100,
 				});
 				const tools = enabledTools('fixture', [
 					{

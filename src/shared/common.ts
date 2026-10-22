@@ -1,6 +1,3 @@
-import { type ClassValue, clsx } from 'clsx';
-import { twMerge } from 'tailwind-merge';
-
 const MAX_BODY_PREVIEW = 100;
 const UNKNOWN_ERROR = 'Unknown error';
 
@@ -64,8 +61,4 @@ const errorMessage = (error: unknown): string => {
 	return `${message} ${serializedData}`;
 };
 
-const cn = (...inputs: ClassValue[]) => {
-	return twMerge(clsx(inputs));
-};
-
-export { cn, errorMessage };
+export { errorMessage };

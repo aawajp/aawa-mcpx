@@ -1,3 +1,4 @@
+import type { TrafficStore } from '@/server/db/traffic';
 import { logger } from '@/server/logger';
 import { createMcpUpstreamHealthChecks } from '@/server/mcp_upstreams/health_checks';
 import {
@@ -14,7 +15,6 @@ import type {
 	McpUpstreamServer,
 	OnValidationError,
 } from '@/server/mcp_upstreams/types';
-import type { TrafficStore } from '@/server/traffic_store';
 import { errorMessage } from '@/shared/common';
 import {
 	CATALOG_LISTS,

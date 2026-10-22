@@ -8,6 +8,8 @@ import {
 } from '@/server/gateway/json_rpc';
 import { logger } from '@/server/logger';
 import {
+	CLIENT_INFO_BYTES,
+	CLIENT_NAME_LENGTH,
 	type ClientInfo,
 	formatClientInfo,
 	parseClientInfo,
@@ -28,6 +30,8 @@ import {
 type SessionInfo = {
 	client: ClientInfo;
 	protocolVersion: string;
+	// The user who initialized it, when /mcp requires credentials.
+	userId?: string;
 };
 
 type CloseSessionResult = {
@@ -37,7 +41,12 @@ type CloseSessionResult = {
 
 type CreateMcpSessionManagerParams = {
 	maxSessionsPerClient: number;
-	onClientActivity?: (client: ClientInfo, protocolVersion: string) => void;
+	maxSessionsPerUser: number;
+	onClientActivity?: (
+		client: ClientInfo,
+		protocolVersion: string,
+		userId?: string,
+	) => void;
 };
 
 const isSupportedSessionVersion = (
@@ -64,7 +73,6 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 	// 2025-06-18 and 2025-11-25 requests use the issued ID to recover their
 	// negotiated version and client identity. It is transport state, not a client ID.
 	const sessions = new Map<string, SessionInfo>();
-	const limit = params.maxSessionsPerClient;
 	const activeCount = (): number => sessions.size;
 
 	const getClientInfo = (value: unknown): ClientInfo | undefined => {
@@ -110,6 +118,7 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 	const handleInitialize = async (
 		request: IncomingJsonRpcRequest,
 		incomingSessionId: string | undefined,
+		userId?: string,
 	): Promise<RouteResult> => {
 		if (incomingSessionId) {
 			return createProtocolError({
@@ -124,7 +133,7 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 				payload: rpcError(
 					request.id,
 					RPC_ERROR.InvalidParams,
-					'Client info must include string name and version fields.',
+					`Client info must include string name and version fields of at most ${CLIENT_NAME_LENGTH} characters, and be at most ${CLIENT_INFO_BYTES} bytes as JSON.`,
 				),
 			};
 		const protocolVersion = negotiateProtocolVersion(requested.protocolVersion);
@@ -145,21 +154,30 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 		const client = requested.client;
 		// Local retention policy, not a protocol identity guarantee: multiple agents
 		// may share name/version. Map insertion order keeps the oldest initialization
-		// first; activity does not reorder it. Only this client's excess session is removed.
-		const clientSessions = Array.from(sessions).filter(
+		// first; activity does not reorder it. Only this user's oldest session is
+		// removed, so one user cannot end another's sessions: one of the same
+		// client name/version beyond its limit, otherwise any beyond the user's.
+		const userSessions = Array.from(sessions).filter(
+			([, session]) => session.userId === userId,
+		);
+		const clientSessions = userSessions.filter(
 			([, session]) =>
 				session.client.name === client.name &&
 				session.client.version === client.version,
 		);
-		if (clientSessions.length >= limit) {
-			const oldest = clientSessions[0];
-			if (oldest) sessions.delete(oldest[0]);
-		}
+		const evicted =
+			clientSessions.length >= params.maxSessionsPerClient
+				? clientSessions[0]
+				: userSessions.length >= params.maxSessionsPerUser
+					? userSessions[0]
+					: undefined;
+		if (evicted) sessions.delete(evicted[0]);
 		sessions.set(sessionId, {
 			client: requested.client,
 			protocolVersion,
+			userId,
 		});
-		params.onClientActivity?.(requested.client, protocolVersion);
+		params.onClientActivity?.(requested.client, protocolVersion, userId);
 		const clientLabel = formatClientInfo(requested.client);
 		const title = requested.client.title
 			? `, title=${requested.client.title}`
@@ -206,7 +224,11 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 				status: 404,
 			});
 		}
-		params.onClientActivity?.(session.client, session.protocolVersion);
+		params.onClientActivity?.(
+			session.client,
+			session.protocolVersion,
+			session.userId,
+		);
 		return null;
 	};
 
@@ -274,6 +296,12 @@ const createMcpSessionManager = (params: CreateMcpSessionManagerParams) => {
 		getProtocolVersion: (sessionId: string | undefined): string | undefined =>
 			sessionId ? sessions.get(sessionId)?.protocolVersion : undefined,
 		handleInitialize,
+		// Another user's session counts as unknown; a missing one is left to
+		// the usual session checks.
+		isOwnedBy: (sessionId: string, userId: string): boolean => {
+			const session = sessions.get(sessionId);
+			return !session || session.userId === userId;
+		},
 		requireSession,
 		validateProtocolHeader,
 	};

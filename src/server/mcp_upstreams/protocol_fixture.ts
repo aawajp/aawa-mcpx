@@ -254,7 +254,13 @@ const startFixtureBackend = (
 			config: {
 				type: 'stdio',
 				command: process.execPath,
-				args: [import.meta.path, version, ...(mode ? [mode] : [])],
+				// Bun would load the env files of the test's working directory.
+				args: [
+					'--no-env-file',
+					import.meta.path,
+					version,
+					...(mode ? [mode] : []),
+				],
 			},
 			stop: () => undefined,
 		};

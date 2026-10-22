@@ -3,10 +3,10 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import { mcpConfigType } from '@/server/config/schema';
+import type { TrafficStore } from '@/server/db/traffic';
 import { createUiRoutes } from '@/server/gateway/ui_routes';
 import { createMcpUpstreamManager } from '@/server/mcp_upstreams/manager';
 import { startFixtureBackend } from '@/server/mcp_upstreams/protocol_fixture';
-import type { TrafficStore } from '@/server/traffic_store';
 import {
 	CURRENT_PROTOCOL_VERSION,
 	recordOf,

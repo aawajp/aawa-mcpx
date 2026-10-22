@@ -20,6 +20,80 @@ Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 ## [Unreleased]
 
+### 2026-10-22
+
+#### Added
+
+- **Breaking:** Add a dashboard login, with OpenID Connect (`ENABLE_OIDC`) or
+  a superadmin password (`ENABLE_SUPERADMIN`, on by default), and require
+  credentials on `/mcp` whenever a login method is on: machines' API keys or
+  OAuth access tokens.
+- Add the Auth tab: Local and OIDC users, roles synced from tokens and assigned
+  in the dashboard, API keys for machines, and backend and tool permissions
+  per user and role.
+- Make the Clients and Auth tables sortable by column.
+- Add `MCP_MAX_SESSIONS_PER_USER`, which limits a user's 2025
+  MCP sessions of all clients.
+- Show each tool's full name, backend name, backend titles and description in
+  the Backends tab.
+
+#### Changed
+
+- Update React to 19.3.1 and ArkType to 2.2.8.
+- Give dashboard buttons one style and cards less padding, and drop the unused
+  dark theme.
+- **Breaking:** Commit the default settings as `.env` (replacing
+  `.env.example`) and let Bun load env files itself; keep secrets in
+  `.env.local`, which is mounted into the container next to the image's
+  `.env`.
+- **Breaking:** Require every setting, with no defaults in code.
+- Set `NODE_ENV` in the dev script and `compose.yaml` instead of `.env`, and
+  turn on hot reload and console forwarding only with `NODE_ENV=development`.
+- Exit with code 78 on configuration errors and 75 on temporary startup
+  failures, with one log line, and restart the Compose container at most 3
+  times.
+- Refuse MCP client names, versions and titles over 256 characters and client
+  info over 64 KiB (`-32602`).
+- Store traffic requests and responses over 256 KiB as their size and start,
+  and clients, methods and protocol versions over 256 characters as their
+  start, and keep at most 512 MiB of traffic.
+- **Breaking:** Make the Tester send any MCP request through `/mcp` as the
+  logged-in admin (`/api/tester/mcp`), and remove `/api/tools/call`.
+- Show one Clients row per MCP client, user and protocol.
+- **Breaking:** Answer `/api/health` with only `{"status":"ok"}`; backend
+  statuses stay on `/api/overview`.
+
+#### Removed
+
+- **Breaking:** Remove the `start` script; use `bun dev` or the container.
+
+#### Fixed
+
+- Limit backend HTTP responses, stdio lines and SSE events to 8 MiB, counted
+  in bytes, and a backend's paginated list to 32 MiB.
+- Escape control characters in log lines, so a reported client name cannot
+  add lines.
+- Send tools and prompts with their public name as title, so clients keep them
+  grouped by backend.
+
+### 2026-10-18
+
+#### Added
+
+- Add the main database `db/main.db` with versioned schema migrations.
+
+#### Changed
+
+- **Breaking:** Serve the dashboard at `/ui` and the debug page at
+  `/ui/debug`; `/` redirects to `/ui`.
+
+### 2026-10-17
+
+#### Changed
+
+- Plan the security design: OIDC dashboard login, OAuth access tokens and API
+  keys on `/mcp`, and backend and tool permissions per user and role.
+
 ### 2026-10-15
 
 #### Added

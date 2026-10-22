@@ -44,6 +44,7 @@ test('initialization retains the newest sessions per name/version without idle e
 	for (const maxSessionsPerClient of [10, 2]) {
 		const sessions = createMcpSessionManager({
 			maxSessionsPerClient,
+			maxSessionsPerUser: 100,
 		});
 		const initialize = async (
 			name = 'agent',
@@ -107,6 +108,133 @@ test('initialization retains the newest sessions per name/version without idle e
 	}
 });
 
+test("one user's sessions never end another's with the same client", async () => {
+	const sessions = createMcpSessionManager({
+		maxSessionsPerClient: 2,
+		maxSessionsPerUser: 100,
+	});
+	const initialize = async (userId: string) =>
+		(
+			await sessions.handleInitialize(
+				{
+					jsonrpc: '2.0',
+					id: 1,
+					method: 'initialize',
+					params: {
+						protocolVersion: '2025-11-25',
+						clientInfo: {
+							name: 'agent',
+							version: '1',
+						},
+					},
+				},
+				undefined,
+				userId,
+			)
+		).sessionId;
+	const alice = await initialize('alice');
+	const bob = [
+		await initialize('bob'),
+		await initialize('bob'),
+		await initialize('bob'),
+	];
+	expect(sessions.requireSession(alice, 2)).toBeNull();
+	expect(sessions.requireSession(bob[0], 2)?.status).toBe(404);
+	for (const id of bob.slice(1))
+		expect(sessions.requireSession(id, 2)).toBeNull();
+});
+
+test("a user's sessions of all clients are limited, without ending another user's", async () => {
+	const sessions = createMcpSessionManager({
+		maxSessionsPerClient: 10,
+		maxSessionsPerUser: 3,
+	});
+	const initialize = async (userId: string, name: string) =>
+		(
+			await sessions.handleInitialize(
+				{
+					jsonrpc: '2.0',
+					id: 1,
+					method: 'initialize',
+					params: {
+						protocolVersion: '2025-11-25',
+						clientInfo: {
+							name,
+							version: '1',
+						},
+					},
+				},
+				undefined,
+				userId,
+			)
+		).sessionId;
+	const alice = await initialize('alice', 'agent');
+	const bob = [];
+	for (let index = 0; index < 5; index++)
+		bob.push(await initialize('bob', `agent-${index}`));
+	expect(sessions.requireSession(alice, 2)).toBeNull();
+	for (const id of bob.slice(0, 2))
+		expect(sessions.requireSession(id, 2)?.status).toBe(404);
+	for (const id of bob.slice(2))
+		expect(sessions.requireSession(id, 2)).toBeNull();
+	expect(sessions.activeCount()).toBe(4);
+});
+
+test('client names over 256 characters or client info over 64 KiB are refused', async () => {
+	const sessions = createMcpSessionManager({
+		maxSessionsPerClient: 10,
+		maxSessionsPerUser: 100,
+	});
+	const initialize = (clientInfo: Record<string, unknown>) =>
+		sessions.handleInitialize(
+			{
+				jsonrpc: '2.0',
+				id: 1,
+				method: 'initialize',
+				params: {
+					protocolVersion: '2025-11-25',
+					clientInfo,
+				},
+			},
+			undefined,
+		);
+	const name = 'a'.repeat(256);
+	expect(
+		(
+			await initialize({
+				name,
+				version: name,
+				title: name,
+			})
+		).sessionId,
+	).toBeString();
+	for (const clientInfo of [
+		{
+			name: `${name}a`,
+			version: '1',
+		},
+		{
+			name: 'agent',
+			version: `${name}a`,
+		},
+		{
+			name: 'agent',
+			version: '1',
+			title: `${name}a`,
+		},
+		{
+			name: 'agent',
+			version: '1',
+			description: 'ä'.repeat(32 * 1024),
+		},
+	]) {
+		const refused = await initialize(clientInfo);
+		expect(refused.sessionId).toBeUndefined();
+		expect(refused.status).toBe(400);
+	}
+	expect(sessions.activeCount()).toBe(1);
+});
+
 test('session lifecycle and rejection logs omit transport identifiers', async () => {
 	const messages: string[] = [];
 	const info = spyOn(logger, 'info').mockImplementation((message) => {
@@ -117,6 +245,7 @@ test('session lifecycle and rejection logs omit transport identifiers', async ()
 	});
 	const sessions = createMcpSessionManager({
 		maxSessionsPerClient: 10,
+		maxSessionsPerUser: 100,
 	});
 	try {
 		const result = await sessions.handleInitialize(
@@ -150,24 +279,25 @@ test('session lifecycle and rejection logs omit transport identifiers', async ()
 	}
 });
 
-test('client activity groups revisions and reconnects without exposing sessions', async () => {
-	const activity = createClientActivityTracker(2);
+test('client activity groups reconnects per protocol and user without exposing sessions', async () => {
+	const activity = createClientActivityTracker(3);
 	const sessions = createMcpSessionManager({
 		maxSessionsPerClient: 10,
+		maxSessionsPerUser: 100,
 		onClientActivity: activity.observe,
 	});
 	const client = {
 		name: 'test-client',
 		version: '1',
 	};
-	for (const protocolVersion of ['2025-06-18', '2025-11-25']) {
+	for (const id of [1, 2]) {
 		const result = await sessions.handleInitialize(
 			{
 				jsonrpc: '2.0',
-				id: 1,
+				id,
 				method: 'initialize',
 				params: {
-					protocolVersion,
+					protocolVersion: '2025-11-25',
 					clientInfo: client,
 				},
 			},
@@ -178,30 +308,41 @@ test('client activity groups revisions and reconnects without exposing sessions'
 		expect(activity.list()).toHaveLength(1);
 	}
 	const firstSeen = activity.list()[0]?.firstSeen;
+	// Another protocol or user is its own entry.
 	activity.observe(client, '2026-07-28');
+	activity.observe(client, '2026-07-28', 'alice');
 	const clients = activity.list();
 	const overview = overviewResponseType.assert({
 		clients,
 		backends: [],
 	});
-	const entry = overview.clients[0];
+	expect(
+		overview.clients.map((entry) => [
+			entry.protocolVersion,
+			entry.user,
+			entry.userId,
+		]),
+	).toEqual([
+		['2026-07-28', 'alice', 'alice'],
+		['2026-07-28', undefined, undefined],
+		['2025-11-25', undefined, undefined],
+	]);
+	// The label is the user's current one; the ID stays.
+	expect(activity.list(new Map([['alice', 'Alice']]))[0]).toMatchObject({
+		user: 'Alice',
+		userId: 'alice',
+	});
+	const entry = overview.clients[2];
 	expect(entry).toMatchObject({
 		client,
 		firstSeen,
-		protocolVersion: '2026-07-28',
+		protocolVersion: '2025-11-25',
 	});
 	expect(entry).not.toHaveProperty('sessionId');
 	expect(entry).not.toHaveProperty('status');
 	expect(entry).not.toHaveProperty('disconnectedAt');
-	activity.observe(
-		{
-			name: 'test-client',
-			version: '2',
-		},
-		'2026-07-28',
-	);
-	expect(activity.list()).toHaveLength(2);
-	activity.observe(client, '2026-07-28');
+	// A revisit moves the entry to the front; beyond the limit the oldest goes.
+	activity.observe(client, '2025-11-25');
 	activity.observe(
 		{
 			name: 'another-client',
@@ -209,12 +350,12 @@ test('client activity groups revisions and reconnects without exposing sessions'
 		},
 		'2026-07-28',
 	);
-	expect(activity.list().map((item) => item.client)).toEqual([
-		{
-			name: 'another-client',
-			version: '1',
-		},
-		client,
+	expect(
+		activity.list().map((item) => [item.client.name, item.protocolVersion]),
+	).toEqual([
+		['another-client', '2026-07-28'],
+		['test-client', '2025-11-25'],
+		['test-client', '2026-07-28'],
 	]);
 });
 
@@ -222,6 +363,7 @@ test('2025 sessions keep the whole reported client info', async () => {
 	const observed: unknown[] = [];
 	const sessions = createMcpSessionManager({
 		maxSessionsPerClient: 10,
+		maxSessionsPerUser: 100,
 		onClientActivity: (client) => observed.push(client),
 	});
 	const clientInfo = {

@@ -23,16 +23,19 @@ overview, setup, and operations; [CHANGELOG.md](/CHANGELOG.md) records changes.
 | JSON-RPC message | Request, notification, or response; distinct from an HTTP request/response. |
 | MCP client | External client using `/mcp`. |
 | MCP upstream | Configured backend MCP server. |
-| UI | React dashboard served by the gateway. |
-| UI API | Dashboard HTTP API under `/api/*`, separate from MCP routes. |
+| UI | React dashboard pages under `/ui` (`/` redirects there), served by the gateway. |
+| UI API | Dashboard HTTP API under `/api/*`, separate from MCP routes. Paths the MCP spec does not define go under `/api`. |
 
 ## 2. Runtime architecture
 
-Figure ARCH-01: Request paths from MCP clients and the dashboard to upstreams and traffic storage.
+Figure ARCH-01: Request paths from MCP clients and the dashboard to upstreams, the identity provider and storage.
 
 ```mermaid
 flowchart LR
     Client["MCP client"] --> McpRoute["/mcp Streamable HTTP"]
+    McpRoute --> McpAuth["/mcp credentials"]
+    McpAuth --> IdP["Identity provider"]
+    McpAuth --> MainDb["Main database"]
     McpRoute --> Session["MCP session manager"]
     McpRoute --> Router["MCP request router"]
     Router --> Handlers["MCP handlers"]
@@ -41,6 +44,10 @@ flowchart LR
     Upstreams --> StdioUpstream["stdio MCP upstream"]
 
     Dashboard["React dashboard"] --> UiApi["/api/* UI API"]
+    Dashboard --> Login["/api/auth/* login"]
+    Login --> IdP
+    Login --> MainDb
+    UiApi --> MainDb
     UiApi --> Upstreams
     UiApi --> Traffic["Traffic store"]
     McpRoute --> Traffic
@@ -55,20 +62,23 @@ SDK supplies types only; the gateway implements dispatch and transports itself.
 
 | Layer | Modules and responsibilities |
 | --- | --- |
-| `server/` | `index.ts`: entrypoint (load configuration, start upstreams and the server, handle shutdown); `traffic_store.ts`: SQLite traffic storage; `logger.ts`: console logging. |
+| `server/` | `index.ts`: entrypoint (load configuration, start upstreams and the server, handle shutdown); `logger.ts`: console logging and `key=value` log fields. |
+| `server/auth/` | `ui_auth.ts`: dashboard login (superadmin password, OIDC), sessions and the `/api/*` guard; `mcp_auth.ts`: `/mcp` credentials and protected resource metadata; `identity.ts`: IdP discovery, roles and profile claims, sign-in log lines; `access_routes.ts`: Auth tab API. |
+| `server/db/` | `main.ts`: the gateway's own SQLite database and schema versions; `access.ts`: users, roles, permissions and API keys; `ui_sessions.ts`: dashboard session storage; `traffic.ts`: SQLite traffic storage. |
 | `server/config/` | `schema.ts`: every user setting as ArkType schemas (environment variables and `mcp.json`); `loader.ts`: loads and persists `mcp.json`; `constants.ts`: file locations. |
 | `server/gateway/` | `server.ts`: `Bun.serve`/route wiring; `allowed_hosts.ts`: `Host`/`Origin` allowlist and route guard; `unknown_routes.ts`: 404/405 for unhandled requests; `mcp_http_route.ts`: HTTP handling; `mcp_request_router.ts`: JSON-RPC dispatch/version adaptation. |
-| | `json_rpc.ts`: incoming envelope parsing; `mcp_session.ts`: public initialization/sessions; `client_activity.ts`: dashboard history; `mcp_handlers.ts`: upstream operations; `mcp_namespaces.ts`: applies namespaces and `[serverName]` description prefixes to catalogs; `ui_routes.ts`: UI APIs/events. |
+| | `json_rpc.ts`: incoming envelope parsing; `mcp_session.ts`: public initialization/sessions; `client_activity.ts`: dashboard history; `mcp_handlers.ts`: upstream operations and permission checks; `mcp_namespaces.ts`: applies namespaces, public-name titles and `[serverName]` description prefixes to catalogs; `ui_routes.ts`: UI APIs/events; `tester_routes.ts`: the dashboard Tester; `http.ts`: JSON error answers and query and body parsing. |
 | `server/mcp_upstreams/` | `manager.ts`: stable gateway API/service wiring; `connections.ts`: per-backend state record, connection/recovery lifecycle; `health_checks.ts`: probes; `catalog.ts`: caches/exposure state. |
 | | `method_calls.ts`: calls/argument validation; `protocol_client.ts`: JSON-RPC, revision selection, HTTP/SSE and stdio; `tool_result.ts`: structured recovery/duplicate removal; `input_schema.ts`/`output_schema.ts`: provider schema policies; `json_schema.ts`: shared compiler; `logged_request.ts`: traffic logging around calls; `types.d.ts`: manager contracts. |
 | `shared/` | `mcp_protocol.ts`: revision registry, header encoding, `x-mcp-header` rules; `mcp_metadata.ts`: request-metadata validators; `mcp_namespaces.ts`: namespace and resource-URI codec; `mcp_schemas.ts`: MCP validators; `mcp_results.ts`: result types; `mcp_output_schema.ts`: object wrappers for 2025 clients. |
 | | `ui_api.ts`: dashboard contracts, which also type the server's backend status and traffic records; `client_info.ts`: client identity; `cancellation.ts`: abort helpers; `common.ts`: cross-runtime helpers. |
-| `ui/` | `index.html`: dashboard page; `main.tsx`: entrypoint it loads; `App.tsx`: state/routing; `base_components/`: low-level components; `components/`: app components; `sections/`: pages; `api/`: dashboard API client; `index.css`: Tailwind entry; `i18n/` and `styles/`: assets. |
+| `ui/` | `index.html`: dashboard page; `main.tsx`: entrypoint it loads; `App.tsx`: state/routing; `base_components/`: low-level components and shared class names with `cn` (`classes.ts`); `components/`: app components, including sortable tables (`table.tsx`, `sort.ts`); `sections/`: pages, with the Auth tab's cards in `sections/auth/`; `api/`: dashboard API client; `index.css`: Tailwind entry; `i18n/` and `styles/`: assets. |
 
 The compact footer links `© [current year] Aawa Technologies / Mikael Nakajima`
 to [Aawa Technologies](https://aawa.jp). Test fixtures live next to the tests:
 `server/mcp_upstreams/protocol_fixture.ts` runs a fake backend over HTTP or stdio,
-`server/gateway/route_fixture.ts` wires the public route, and
+`server/gateway/route_fixture.ts` wires the public route,
+`server/auth/idp_fixture.ts` signs JWTs for the tests' local OpenID providers, and
 `shared/mcp_schema_fixtures.ts` holds sample MCP values. `server/test_preload.ts`
 silences the logger during tests.
 
@@ -113,6 +123,166 @@ its connection or HTTP session marks the backend down at once, closes its client
 timeout or HTTP error fails only that request; probes catch a backend that stops
 answering. Probes do not refresh catalogs. Probes target configured backends, not general
 internet connectivity; `2026-07-28` backends are probed with discovery.
+
+### 2.3 Authentication
+
+`ENABLE_SUPERADMIN` and `ENABLE_OIDC` turn on the login methods. With neither,
+the dashboard and its API need no login, `/api/auth/*` and `/api/access/*`
+answer `404`, the dashboard shows no user name or Log out, and `/mcp` needs no
+credentials, so every enabled tool is usable. With either, the dashboard and
+every `/api/*` route except `/api/health` (container health checks, answered
+with only `{ "status": "ok" }`) need a dashboard session,
+and every `/mcp` request needs credentials. `PUBLIC_URL` and `OIDC_ISSUER` must
+be `https` except on `localhost`, `127.0.0.1` or `[::1]`; the gateway itself
+may serve plain HTTP behind a TLS proxy. With OIDC, `server/auth/identity.ts`
+discovers the IdP at startup through `openid-client`, so the gateway does not
+start without it.
+
+| Term | Meaning |
+| --- | --- |
+| Identity provider (IdP) | OAuth 2.1 authorization server and OpenID provider at `OIDC_ISSUER` |
+| User | Who an MCP client or the dashboard signs in as, stored in the main database; realm and type are set when it is added and never change |
+| Realm | OIDC: the user ID is the IdP's `sub`. Local: the gateway generates the ID |
+| Type | Human: signs in itself. Machine: signs in with API keys; an OIDC machine is an IdP service account |
+| Superadmin | The one Local human, named by `SUPERADMIN_USERNAME`; logs in to the dashboard with a password |
+| Admin | Who may use the dashboard: the superadmin, and OIDC users with a role in `ADMIN_ROLES` |
+| Role | A set of users that permissions are given to; matched to IdP roles by name |
+| Backend enabled, tool enabled | The server-wide toggles (`enabled`, `enabledTools` in `mcp.json`); not permissions |
+| Backend permission | Per user or role: the backend's prompts, resources and resource templates |
+| Tool permission | Per user or role: one tool |
+| Usable | Tool: backend enabled, tool enabled, tool permission. Prompts and resources: backend enabled, backend permission |
+
+**Dashboard login** (`server/auth/ui_auth.ts`):
+
+| Path | Method | Behavior |
+| --- | --- | --- |
+| `/api/auth/methods` | GET | The login methods that are on, for the login page `/ui/login`. |
+| `/api/auth/password` | POST | With the superadmin: checks the password with `Bun.password.verify` and the username as SHA-256 digests in constant time; a mismatch gets `401`. Each connecting address (behind a proxy, all clients share one) has 5 failed attempts per 15-minute window, counted before the check so parallel attempts share them; beyond them `429`. A login clears the count. |
+| `/api/auth/login` | GET | With OIDC: on another host than `PUBLIC_URL`, redirects there first. Keeps the pending login in memory (10 minutes, at most 100, oldest dropped; cookie `mcpx_login` on the callback path) and redirects to the IdP with `OIDC_SCOPES`, PKCE, state and nonce. `returnTo` names the page to return to; anything but a dashboard page means `/ui`. |
+| `/api/auth/callback` | GET | With OIDC: redeems the code as a confidential client (`client_secret_basic`) and validates the ID token. An admin gets a session and returns to the page; a user without a role in `ADMIN_ROLES`, a disabled user and a Local user's ID get `403`. An unknown, expired or replayed login and an IdP error answer get `400`, a failed token request `502`. |
+| `/api/auth/logout` | POST | Deletes the session and returns `{ logoutUrl }`: for an OIDC session the IdP's end-session URL with `post_logout_redirect_uri` `<PUBLIC_URL>/ui`, otherwise that page. |
+| `/api/auth/session` | GET | `{ name }` of the logged-in user. |
+
+A session is a random 32-byte ID in the cookie `mcpx_session` (`HttpOnly`,
+`Secure`, `SameSite=Lax`, path `/`); the main database ([5](#5-persistence))
+keeps its SHA-256 hash with the issuer (`local` for the superadmin), client ID
+and every ID token claim (only `sub` for the superadmin). An OIDC session also
+keeps the login's tokens for the Tester, encrypted with AES-GCM under a key
+derived (HKDF) from the session ID, so the database alone cannot read them.
+A session is valid until `UI_SESSION_MAX_AGE` after the login or
+`UI_SESSION_IDLE_TIMEOUT` after its last use, which is written at most once a
+minute, while its login method is on and, for OIDC, while it comes from this
+issuer and client ID, holds a role in `ADMIN_ROLES` and its user exists and is
+enabled. Disabling or deleting a user deletes its sessions at once, so a user
+added again with the same ID never inherits them. Each request checks
+validity and deletes an invalid session; an open event stream checks it on
+each update, without counting as use, and ends once it fails.
+Startup and each login delete all invalid sessions. Role changes at the IdP apply at the next login.
+Non-GET `/api/*` requests need `Origin` equal to `PUBLIC_URL` (`403`, checked
+first); without a valid session `/api/*` answers `401`. Bun serves the pages
+as static bundles, so they load without a session; the first API call gets
+`401` and the dashboard goes to the login. When the event stream closes, the
+dashboard checks the session before reconnecting.
+
+**`/mcp` credentials** (`server/auth/mcp_auth.ts`). Every request on every
+protocol version carries `Authorization: Bearer <credential>`, checked before
+anything else:
+
+| Credential | Recognized by | Check |
+| --- | --- | --- |
+| Local API key | Prefix `sk_aawa_local01_` | SHA-256 of the key is a Local machine's key |
+| OIDC API key | Prefix `sk_aawa_api01_`, then base64url of the service account's `<client ID>:<client secret>` | SHA-256 of the key is an OIDC machine's key; a client credentials grant with `OIDC_SCOPES`, then UserInfo, whose `sub` must be the key's user. Roles come from UserInfo and, for a JWT, the token's claims. The result is cached by key hash until the token expires (300 seconds without `expires_in`); parallel requests share one exchange, and a failed one is not cached |
+| OAuth access token | Anything else, with OIDC | JWT signature against the issuer's JWKS (cached, refetched for an unknown key ID), `iss`, a required `exp`, `aud` containing `OIDC_AUDIENCE`, a required `sub` that is not a Local user's |
+
+Missing or invalid credentials get `401` with `WWW-Authenticate: Bearer`,
+with OIDC also `resource_metadata=…`; with OIDC,
+`/.well-known/oauth-protected-resource/mcp` (and
+`/.well-known/oauth-protected-resource`) serves RFC 9728 metadata naming the
+issuer and `OIDC_SCOPES`. An IdP refusal of an OIDC key gets `401`, any other
+failed IdP request `502`. An unknown or disabled user gets `403`. Only JWT
+access tokens work, so MCP clients use an IdP app registered in advance unless
+the IdP issues JWTs to dynamically registered clients. 2025 sessions
+(`2025-06-18`, `2025-11-25`) belong to the user who initialized them; another
+user's credentials get `404` for them. Backends never see client credentials.
+Traffic records name the user ID with the MCP client.
+
+Credentials the IdP vouches for sign their user in: an unknown user is added
+as an enabled OIDC human without permissions, empty Name and Username are
+filled from the token (from UserInfo when an access token lacks them), and the
+user's roles follow the token. A sign-in is written and logged at most once a
+minute per user, and at once when the token's roles change; disabled and Local
+users stay unchanged. Key and user last-use times are written at most once a
+minute.
+
+**Users, roles and API keys** (`server/db/access.ts`). Admins manage them in
+the Auth tab through `/api/access/*` (`server/auth/access_routes.ts`); every
+change answers with the whole state. A new Local user is a machine with a
+generated ID and a Name; a new OIDC user's ID is its IdP user ID. The
+superadmin's user is added at first start and renamed with
+`SUPERADMIN_USERNAME`; it cannot be deleted, disabled or renamed in the
+dashboard. A token's roles are assigned to its user (unknown ones are added,
+without permissions), roles the user's previous token named and this one drops
+are unassigned, even if also assigned in the Roles card, and roles assigned
+only in the Roles card stay; tokens never remove
+users or roles. Renaming a role renames it in its users' last token roles too,
+so a later token that drops it unassigns it, and one that names the old name
+gets a new role. A Local key is the prefix and 32 random bytes (base64url),
+made by the gateway. An OIDC key is built in the browser, which registers only
+its SHA-256 and last 4 characters. Either key is shown once; the database keeps
+only that hash and those characters. Revoking deletes the key.
+
+**Permissions.** A user's permissions are its own plus those of its roles;
+nothing is allowed until given, and admins, the superadmin included, get none
+automatically. Backend and tool permissions are independent. Toggles and
+permissions never change each other; permissions are stored by backend and
+tool name and survive a disabled or unreachable backend or tool. Lists contain
+only usable items. Calls are checked in order:
+
+| Case | Answer |
+| --- | --- |
+| Tool unknown, hidden ([4.2](#42-input-schemas-and-arguments)), or tool or backend disabled, with or without permission | The unknown-tool error (`-32602`, [4.5](#45-tool-call-errors)) |
+| Tool and backend enabled, no tool permission | HTTP `403` with `-32600`, without `insufficient_scope` |
+| Usable | Forwarded |
+
+`prompts/get` and `resources/read` follow the same order with the backend
+permission and their usual errors ([3.8](#38-namespaces-and-resource-routing)).
+There are no permissions for single prompts or resources.
+
+**Tester** (`server/gateway/tester_routes.ts`). `/api/tester/mcp` takes the
+`2026-07-28` request the browser built, signs it as the logged-in admin and
+passes it to the `/mcp` handler like any MCP client request, permissions
+included. An OIDC admin's access token, refreshed with the login's refresh
+token once expired (parallel requests share one refresh, whose new tokens are
+saved before any of them goes on), passes only when its `aud` names `OIDC_AUDIENCE`. The
+answer holds both sides in full, secrets included.
+
+**Logs.** Auth lines use snake_case `key=value` fields and never hold secrets,
+keys or tokens:
+
+| Prefix | Line |
+| --- | --- |
+| `Auth:` | One per sign-in: flow, user ID, IdP app or service account client ID, key ID, client address, roles, roles claim, granted scopes, and claim names |
+| `Auth refused:` | A refused sign-in: flow, what is known of it, and why (warning) |
+| `Auth sync:`, `Auth sync failed:` | A user or role added or roles unassigned by a token; a failed UserInfo request or login token refresh |
+| `Auth admin:`, `Auth admin failed:` | An Auth tab change or refusal, with the admin's user ID |
+| `Auth startup:` | The superadmin added, invalid sessions removed |
+
+| ID | Decision | Reason |
+| --- | --- | --- |
+| SEC-DEC-01 | Two login methods, each switched on by its own setting: the superadmin's password (Local realm) and OIDC. With both off, nothing is protected. | The dashboard works without an IdP; setups that protect the gateway themselves can turn both off. |
+| SEC-DEC-02 | Users, roles, permissions and API keys live in the main database; the IdP vouches for OIDC users and names their roles in tokens. | Users and roles arrive with tokens; the gateway needs no IdP admin API. |
+| SEC-DEC-03 | OIDC users are keyed by the IdP's `sub`; Name and Username are labels that tokens fill while empty but never overwrite. | The `sub` never changes, so everything links to it. |
+| SEC-DEC-04 | Every user has a realm and a type, fixed when it is added; Local users other than the superadmin are machines, and they sign in only with their own API keys. | An IdP token cannot sign in as a Local user. |
+| SEC-DEC-05 | Tokens assign the roles they name and unassign those their user's previous token named, even when also assigned in the dashboard; roles assigned only in the dashboard stay; unknown roles are added. | Roles follow the IdP without a sync, and admins can still add roles. |
+| SEC-DEC-06 | Only JWT access tokens on `/mcp`. | Opaque tokens would need introspection per request. |
+| SEC-DEC-07 | API keys only for machines. | Humans sign in themselves. |
+| SEC-DEC-08 | An OIDC machine's key is its service account's client ID and secret, built in the browser and registered by hash; `/mcp` exchanges it with the client credentials grant and caches the result. | The secret never passes the dashboard API, and the IdP stays the authority for the machine and its roles. |
+| SEC-DEC-09 | Keys are stored as plain SHA-256; only stored keys sign in. | Keys are long random secrets; revoking takes effect at once. |
+| SEC-DEC-10 | Missing permission is HTTP `403`; unusable items keep their usual errors. | The MCP authorization spec answers missing permissions with `403`. |
+| SEC-DEC-11 | Disabled users are refused on `/mcp` (`403`) and in the dashboard; disabling or deleting an admin ends its dashboard sessions, open event streams included, at once. | Disabling takes effect without waiting for tokens or sessions to expire. |
+| SEC-DEC-12 | The Tester signs as the logged-in admin: the superadmin's request is marked in process, an OIDC admin's carries the login's access token. | The superadmin has no token, and only gateway code can mark a request; the Tester meets the same checks as any MCP client. |
+| SEC-DEC-13 | Auth tab refusals are typed: `400` unusable input, `404` unknown user, role or API key, `409` conflict with a rule or existing data. | The store's refusals keep their meaning in the answer. |
+| SEC-DEC-14 | Sign-in lines log claim names, not values. | Names show where roles are missing. |
 
 ## 3. MCP protocol model
 
@@ -166,7 +336,7 @@ fields; removed methods return HTTP 404 with JSON-RPC method-not-found. A suppli
 A request takes the 2026 path when it is `server/discover`, carries protocol
 version metadata, or has the exact `2026-07-28` header. Any other unsupported
 header gets HTTP 400 / `-32600`.
-Requests other than for the dashboard pages and their assets must name a host
+Requests other than for `/`, the dashboard pages and their assets must name a host
 listed in `ALLOWED_HOSTS` in `Host` and, when present, in `Origin`. Other
 requests get HTTP 403, for `/mcp` POST and DELETE with a JSON-RPC error without
 `id`, otherwise with `{ error }`. Checking both stops DNS rebinding, because a
@@ -179,8 +349,9 @@ Public GET event streams and stdio are not exposed. The gateway sends no
 server-initiated MCP messages and normally completes operations with one JSON
 response. Backend HTTP must offer Streamable HTTP with JSON or SSE `POST`
 responses; the backend's standalone `GET` event stream is not used. Backend stdio
-is supported. Backend stdio buffers and SSE events are limited to 8 MiB, and
-backend pagination to 1,000 pages.
+is supported. Backend HTTP JSON bodies, stdio lines and SSE events are limited to
+8 MiB, counted in bytes, and backend pagination to 1,000 pages and 32 MiB of
+items as JSON in all.
 
 A stdio backend's stdout lines that are not JSON-RPC messages are logged and
 skipped. A stdout line over the limit, or stdout closing, is a transport failure
@@ -233,24 +404,31 @@ and never forwarded between connections. Backend IDs are reacquired on reconnect
 the selected revision persists.
 
 Sessions exist only in memory, without lifecycle status, timestamps, idle expiry,
-or cleanup timers. `MCP_MAX_SESSIONS_PER_CLIENT` (positive integer, default `10`;
-an invalid value stops startup) limits retained sessions per reported
-name/version pair across both 2025 revisions. Successful initialization beyond
-the limit evicts that pair's oldest session by insertion order; request activity
-does not reorder sessions, and invalid initialization evicts none. DELETE removes
+or cleanup timers. `MCP_MAX_SESSIONS_PER_CLIENT` (positive integer, default `10`)
+limits retained sessions per user and reported name/version pair across both
+2025 revisions, and `MCP_MAX_SESSIONS_PER_USER` (default `100`) a user's
+sessions of all clients; an invalid value stops startup. Successful
+initialization beyond a limit evicts that user's oldest session of the pair,
+otherwise its oldest of all, by insertion order, so one user never evicts
+another's. Request activity does not reorder sessions, and invalid
+initialization evicts none. DELETE removes
 a session immediately; gateway restart clears all sessions.
 
 ### 3.4 Client identity
 
-Reported name/version is dashboard identity, not authentication identity. The
-whole reported client info is kept in both revisions; the UI shows name, version
-and title. Identical pairs intentionally merge; remote authenticated
-differentiation is outside this design. Bounded activity history survives
-session closure/eviction and resets on restart.
+Reported name/version identifies an MCP client to the dashboard, not to
+authentication; the user comes from its credentials ([2.3](#23-authentication)).
+The whole reported client info is kept in both revisions; the UI shows name,
+version and title. Name, version and title are at most 256 characters and the
+whole client info at most 64 KiB as JSON; longer ones are refused (`-32602`). The activity history keeps one entry per reported
+name/version, user and protocol, at most 200, the least recently seen dropped; a refused
+request's entry has no user. It survives session closure/eviction and resets
+on restart.
 
 Gateway-generated logs, traffic-record identity, and dashboard contracts exclude
-session IDs; logs use reported name/version where available. The UI shows first/last
-activity and latest protocol, without connection status.
+session IDs; logs use reported name/version where available. The logger writes
+control characters as JSON escapes, so a reported name cannot add log lines. The UI shows the
+user, first/last activity and protocol, without connection status.
 
 ### 3.5 `2026-07-28` HTTP metadata and headers
 
@@ -327,7 +505,11 @@ and [2026](https://modelcontextprotocol.io/specification/2026-07-28/basic/utilit
 | Resources | `aawa-mcpx://resource/<namespace>/<encoded-original-uri>` |
 | Resource templates | `aawa-mcpx://template/<namespace>/<original-template>` |
 
-Ordinary names stay readable. Ambiguous backend names (including `__`, a trailing
+Tools and prompts get their public name as `title`, and tools with
+`annotations` as `annotations.title` too; the backend's titles reach only the
+dashboard. Clients show a title before the name, so a backend's own title
+would hide which backend owns the item. Descriptions start with
+`[serverName]`. Ordinary names stay readable. Ambiguous backend names (including `__`, a trailing
 `_`, or exactly `.` or `..`), names outside `A-Za-z0-9_.-`, and the reserved
 `mcpx-` prefix use `mcpx-` followed by four hex digits per UTF-16 code unit. The
 dashboard uses the same codec for tool toggles. Resource wrappers use the same
@@ -348,7 +530,7 @@ without decoding.
 
 Only MCP resource fields are wrapped: catalogs, read contents, tool links/embedded
 resources, and prompt embedded resources; text and structured output stay intact.
-Backend responses in traffic records and dashboard tests remain original. Reads
+Backend responses in traffic records remain original. Reads
 decode once and route without requiring catalog membership, because tool links
 need not occur in `resources/list`. Malformed routes return `-32602`, and unknown or
 disabled backends `-32002` for 2025 clients and `-32602` for 2026 clients;
@@ -362,7 +544,8 @@ Tools, prompts, resources, and resource templates work across supported revision
 continuations, sampling, elicitation, subscriptions, and tasks are not advertised,
 and unsupported interactive results fail explicitly ([7.2](#72-interactive-mcp-requests)
 covers the planned design). Backend credentials define their authorization
-context. The gateway has no client authentication ([7.1](#71-security)).
+context; MCP client credentials and permissions are the gateway's own
+([2.3](#23-authentication)).
 
 For 2025 clients the gateway answers `completion/complete` with empty values,
 and `logging/setLevel` and `ping` with `{}`. For 2026 clients these methods and
@@ -374,7 +557,7 @@ to clients and backends, with the name and version from `package.json`.
 
 ### 4.1 Call path
 
-The shared MCP/dashboard call path:
+The call path:
 
 1. Validate arguments once against the cached input validator ([4.2](#42-input-schemas-and-arguments)).
 2. Capture the cached output schema before dispatch; record the original backend response.
@@ -382,12 +565,12 @@ The shared MCP/dashboard call path:
 4. Recover missing structured output when the tool has an output schema and JSON content is unambiguous.
 5. Validate successful output, warning without changing data ([4.4](#44-output-schemas)).
 6. Remove only JSON text equal to the entire structured value; preserve independent content and metadata.
-7. Adapt MCP catalogs/results to the client revision; dashboard shapes stay original.
+7. Adapt MCP catalogs/results to the client revision.
 
 ### 4.2 Input schemas and arguments
 
 Every supported revision requires `inputSchema.type: "object"`. Catalog fetches
-validate and compile input schemas once; MCP calls and dashboard tests reuse
+validate and compile input schemas once; MCP calls reuse
 those validators for one argument-validation pass before rate limiting or
 dispatch. Input mismatches never reach backends.
 
@@ -415,8 +598,7 @@ backend `structuredContent`; `2026-07-28` permits any JSON value.
 Results remove only text blocks whose entire JSON value equals
 `structuredContent`, ignoring formatting and object key order. Independent text,
 JSON subsets or extra fields, images, audio, and resources remain. The required
-`content` array may become `[]`. MCP responses and dashboard testing share this
-policy; backend traffic retains the original result.
+`content` array may become `[]`. Backend traffic retains the original result.
 
 Omitting duplicate text deliberately departs from the spec's
 [serialized-JSON `SHOULD` recommendation](https://modelcontextprotocol.io/specification/2025-06-18/server/tools#structured-content)
@@ -494,7 +676,7 @@ like tool content blocks.
 
 Ordinary 2025 RPC errors keep HTTP 200. Gateway-generated transport errors use
 JSON-RPC `-32600` with these HTTP statuses: missing session 400, unknown session
-404, header mismatch 400, `Host` or `Origin` not in `ALLOWED_HOSTS` 403, unacceptable `Accept` 400. The 2026 binding uses HTTP 400 for
+404, header mismatch 400, `Host` or `Origin` not in `ALLOWED_HOSTS` 403, unacceptable `Accept` 400, and the credential and permission answers of [2.3](#23-authentication) (401, 403, 502). The 2026 binding uses HTTP 400 for
 invalid requests/parameters and metadata errors, 404 for unknown methods, and
 500 for internal errors. HTTP handler failures use 500 in every revision.
 Backend HTTP statuses stay local to backend recovery/negotiation and are not
@@ -505,8 +687,9 @@ copied across protocol boundaries.
 | State | Storage and lifetime |
 | --- | --- |
 | Backend/tool exposure | `mcp.json`: read once. A tool catalog fetch or dashboard change that alters `enabled`, `enabledTools`, or `availableTools` writes the file as read with only those fields changed (no defaults added, in place, so a single-file Docker mount keeps working); unchanged state is not written. External edits are not reread or merged. Disable keeps tool settings, catalogs, and server details, and the dashboard still shows them. MCP clients get no catalog from a disabled backend or one with a configuration error. |
-| Traffic | `server/traffic_store.ts` stores current-run request/response records in the `traffic` table of `db/traffic.db`, keeping the newest 10,000 records; the table is cleared at startup and written with `synchronous=NORMAL`. JSON-RPC errors and tool results with `isError: true` count as errors. A failed write is printed to the console and never changes the reply. |
-| Sessions/client activity | In-memory state with the retention limits in [3.3](#33-sessions) and [3.4](#34-client-identity); cleared on restart. |
+| Main database | `server/db/main.ts` opens `db/main.db` at startup, kept across restarts (WAL, foreign keys on). The schema version is `PRAGMA user_version`: migrations missing from the file run in order, each in its own transaction; a version newer than the code stops startup. Tables: `ui_sessions` (version 1, [2.3](#23-authentication)); `users`, `roles`, `user_roles`, `permissions`, `api_keys` and the sessions' encrypted login tokens (version 2). |
+| Traffic | `server/db/traffic.ts` stores current-run request/response records in the `traffic` table of `db/traffic.db`, keeping the newest 10,000 records of at most 512 MiB stored text in all; a request or response over 256 KiB is stored as `{ truncated: true, bytes, start }` with its first 16,384 characters, and a client label, method or protocol version over 256 characters as its first 256 and `…` (backend names stay whole), while the message itself is unchanged. The table is cleared at startup and written with `synchronous=NORMAL`. JSON-RPC errors and tool results with `isError: true` count as errors. A failed write is printed to the console and never changes the reply. |
+| Sessions/client activity | In-memory state with the retention limits in [3.3](#33-sessions) and [3.4](#34-client-identity); cleared on restart. Pending OIDC logins, failed password login counts and exchanged OIDC API keys ([2.3](#23-authentication)) are in memory too. |
 
 ## 6. Validation policy
 
@@ -532,22 +715,18 @@ cross-runtime layer.
 
 Nothing in this section is approved for implementation unless it says so.
 
-### 7.1 Security
+### 7.1 List-changed notifications
 
-**Status: next; needs its own design.** The gateway has no client
-authentication: any client that reaches a host in `ALLOWED_HOSTS` can list and
-call every exposed tool, and the dashboard API is open the same way. Planned:
-
-- Client authentication with OAuth2/OIDC.
-- Granular tool permissions: which backends and tools each client may list and
-  call.
-- Browser login for the dashboard, built on the OAuth2/OIDC mechanism.
-
-HTTP Basic authentication is not planned.
+**Status: TODO; one batch for every catalog and permission change.** The
+gateway sends no `notifications/tools/list_changed`,
+`notifications/prompts/list_changed` or `notifications/resources/list_changed`
+([3.2](#32-transports-and-catalogs)), so MCP clients see a changed catalog
+(toggles, refreshes, reconnects) or changed permissions
+([2.3](#23-authentication)) only when they list again.
 
 ### 7.2 Interactive MCP requests
 
-**Status: to be implemented after the security work ([7.1](#71-security)); scope (native relay, translation) remains undecided.**
+**Status: next; scope (native relay, translation) remains undecided.**
 The runtime rejects continuation parameters and backend `input_required` results
 and advertises no interactive client capabilities. Any future support must retain
 ordinary calls across all three client/backend revisions and both backend transports.
@@ -667,7 +846,7 @@ client/backend combinations still need interoperability confirmation.
 
 | ID | Decision needed | Current position / next evidence |
 | --- | --- | --- |
-| MRTR-DEC-01 | Whether and when to implement? | Decided: implement after the security work (7.1). Native-only remains the simpler candidate for the first step. |
+| MRTR-DEC-01 | Whether and when to implement? | Decided: implement next. Native-only remains the simpler candidate for the first step. |
 | MRTR-DEC-02 | Which pairs need translation? | Identify concrete clients/backends and interactions before selecting either direction. |
 | MRTR-DEC-03 | Which 2025 transports/features? | Define coverage, connection isolation, and explicit unsupported cases. |
 | MRTR-DEC-04 | Continuation ownership and retention? | Resolve caller binding, quotas, expiry, retry semantics, and restart policy. |
@@ -729,6 +908,21 @@ not cover, starting with `@typescript-eslint/no-deprecated`.
 | React Compiler | Stable release or measured rendering bottleneck. |
 | `process.on("memoryPressure")` | Substantial disposable in-memory caches. |
 | HTTP/2 or HTTP/3 | Stable Bun support and an MCP/deployment requirement justify compatibility risk. |
+
+### 7.8 Structured logs
+
+**Status: TODO; needs its own design.** The logger writes text lines. Logs
+should move to structured JSON, one object per line, with snake_case field
+names. Sign-in and Auth tab lines already use snake_case `key=value` fields
+(`logFields` in `server/logger.ts`) to make that move simple.
+
+### 7.9 Issuer change
+
+**Status: TODO.** OIDC users are keyed by `sub` and roles by name, without the
+issuer. Pointing `OIDC_ISSUER` at another IdP while keeping `db/main.db` lets
+that IdP's subjects and role names inherit the stored users, roles and
+permissions. Store the issuer with the access data once and refuse to start
+with a different one (exit code 78) until the database is reset.
 
 ## 8. References
 

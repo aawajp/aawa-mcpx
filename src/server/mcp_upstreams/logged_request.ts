@@ -1,6 +1,6 @@
+import type { TrafficStore } from '@/server/db/traffic';
 import { logger } from '@/server/logger';
 import type { Client, McpUpstreamServer } from '@/server/mcp_upstreams/types';
-import type { TrafficStore } from '@/server/traffic_store';
 import { errorMessage } from '@/shared/common';
 
 const runLoggedRequest = async <T>(params: {

@@ -1,17 +1,33 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Activity, useCallback, useEffect, useState } from 'react';
 
 import { errorMessage } from '@/shared/common';
-import { type OverviewResponse, overviewResponseType } from '@/shared/ui_api';
-import { postJson } from '@/ui/api/client';
+import {
+	AUTH_PATHS,
+	DASHBOARD_PATHS,
+	logoutResponseType,
+	type OverviewResponse,
+	overviewResponseType,
+	UI_PAGE_PATHS,
+	uiSessionType,
+} from '@/shared/ui_api';
+import {
+	ApiError,
+	currentPage,
+	getJson,
+	type Page,
+	postJson,
+} from '@/ui/api/client';
+import { Button } from '@/ui/base_components/button';
 import { t } from '@/ui/i18n';
+import { AuthSection } from '@/ui/sections/auth';
 import { BackendsSection } from '@/ui/sections/BackendsSection';
-import { BackendTesterSection } from '@/ui/sections/BackendTesterSection';
 import { ClientsSection } from '@/ui/sections/ClientsSection';
 import { DebugPage } from '@/ui/sections/DebugPage';
 import { SummarySection } from '@/ui/sections/SummarySection';
+import { TesterSection } from '@/ui/sections/TesterSection';
 
-type MainTab = 'tester' | 'backends' | 'clients';
-const MAIN_TABS: MainTab[] = ['backends', 'clients', 'tester'];
+const MAIN_TABS = ['backends', 'clients', 'tester', 'auth'] as const;
+type MainTab = (typeof MAIN_TABS)[number];
 const MAIN_TAB_STORAGE_KEY = 'aawa-mcpx-main-tab';
 const EVENT_STREAM_RETRY_MS = 5000;
 const REFRESH_KEY = 'refresh';
@@ -20,9 +36,6 @@ const pendingKey = (...names: string[]): string => JSON.stringify(names);
 
 const isMainTab = (value: string | null): value is MainTab =>
 	MAIN_TABS.some((tab) => tab === value);
-
-const resolveRoute = (): 'main' | 'debug' =>
-	window.location.pathname.startsWith('/debug') ? 'debug' : 'main';
 
 export default function App() {
 	const [overview, setOverview] = useState<OverviewResponse | null>(null);
@@ -37,7 +50,31 @@ export default function App() {
 		}
 	});
 	const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
-	const [route, setRoute] = useState(resolveRoute);
+	const [route, setRoute] = useState<Page>(currentPage);
+	const [userName, setUserName] = useState<string | null>(null);
+
+	useEffect(() => {
+		void getJson(AUTH_PATHS.session)
+			.then((data) => setUserName(uiSessionType.assert(data).name))
+			.catch((err) => {
+				// Without a login method there is no session endpoint, no login and
+				// no Auth tab.
+				if (err instanceof ApiError && err.status === 404)
+					setMainTab((tab) => (tab === 'auth' ? 'backends' : tab));
+				else setError(errorMessage(err));
+			});
+	}, []);
+
+	const logout = async () => {
+		try {
+			const { logoutUrl } = logoutResponseType.assert(
+				await postJson(AUTH_PATHS.logout, {}),
+			);
+			window.location.assign(logoutUrl);
+		} catch (err) {
+			setError(errorMessage(err));
+		}
+	};
 
 	const runAction = useCallback(
 		async (key: string, path: string, body: unknown) => {
@@ -58,14 +95,14 @@ export default function App() {
 		[],
 	);
 	const refreshBackends = (serverName?: string) =>
-		void runAction(REFRESH_KEY, '/api/backends/refresh', {
+		void runAction(REFRESH_KEY, DASHBOARD_PATHS.refreshBackends, {
 			serverName,
 		});
 	const isRefreshing = pending.has(REFRESH_KEY);
 	const toggleBackend = (params: { serverName: string; enabled: boolean }) =>
 		void runAction(
 			pendingKey(params.serverName),
-			'/api/backends/toggle',
+			DASHBOARD_PATHS.toggleBackend,
 			params,
 		);
 	const isBackendPending = (serverName: string) =>
@@ -77,8 +114,11 @@ export default function App() {
 		}
 		let eventSource: EventSource | undefined;
 		let retryTimer: ReturnType<typeof setTimeout> | undefined;
+		// A session check started before cleanup can still reach `connect`.
+		let disposed = false;
 		const connect = () => {
-			eventSource = new EventSource('/api/events');
+			if (disposed) return;
+			eventSource = new EventSource(DASHBOARD_PATHS.events);
 			eventSource.onmessage = (event) => {
 				try {
 					const payload = JSON.parse(event.data) as unknown;
@@ -92,20 +132,29 @@ export default function App() {
 			eventSource.onerror = () => {
 				setStreamError(t('event.error'));
 				if (eventSource?.readyState === EventSource.CLOSED) {
-					retryTimer = setTimeout(connect, EVENT_STREAM_RETRY_MS);
+					// A closed stream may mean the session ended; the session check
+					// then sends the browser to the login.
+					retryTimer = setTimeout(
+						() =>
+							void getJson(AUTH_PATHS.session)
+								.catch(() => undefined)
+								.finally(connect),
+						EVENT_STREAM_RETRY_MS,
+					);
 				}
 			};
 		};
 		connect();
 
 		return () => {
+			disposed = true;
 			clearTimeout(retryTimer);
 			eventSource?.close();
 		};
 	}, [route]);
 
 	useEffect(() => {
-		const syncRoute = () => setRoute(resolveRoute());
+		const syncRoute = () => setRoute(currentPage());
 		window.addEventListener('popstate', syncRoute);
 		return () => {
 			window.removeEventListener('popstate', syncRoute);
@@ -114,7 +163,7 @@ export default function App() {
 
 	const navigate = useCallback((target: 'main' | 'debug') => {
 		setRoute(target);
-		const path = target === 'debug' ? '/debug' : '/';
+		const path = UI_PAGE_PATHS[target];
 		if (window.location.pathname !== path) {
 			window.history.pushState({}, '', path);
 		}
@@ -127,23 +176,28 @@ export default function App() {
 		} catch {}
 	}, []);
 
-	const tabClassName = (tab: MainTab): string => {
-		const base =
-			'inline-flex items-center rounded-md border px-3 py-2 text-sm font-medium transition';
-		if (mainTab === tab) {
-			return `${base} border-sky-400/60 bg-sky-500/20 text-sky-100 shadow-sm`;
-		}
-		return `${base} hover:bg-muted`;
-	};
+	// The signed-in user, on the line of each page's title.
+	const session =
+		userName === null ? null : (
+			<div className="flex items-center gap-3">
+				<span className="text-muted-foreground">{userName}</span>
+				<Button type="button" onClick={() => void logout()}>
+					{t('session.logout')}
+				</Button>
+			</div>
+		);
 
 	return (
 		<>
 			{route === 'debug' ? (
-				<DebugPage onNavigate={navigate} />
-			) : (
+				<DebugPage onNavigate={navigate} session={session} />
+			) : null}
+			{/* Hidden instead of unmounted, so the Tester keeps its runs across pages. */}
+			<Activity mode={route === 'debug' ? 'hidden' : 'visible'}>
 				<div className="app-shell container mx-auto max-w-6xl p-4 space-y-4">
-					<header>
+					<header className="flex items-center justify-between gap-3">
 						<h1 className="text-3xl font-bold">{t('app.title')}</h1>
+						{session}
 					</header>
 
 					<SummarySection
@@ -156,29 +210,35 @@ export default function App() {
 						error={error ?? streamError}
 					/>
 					<div className="flex items-center gap-2">
-						{MAIN_TABS.map((tab) => (
-							<button
-								key={tab}
-								type="button"
-								onClick={() => selectMainTab(tab)}
-								className={tabClassName(tab)}
-								aria-pressed={mainTab === tab}
-							>
-								{t(`main.tab.${tab}`)}
-							</button>
-						))}
-						<button
-							type="button"
-							onClick={() => navigate('debug')}
-							className="inline-flex items-center rounded-md border px-3 py-2 text-sm font-medium transition hover:bg-muted"
-						>
+						{/* The Auth tab exists only with a login method, which gives a login. */}
+						{MAIN_TABS.filter((tab) => tab !== 'auth' || userName !== null).map(
+							(tab) => (
+								<Button
+									key={tab}
+									type="button"
+									onClick={() => selectMainTab(tab)}
+									className={
+										mainTab === tab
+											? 'border-sky-400/60 bg-sky-500/20 text-sky-100 shadow-sm'
+											: ''
+									}
+									aria-pressed={mainTab === tab}
+								>
+									{t(`main.tab.${tab}`)}
+								</Button>
+							),
+						)}
+						<Button type="button" onClick={() => navigate('debug')}>
 							{t('debug.title')}
-						</button>
+						</Button>
 					</div>
 
-					{mainTab === 'tester' ? (
-						<BackendTesterSection backends={overview?.backends ?? []} />
+					{mainTab === 'auth' && userName !== null ? (
+						<AuthSection backends={overview?.backends ?? []} />
 					) : null}
+					<Activity mode={mainTab === 'tester' ? 'visible' : 'hidden'}>
+						<TesterSection backends={overview?.backends ?? []} />
+					</Activity>
 					{mainTab === 'clients' ? (
 						<ClientsSection clients={overview?.clients ?? []} />
 					) : null}
@@ -192,7 +252,7 @@ export default function App() {
 							onToggleTool={(params) =>
 								void runAction(
 									pendingKey(params.serverName, params.toolName),
-									'/api/tools/toggle',
+									DASHBOARD_PATHS.toggleTool,
 									params,
 								)
 							}
@@ -202,8 +262,8 @@ export default function App() {
 						/>
 					) : null}
 				</div>
-			)}
-			<footer className="container mx-auto max-w-6xl px-6 pb-6 pt-2 text-center text-sm text-muted-foreground">
+			</Activity>
+			<footer className="container mx-auto max-w-6xl px-6 pb-6 pt-2 text-center text-muted-foreground">
 				<p>
 					© {new Date().getFullYear()}{' '}
 					<a href="https://aawa.jp">Aawa Technologies</a> / Mikael Nakajima

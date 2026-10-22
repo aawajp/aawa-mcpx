@@ -35,7 +35,12 @@ const jsonRpcResponseType = type({
 
 const toolType = type({
 	name: 'string',
+	'title?': 'string',
 	'description?': 'string',
+	'annotations?': {
+		'title?': 'string',
+		'[string]': 'unknown',
+	},
 	inputSchema: 'unknown',
 	'outputSchema?': 'unknown',
 	'[string]': 'unknown',

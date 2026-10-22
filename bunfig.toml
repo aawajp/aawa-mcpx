@@ -4,10 +4,6 @@
 # disable telemetry
 telemetry = false
 
-# do not load .env automatically, so tests never see local settings;
-# the dev and start scripts load it explicitly
-env = false
-
 [install]
 	# do not auto-install dependencies
 	auto = "disable"

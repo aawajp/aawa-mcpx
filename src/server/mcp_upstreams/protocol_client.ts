@@ -52,9 +52,12 @@ type RequestOptions = {
 	// The called tool's header rules; only tools/call has them.
 	headerParameters?: HeaderParameter[] | Error;
 };
-// The largest backend message: a stdio line or an SSE event.
+// The largest backend message in bytes: an HTTP JSON body, a stdio line or an
+// SSE event.
 const MESSAGE_SIZE_LIMIT = 8 * 1024 * 1024;
 const LIST_PAGE_LIMIT = 1000;
+// The largest list in bytes of its items as JSON, of all its pages.
+const LIST_SIZE_LIMIT = 32 * 1024 * 1024;
 // Each shutdown step waits this long for a stdio backend to exit.
 const STDIO_EXIT_WAIT_MS = 1000;
 
@@ -394,24 +397,29 @@ class ProtocolClient {
 	): Promise<void> {
 		const reader = stream.getReader();
 		const decoder = new TextDecoder();
-		let buffer = '';
+		let line = '';
+		// The current line's bytes, counted before decoding.
+		let size = 0;
 		try {
 			for (;;) {
 				const next = await reader.read();
 				if (next.done) break;
-				buffer += decoder.decode(next.value, {
-					stream: true,
-				});
-				let end = buffer.indexOf('\n');
-				while (end >= 0) {
-					onLine(buffer.slice(0, end).trim());
-					buffer = buffer.slice(end + 1);
-					end = buffer.indexOf('\n');
-				}
-				if (buffer.length > MESSAGE_SIZE_LIMIT) {
-					if (!truncate) throw new Error('Backend message exceeds size limit');
-					onLine(buffer);
-					buffer = '';
+				for (let chunk = next.value; ; ) {
+					const end = chunk.indexOf(10);
+					const part = end < 0 ? chunk : chunk.subarray(0, end);
+					size += part.length;
+					if (size > MESSAGE_SIZE_LIMIT && !truncate)
+						throw new Error('Backend message exceeds size limit');
+					line += decoder.decode(part, {
+						stream: end < 0,
+					});
+					if (end >= 0 || size > MESSAGE_SIZE_LIMIT) {
+						onLine(line.trim());
+						line = '';
+						size = 0;
+					}
+					if (end < 0) break;
+					chunk = chunk.subarray(end + 1);
 				}
 			}
 		} finally {
@@ -666,39 +674,60 @@ class ProtocolClient {
 		id: unknown,
 	): Promise<unknown> {
 		if (!response.body) throw new Error('Missing backend stream');
-		const reader = response.body
-			.pipeThrough(new TextDecoderStream())
-			.getReader();
-		let buffer = '';
+		const reader = response.body.getReader();
+		const decoder = new TextDecoder();
+		let line = '';
+		// SSE events can span chunks and contain multiple data lines.
+		let data: string[] = [];
+		// The current event's bytes, counted before decoding with one byte for
+		// each line ending.
+		let size = 0;
 		// SSE lines end in \r\n, \n or \r. A chunk can end between \r and \n,
-		// so a trailing \r waits for the next chunk.
+		// so a \n that starts the next chunk ends no line.
 		let carriageReturn = false;
 		try {
 			for (;;) {
 				const next = await reader.read().catch((error: unknown) => {
 					throw new BackendTransportError(error);
 				});
-				let text: string =
-					(carriageReturn ? '\r' : '') + (next.done ? '' : next.value);
-				carriageReturn = !next.done && text.endsWith('\r');
-				if (carriageReturn) text = text.slice(0, -1);
-				buffer += text.replace(/\r\n?/g, '\n');
-				if (buffer.length > MESSAGE_SIZE_LIMIT)
-					throw new Error('Backend event exceeds size limit');
-				let end = buffer.indexOf('\n\n');
-				while (end >= 0) {
-					const data = buffer
-						// SSE events can span chunks and contain multiple data lines.
-						.slice(0, end)
-						.split('\n')
-						.filter((line) => line.startsWith('data:'))
-						.map((line) => line.slice(5).replace(/^ /, ''))
-						.join('\n');
-					buffer = buffer.slice(end + 2);
-					if (data) {
+				if (next.done) break;
+				const chunk = next.value;
+				let start = 0;
+				if (carriageReturn && chunk.length) {
+					carriageReturn = false;
+					if (chunk[0] === 10) start = 1;
+				}
+				// The next \n and \r at or after start, or the chunk's length.
+				let lf = -1;
+				let cr = -1;
+				for (;;) {
+					if (lf < start) lf = chunk.indexOf(10, start);
+					if (lf < 0) lf = chunk.length;
+					if (cr < start) cr = chunk.indexOf(13, start);
+					if (cr < 0) cr = chunk.length;
+					const end = Math.min(lf, cr);
+					size += end - start + (end < chunk.length ? 1 : 0);
+					if (size > MESSAGE_SIZE_LIMIT)
+						throw new Error('Backend event exceeds size limit');
+					line += decoder.decode(chunk.subarray(start, end), {
+						stream: end === chunk.length,
+					});
+					if (end === chunk.length) break;
+					carriageReturn = end === cr && end === chunk.length - 1;
+					start = end === cr && lf === end + 1 ? end + 2 : end + 1;
+					if (line) {
+						if (line.startsWith('data:'))
+							data.push(line.slice(5).replace(/^ /, ''));
+						line = '';
+						continue;
+					}
+					const text = data.join('\n');
+					data = [];
+					size = 0;
+					if (text) {
 						// Progress notifications are not the final response. Complete only
 						// when this request's ID has a result or protocol error.
-						const event = recordOf(JSON.parse(data));
+						const event = recordOf(JSON.parse(text));
 						if (event && 'method' in event) this.answerRequest(event);
 						else if (
 							event &&
@@ -716,9 +745,7 @@ class ProtocolClient {
 							return event;
 						}
 					}
-					end = buffer.indexOf('\n\n');
 				}
-				if (next.done) break;
 			}
 			throw new BackendTransportError(
 				new Error('Backend stream ended without a result'),
@@ -734,9 +761,37 @@ class ProtocolClient {
 		response: Response,
 		message: Record<string, unknown>,
 	): Promise<unknown> {
-		const text = await response.text().catch((error: unknown) => {
-			throw new BackendTransportError(error);
-		});
+		const chunks: Uint8Array<ArrayBuffer>[] = [];
+		// A Content-Length over the limit fails before reading, but only the
+		// bytes read are trusted.
+		const length = Number(response.headers.get('content-length'));
+		let size = length > MESSAGE_SIZE_LIMIT ? length : 0;
+		if (response.body) {
+			const reader = response.body.getReader();
+			try {
+				while (size <= MESSAGE_SIZE_LIMIT) {
+					const next = await reader.read().catch((error: unknown) => {
+						throw new BackendTransportError(error);
+					});
+					if (next.done) break;
+					chunks.push(next.value);
+					size += next.value.length;
+				}
+			} finally {
+				// Stop a body over the limit; an errored stream also rejects cancel().
+				await reader.cancel().catch(() => undefined);
+				reader.releaseLock();
+			}
+		}
+		// Like any HTTP failure, an oversized body keeps its response's status.
+		if (size > MESSAGE_SIZE_LIMIT)
+			throw new BackendRpcError(
+				'Backend response exceeds size limit',
+				RPC_ERROR.InternalError,
+				undefined,
+				response.status,
+			);
+		const text = await new Blob(chunks).text();
 		let body: unknown;
 		try {
 			body = JSON.parse(text);
@@ -986,6 +1041,7 @@ class ProtocolClient {
 		// rpc validated each page against the method's result type.
 		const first = await this.rpc(method, params, options);
 		const items = [...(first[key] as unknown[])];
+		let bytes = Buffer.byteLength(JSON.stringify(items));
 		const cursors = new Set<string>();
 		let cursor = first.nextCursor;
 		let ttl = Number(first.ttlMs ?? 0);
@@ -1001,7 +1057,13 @@ class ProtocolClient {
 				},
 				options,
 			);
-			items.push(...(page[key] as unknown[]));
+			const pageItems = page[key] as unknown[];
+			bytes += Buffer.byteLength(JSON.stringify(pageItems));
+			if (bytes > LIST_SIZE_LIMIT)
+				throw new Error(
+					`Backend ${method} result exceeds ${LIST_SIZE_LIMIT} bytes`,
+				);
+			items.push(...pageItems);
 			ttl = Math.min(ttl, Number(page.ttlMs ?? 0));
 			cursor = page.nextCursor;
 		}

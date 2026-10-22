@@ -11,12 +11,12 @@ const MetaDetails = ({ nextCursor, meta }: Props) => {
 	}
 
 	return (
-		<div className="space-y-1 text-xs text-muted-foreground">
+		<div className="space-y-1 text-muted-foreground">
 			{nextCursor ? (
 				<div className="font-mono">nextCursor: {nextCursor}</div>
 			) : null}
 			{meta ? (
-				<details className="rounded border border-muted px-2 py-1 text-sm text-foreground">
+				<details className="rounded border border-muted px-2 py-1 text-foreground">
 					<summary className="cursor-pointer font-medium">_meta</summary>
 					<div className="mt-1">
 						<JsonPreview data={meta} />

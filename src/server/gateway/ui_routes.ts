@@ -2,14 +2,13 @@ import { type } from 'arktype';
 
 import { setInterval as setIntervalAsync } from 'node:timers/promises';
 
+import type { TrafficStore } from '@/server/db/traffic';
 import { HOST_NOT_ALLOWED } from '@/server/gateway/allowed_hosts';
+import { jsonError, readBody, readQuery } from '@/server/gateway/http';
 import { logger } from '@/server/logger';
-import { BackendRpcError } from '@/server/mcp_upstreams/protocol_client';
 import type { McpUpstreamManager } from '@/server/mcp_upstreams/types';
-import type { TrafficStore } from '@/server/traffic_store';
 import { errorMessage } from '@/shared/common';
-import { RPC_ERROR } from '@/shared/mcp_protocol';
-import { jsonObjectType } from '@/shared/mcp_schemas';
+import { DASHBOARD_PATHS } from '@/shared/ui_api';
 
 const toggleToolBodyType = type({
 	'+': 'reject',
@@ -29,29 +28,15 @@ const refreshBackendsBodyType = type({
 	'serverName?': 'string',
 });
 
-const callToolBodyType = type({
-	'+': 'reject',
-	serverName: 'string',
-	toolName: 'string',
-	'arguments?': jsonObjectType,
-});
-
 type CreateUiRoutesParams = {
 	mcpUpstreamManager: McpUpstreamManager;
 	buildOverview: () => unknown;
 	shutdownSignal: AbortSignal;
 	trafficStore: TrafficStore;
+	// With a login, whether the request's session is still valid; an event
+	// stream ends once it is not.
+	isLoggedIn?: (request: Request) => boolean;
 };
-
-const jsonError = (status: number, message: string): Response =>
-	Response.json(
-		{
-			error: message,
-		},
-		{
-			status,
-		},
-	);
 
 const createApiForbiddenResponse = (): Response =>
 	jsonError(403, HOST_NOT_ALLOWED);
@@ -78,19 +63,14 @@ const backendDebugQueryType = type({
 	'method?': 'string > 0',
 });
 
-const readQuery = <T>(
-	queryType: (value: unknown) => T | type.errors,
-	url: string,
-): T | Response => {
-	const query = queryType(Object.fromEntries(new URL(url).searchParams));
-	return query instanceof type.errors
-		? jsonError(400, `Invalid query: ${query.summary}`)
-		: query;
-};
-
 const createUiRoutes = (params: CreateUiRoutesParams) => {
-	const { buildOverview, mcpUpstreamManager, shutdownSignal, trafficStore } =
-		params;
+	const {
+		buildOverview,
+		isLoggedIn,
+		mcpUpstreamManager,
+		shutdownSignal,
+		trafficStore,
+	} = params;
 	const findMissing = (
 		serverName: string,
 		toolName?: string,
@@ -106,7 +86,7 @@ const createUiRoutes = (params: CreateUiRoutesParams) => {
 			);
 	};
 	return {
-		'/api/overview': {
+		[DASHBOARD_PATHS.overview]: {
 			GET() {
 				try {
 					const overview = buildOverview();
@@ -117,20 +97,17 @@ const createUiRoutes = (params: CreateUiRoutesParams) => {
 				}
 			},
 		},
-		'/api/backends/refresh': {
+		[DASHBOARD_PATHS.refreshBackends]: {
 			async POST(request: Request) {
-				let body: typeof refreshBackendsBodyType.infer;
-				try {
-					body = refreshBackendsBodyType.assert(await request.json());
-				} catch (error) {
+				const body = await readBody(refreshBackendsBodyType, request, (error) =>
 					logger.warn(
 						JSON.stringify({
 							message: 'Invalid backend refresh request',
-							error: errorMessage(error),
+							error,
 						}),
-					);
-					return jsonError(400, `Invalid request body: ${errorMessage(error)}`);
-				}
+					),
+				);
+				if (body instanceof Response) return body;
 				const missing =
 					body.serverName === undefined
 						? undefined
@@ -153,15 +130,12 @@ const createUiRoutes = (params: CreateUiRoutesParams) => {
 				}
 			},
 		},
-		'/api/tools/toggle': {
+		[DASHBOARD_PATHS.toggleTool]: {
 			async POST(request: Request) {
-				let body: typeof toggleToolBodyType.infer;
-				try {
-					body = toggleToolBodyType.assert(await request.json());
-				} catch (err) {
-					logger.warn(`Invalid toggle tool request: ${errorMessage(err)}`);
-					return jsonError(400, `Invalid request body: ${errorMessage(err)}`);
-				}
+				const body = await readBody(toggleToolBodyType, request, (error) =>
+					logger.warn(`Invalid toggle tool request: ${error}`),
+				);
+				if (body instanceof Response) return body;
 				const missing = findMissing(body.serverName, body.toolName);
 				if (missing) return missing;
 				try {
@@ -177,15 +151,12 @@ const createUiRoutes = (params: CreateUiRoutesParams) => {
 				}
 			},
 		},
-		'/api/backends/toggle': {
+		[DASHBOARD_PATHS.toggleBackend]: {
 			async POST(request: Request) {
-				let body: typeof toggleBackendBodyType.infer;
-				try {
-					body = toggleBackendBodyType.assert(await request.json());
-				} catch (err) {
-					logger.warn(`Invalid toggle backend request: ${errorMessage(err)}`);
-					return jsonError(400, `Invalid request body: ${errorMessage(err)}`);
-				}
+				const body = await readBody(toggleBackendBodyType, request, (error) =>
+					logger.warn(`Invalid toggle backend request: ${error}`),
+				);
+				if (body instanceof Response) return body;
 				const missing = findMissing(body.serverName);
 				if (missing) return missing;
 				try {
@@ -197,43 +168,7 @@ const createUiRoutes = (params: CreateUiRoutesParams) => {
 				}
 			},
 		},
-		'/api/tools/call': {
-			async POST(request: Request) {
-				let body: typeof callToolBodyType.infer;
-				try {
-					body = callToolBodyType.assert(await request.json());
-				} catch (err) {
-					logger.warn(`Invalid tool call request: ${errorMessage(err)}`);
-					return jsonError(400, `Invalid request body: ${errorMessage(err)}`);
-				}
-				const missing = findMissing(body.serverName, body.toolName);
-				if (missing) return missing;
-				try {
-					const result = await mcpUpstreamManager.callTool({
-						tool: mcpUpstreamManager.getEnabledTool({
-							serverName: body.serverName,
-							toolName: body.toolName,
-						}),
-						args: body.arguments ?? {},
-					});
-					return Response.json({
-						serverName: body.serverName,
-						toolName: body.toolName,
-						result,
-					});
-				} catch (err) {
-					logger.error(`Tool test error: ${errorMessage(err)}`);
-					return jsonError(
-						err instanceof BackendRpcError &&
-							err.code === RPC_ERROR.InvalidParams
-							? 400
-							: 500,
-						errorMessage(err),
-					);
-				}
-			},
-		},
-		'/api/events': {
+		[DASHBOARD_PATHS.events]: {
 			async GET(request: Request) {
 				if (shutdownSignal.aborted) {
 					return new Response(null, {
@@ -304,7 +239,8 @@ const createUiRoutes = (params: CreateUiRoutesParams) => {
 							for await (const _ of setIntervalAsync(2000, undefined, {
 								signal: streamAbortController.signal,
 							})) {
-								if (controllerState.closed) break;
+								if (controllerState.closed || isLoggedIn?.(request) === false)
+									break;
 								const previousPayload = lastPayload;
 								sendIfChanged();
 								if (lastPayload === previousPayload) {
@@ -338,7 +274,7 @@ const createUiRoutes = (params: CreateUiRoutesParams) => {
 				});
 			},
 		},
-		'/api/debug': {
+		[DASHBOARD_PATHS.debug]: {
 			async GET(request: Request) {
 				const query = readQuery(debugQueryType, request.url);
 				if (query instanceof Response) return query;
@@ -373,7 +309,7 @@ const createUiRoutes = (params: CreateUiRoutesParams) => {
 				}
 			},
 		},
-		'/api/debug/client': {
+		[DASHBOARD_PATHS.clientTraffic]: {
 			async GET(request: Request) {
 				const query = readQuery(debugQueryType, request.url);
 				if (query instanceof Response) return query;
@@ -391,7 +327,7 @@ const createUiRoutes = (params: CreateUiRoutesParams) => {
 				}
 			},
 		},
-		'/api/debug/backend': {
+		[DASHBOARD_PATHS.backendTraffic]: {
 			async GET(request: Request) {
 				const query = readQuery(backendDebugQueryType, request.url);
 				if (query instanceof Response) return query;
@@ -416,17 +352,13 @@ const createUiRoutes = (params: CreateUiRoutesParams) => {
 				}
 			},
 		},
-		'/api/health': {
-			async GET() {
-				const backends = mcpUpstreamManager.getStatuses();
-				const healthy = backends.every(
-					(backend) => !backend.enabled || backend.connected,
-				);
-				return Response.json({
-					status: healthy ? 'ok' : 'degraded',
-					backends,
-				});
-			},
+		// For container health checks, without a login: it tells only that the
+		// gateway serves, nothing about the backends.
+		[DASHBOARD_PATHS.health]: {
+			GET: () =>
+				Response.json({
+					status: 'ok',
+				}),
 		},
 	};
 };

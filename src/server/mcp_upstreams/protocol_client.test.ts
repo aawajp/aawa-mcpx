@@ -1,3 +1,7 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
 import { createHandlers } from '@/server/gateway/mcp_handlers';
 import { createMcpRequestRouter } from '@/server/gateway/mcp_request_router';
 import { createMcpSessionManager } from '@/server/gateway/mcp_session';
@@ -6,6 +10,7 @@ import { logger } from '@/server/logger';
 import {
 	BackendRpcError,
 	BackendTransportError,
+	MESSAGE_SIZE_LIMIT,
 	ProtocolClient,
 	ProtocolNegotiationError,
 } from '@/server/mcp_upstreams/protocol_client';
@@ -21,7 +26,6 @@ import {
 	CLIENT_CAPABILITIES_META,
 	CURRENT_PROTOCOL_VERSION,
 	encodeHeaderValue,
-	protocolHeaders,
 	recordOf,
 	SUPPORTED_PROTOCOL_VERSIONS,
 	toolHeaderParameters,
@@ -680,12 +684,18 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 				handle: (message, reply, request) => {
 					methods.push(String(message.method));
 					if (!reply) return undefined;
+					// Literal wire values, not derived from the sender's helper.
 					if (usesRequestMetadata(version)) {
-						for (const [name, value] of protocolHeaders(
+						expect(request.headers.get('MCP-Protocol-Version')).toBe(version);
+						expect(request.headers.get('Mcp-Method')).toBe(
 							String(message.method),
-							recordOf(message.params) ?? {},
-						))
-							expect(request.headers.get(name)).toBe(value);
+						);
+						const name = {
+							'tools/call': 'echo',
+							'prompts/get': 'greet',
+							'resources/read': 'file:///example',
+						}[String(message.method)];
+						expect(request.headers.get('Mcp-Name')).toBe(name ?? null);
 						if (message.method === 'tools/call')
 							expect(request.headers.get('Mcp-Param-Text')).toBe(
 								'=?base64?SGVsbG8sIOS4lueVjA==?=',
@@ -783,6 +793,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 				const tools = enabledTools('fixture', (await client.listTools()).tools);
 				const sessions = createMcpSessionManager({
 					maxSessionsPerClient: 10,
+					maxSessionsPerUser: 100,
 				});
 				const manager = {
 					listEnabledTools: () => tools,
@@ -1146,6 +1157,43 @@ test('an unruly stdio backend keeps working, logs stderr and is killed on close'
 	}
 });
 
+test('fixture stdio backends never load env files', async () => {
+	const root = await mkdtemp(path.join(tmpdir(), 'mcpx-env-'));
+	try {
+		await writeFile(path.join(root, '.env'), 'SENTINEL_ENV=seen');
+		await writeFile(path.join(root, '.env.local'), 'SENTINEL_LOCAL=seen');
+		const probe = path.join(root, 'probe.ts');
+		await writeFile(
+			probe,
+			'process.stdout.write(JSON.stringify(Object.keys(process.env).filter((name) => name.startsWith("SENTINEL")).sort()))',
+		);
+		const { command, args } = startFixtureBackend('stdio', '2025-11-25')
+			.config as { command: string; args: string[] };
+		// The fixture's Bun options, with the probe in place of the fixture.
+		const options = args.slice(
+			0,
+			args.findIndex((arg) => arg.endsWith('protocol_fixture.ts')),
+		);
+		const run = async (bunOptions: string[]) => {
+			const child = Bun.spawn([command, ...bunOptions, probe], {
+				cwd: root,
+				env: {
+					PATH: process.env.PATH,
+				},
+			});
+			return JSON.parse(await new Response(child.stdout).text());
+		};
+		// Without the options, Bun loads both files.
+		expect(await run([])).toEqual(['SENTINEL_ENV', 'SENTINEL_LOCAL']);
+		expect(await run(options)).toEqual([]);
+	} finally {
+		await rm(root, {
+			recursive: true,
+			force: true,
+		});
+	}
+});
+
 test('closing a 2025 HTTP backend ends its session with DELETE', async () => {
 	const deletes: Headers[] = [];
 	const endpoint = Bun.serve({
@@ -1306,5 +1354,345 @@ test('SSE responses accept CR, LF and CRLF line endings across chunks', async ()
 	} finally {
 		await client.close();
 		fixture.stop();
+	}
+});
+
+// Pads a message with spaces to the given UTF-8 size; JSON ignores them.
+const padded = (message: string, bytes: number): string =>
+	message + ' '.repeat(bytes - Buffer.byteLength(message));
+const encoder = new TextEncoder();
+// Over the limit in bytes, but under it in UTF-16 units.
+const wide = 'あ'.repeat(MESSAGE_SIZE_LIMIT / 4);
+
+test('backend HTTP JSON bodies are limited in bytes and keep their HTTP status', async () => {
+	const client = new ProtocolClient({
+		serverName: 'large',
+		serverConfig: {
+			type: 'http',
+			url: 'http://127.0.0.1/mcp',
+			enabled: true,
+			timeout: 5000,
+			trafficLimit: 1000,
+		},
+	});
+	client.protocolVersion = CURRENT_PROTOCOL_VERSION;
+	const reply = (id: unknown, text: string) =>
+		JSON.stringify({
+			jsonrpc: '2.0',
+			id,
+			result: {
+				resultType: 'complete',
+				content: [
+					{
+						type: 'text',
+						text,
+					},
+				],
+			},
+		});
+	let cancelled = false;
+	const cases: {
+		status: number;
+		body: (id: unknown) => BodyInit;
+		headers?: Record<string, string>;
+		text?: string;
+	}[] = [
+		{
+			status: 200,
+			body: (id) => padded(reply(id, 'ok'), MESSAGE_SIZE_LIMIT),
+			text: 'ok',
+		},
+		{
+			status: 200,
+			body: (id) => padded(reply(id, wide), MESSAGE_SIZE_LIMIT),
+			text: wide,
+		},
+		{
+			status: 503,
+			body: (id) => padded(reply(id, 'ok'), MESSAGE_SIZE_LIMIT + 1),
+		},
+		{
+			status: 200,
+			body: (id) => padded(reply(id, wide), MESSAGE_SIZE_LIMIT + 1),
+		},
+		// An endless body is cancelled once it passes the limit.
+		{
+			status: 200,
+			body: () =>
+				new ReadableStream({
+					pull(controller) {
+						controller.enqueue(new Uint8Array(1024 * 1024).fill(32));
+					},
+					cancel() {
+						cancelled = true;
+					},
+				}),
+		},
+		// A Content-Length over the limit fails even before the body ends.
+		{
+			status: 502,
+			body: (id) => reply(id, 'ok'),
+			headers: {
+				'Content-Length': String(MESSAGE_SIZE_LIMIT + 1),
+			},
+		},
+	];
+	let current = cases[0];
+	const fetch = spyOn(globalThis, 'fetch').mockImplementation((async (
+		_input: RequestInfo | URL,
+		init?: RequestInit,
+	) => {
+		const { id } = JSON.parse(String(init?.body));
+		return new Response(current?.body(id), {
+			status: current?.status,
+			headers: {
+				'Content-Type': 'application/json',
+				...current?.headers,
+			},
+		});
+	}) as typeof globalThis.fetch);
+	try {
+		for (current of cases) {
+			const result = client
+				.callTool({
+					name: 'echo',
+				})
+				.catch((error: unknown) => error);
+			if (current.text)
+				expect(await result).toMatchObject({
+					content: [
+						{
+							type: 'text',
+							text: current.text,
+						},
+					],
+				});
+			else {
+				const error = await result;
+				expect(error).toBeInstanceOf(BackendRpcError);
+				expect(error).toMatchObject({
+					message: 'Backend response exceeds size limit',
+					status: current.status,
+				});
+			}
+		}
+		expect(cancelled).toBe(true);
+	} finally {
+		fetch.mockRestore();
+		await client.close();
+	}
+});
+
+test('backend stdio lines are limited in bytes wherever chunks split them', async () => {
+	const client = new ProtocolClient({
+		serverName: 'large',
+		serverConfig: {
+			type: 'stdio',
+			command: 'unused',
+			enabled: true,
+			timeout: 1000,
+			trafficLimit: 1000,
+		},
+	});
+	const { readLines } = client as unknown as {
+		readLines(
+			stream: ReadableStream<Uint8Array>,
+			onLine: (line: string) => void,
+			truncate: boolean,
+		): Promise<void>;
+	};
+	const read = async (chunks: Uint8Array[]): Promise<string[]> => {
+		const lines: string[] = [];
+		await readLines.call(
+			client,
+			new ReadableStream({
+				start(controller) {
+					for (const chunk of chunks) controller.enqueue(chunk);
+					controller.close();
+				},
+			}),
+			(line) => lines.push(line),
+			false,
+		);
+		return lines;
+	};
+	// Splits after the given byte, inside a character for the wide lines.
+	const split = (line: string, at: number): Uint8Array[] => {
+		const bytes = encoder.encode(line);
+		return [bytes.subarray(0, at), bytes.subarray(at)];
+	};
+	const exact = 'a'.repeat(MESSAGE_SIZE_LIMIT);
+	const wideExact = padded(wide, MESSAGE_SIZE_LIMIT).replaceAll(' ', 'a');
+	expect(await read([encoder.encode(`${exact}\n{}\n`)])).toEqual([exact, '{}']);
+	expect(await read(split(`${exact}\n`, 100))).toEqual([exact]);
+	expect(await read(split(`${wideExact}\n`, 100))).toEqual([wideExact]);
+	for (const chunks of [
+		// The newline arrives in the same chunk as the line.
+		[encoder.encode(`${exact}a\n`)],
+		split(`${exact}a\n`, MESSAGE_SIZE_LIMIT),
+		split(`${wideExact}a\n`, 100),
+	])
+		await expect(read(chunks)).rejects.toThrow(
+			'Backend message exceeds size limit',
+		);
+});
+
+test('backend SSE events are limited in bytes', async () => {
+	const client = new ProtocolClient({
+		serverName: 'large',
+		serverConfig: {
+			type: 'http',
+			url: 'http://127.0.0.1/mcp',
+			enabled: true,
+			timeout: 5000,
+			trafficLimit: 1000,
+		},
+	});
+	client.protocolVersion = CURRENT_PROTOCOL_VERSION;
+	// An event of the given size; the blank line ends it.
+	const event = (message: unknown, bytes: number) =>
+		`${padded(`data: ${JSON.stringify(message)}`, bytes - 2)}\n\n`;
+	let body = (_id: unknown): string[] => [];
+	const fetch = spyOn(globalThis, 'fetch').mockImplementation((async (
+		_input: RequestInfo | URL,
+		init?: RequestInit,
+	) => {
+		const { id } = JSON.parse(String(init?.body));
+		return new Response(
+			new ReadableStream({
+				start(controller) {
+					// Split inside the first event, inside a character for wide ones.
+					const bytes = encoder.encode(body(id).join(''));
+					controller.enqueue(bytes.subarray(0, 100));
+					controller.enqueue(bytes.subarray(100));
+					controller.close();
+				},
+			}),
+			{
+				headers: {
+					'Content-Type': 'text/event-stream',
+				},
+			},
+		);
+	}) as typeof globalThis.fetch);
+	const result = (id: unknown, text: string) => ({
+		jsonrpc: '2.0',
+		id,
+		result: {
+			resultType: 'complete',
+			content: [
+				{
+					type: 'text',
+					text,
+				},
+			],
+		},
+	});
+	const progress = {
+		jsonrpc: '2.0',
+		method: 'notifications/message',
+		params: {
+			level: 'info',
+			data: wide,
+		},
+	};
+	try {
+		// Each event has its own limit.
+		for (const [text, events] of [
+			[
+				'ok',
+				(id: unknown) => [
+					event(progress, MESSAGE_SIZE_LIMIT),
+					event(result(id, 'ok'), MESSAGE_SIZE_LIMIT),
+				],
+			],
+			[wide, (id: unknown) => [event(result(id, wide), MESSAGE_SIZE_LIMIT)]],
+		] as const) {
+			body = events;
+			expect(
+				await client.callTool({
+					name: 'echo',
+				}),
+			).toMatchObject({
+				content: [
+					{
+						type: 'text',
+						text,
+					},
+				],
+			});
+		}
+		for (const events of [
+			(id: unknown) => [event(result(id, 'ok'), MESSAGE_SIZE_LIMIT + 1)],
+			(id: unknown) => [event(result(id, wide), MESSAGE_SIZE_LIMIT + 1)],
+		]) {
+			body = events;
+			await expect(
+				client.callTool({
+					name: 'echo',
+				}),
+			).rejects.toThrow('Backend event exceeds size limit');
+		}
+	} finally {
+		fetch.mockRestore();
+		await client.close();
+	}
+});
+
+test('a paginated backend list is limited to 32 MiB of items in all', async () => {
+	const client = new ProtocolClient({
+		serverName: 'paged',
+		serverConfig: {
+			type: 'http',
+			url: 'http://127.0.0.1/mcp',
+			enabled: true,
+			timeout: 5000,
+			trafficLimit: 1000,
+		},
+	});
+	client.protocolVersion = CURRENT_PROTOCOL_VERSION;
+	// Each page is one tool with a 7 MiB description, under the message limit.
+	const description = 'd'.repeat(7 * 1024 * 1024);
+	let pages = 0;
+	const fetch = spyOn(globalThis, 'fetch').mockImplementation((async (
+		_input: RequestInfo | URL,
+		init?: RequestInit,
+	) => {
+		const { id, params } = JSON.parse(String(init?.body));
+		const page = params.cursor === undefined ? 0 : Number(params.cursor);
+		return Response.json({
+			jsonrpc: '2.0',
+			id,
+			result: {
+				resultType: 'complete',
+				ttlMs: 0,
+				cacheScope: 'public',
+				tools: [
+					{
+						name: `tool-${page}`,
+						description,
+						inputSchema: {
+							type: 'object',
+						},
+					},
+				],
+				...(page + 1 < pages
+					? {
+							nextCursor: String(page + 1),
+						}
+					: {}),
+			},
+		});
+	}) as typeof globalThis.fetch);
+	try {
+		pages = 4;
+		expect((await client.listTools()).tools).toHaveLength(4);
+		pages = 5;
+		await expect(client.listTools()).rejects.toThrow(
+			'Backend tools/list result exceeds 33554432 bytes',
+		);
+	} finally {
+		fetch.mockRestore();
+		await client.close();
 	}
 });

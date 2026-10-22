@@ -40,8 +40,8 @@ import type {
 } from '@modelcontextprotocol/client';
 
 import type { McpConfig, McpServerConfig } from '@/server/config/schema';
+import type { TrafficStore } from '@/server/db/traffic';
 import type { SchemaIssue } from '@/server/mcp_upstreams/json_schema';
-import type { TrafficStore } from '@/server/traffic_store';
 import type {
 	CatalogList,
 	HeaderParameter,

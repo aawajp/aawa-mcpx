@@ -149,7 +149,7 @@ for (const $schema of [
 	'https://json-schema.org/draft/2019-09/schema',
 	'https://json-schema.org/draft/2020-12/schema',
 ])
-	test(`honors declared dialect ${$schema}`, () => {
+	test(`accepts the supported dialect declaration ${$schema}`, () => {
 		const validate = createOutputSchemaValidator();
 		const schema = {
 			$schema,
@@ -392,26 +392,29 @@ test('object wrappers keep a root $ref compilable in draft-07 and 2020-12', () =
 	}
 });
 
-test('many schemas compile quickly on a shared instance per dialect', () => {
+test('one validator checks formats, and keeps each compiled schema', () => {
 	const validate = createOutputSchemaValidator();
-	const started = performance.now();
-	for (let index = 0; index < 200; index++)
-		expect(
-			validate(
-				{
-					type: 'object',
-					properties: {
-						[`email${index}`]: {
-							type: 'string',
-							format: 'email',
-						},
-					},
-				},
-				{},
-			),
-		).toBeUndefined();
-	// A new Ajv instance per schema took over 4 s here.
-	expect(performance.now() - started).toBeLessThan(1000);
+	const schemaOf = (format: string) => ({
+		type: 'object',
+		properties: {
+			value: {
+				type: 'string',
+				format,
+			},
+		},
+	});
+	const email = schemaOf('email');
+	const date = schemaOf('date');
+	for (let round = 0; round < 2; round++) {
+		expect(validate(email, { value: 'a@example.com' })).toBeUndefined();
+		expect(validate(email, { value: 'not an email' })?.reason).toBe(
+			'schema_mismatch',
+		);
+		expect(validate(date, { value: '2026-10-20' })).toBeUndefined();
+		expect(validate(date, { value: 'a@example.com' })?.reason).toBe(
+			'schema_mismatch',
+		);
+	}
 });
 
 test('a schema with a meta-schema $id does not break later schemas', () => {

@@ -10,8 +10,7 @@
 		"css": "tailwindcss -i ./src/ui/index.css -o ./.tailwind/index.css",
 		"css:watch": "tailwindcss -i ./src/ui/index.css -o ./.tailwind/index.css --watch=always",
 		"dev": "bun run css && bun run --parallel css:watch dev:server",
-		"dev:server": "bun --env-file=.env --hot src/server/index.ts",
-		"start": "bun run css && bun --env-file=.env src/server/index.ts",
+		"dev:server": "NODE_ENV=development bun --hot src/server/index.ts",
 		"test": "bun test",
 		"lint": "bun check && biome check --fix"
 	},
@@ -19,17 +18,19 @@
 	"dependencies": {
 		"ajv": "8.20.0",
 		"ajv-formats": "3.0.1",
-		"arktype": "2.2.7",
+		"arktype": "2.2.8",
 		"clsx": "2.1.1",
-		"react": "19.3.0",
-		"react-dom": "19.3.0",
+		"jose": "6.2.12",
+		"openid-client": "6.8.8",
+		"react": "19.3.1",
+		"react-dom": "19.3.1",
 		"tailwind-merge": "3.7.0"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.15",
 		"@modelcontextprotocol/client": "2.3.1",
 		"@tailwindcss/cli": "4.3.3",
-		"@types/bun": "1.4.2",
+		"@types/bun": "1.4.3",
 		"@types/react": "19.3.0",
 		"@types/react-dom": "19.3.0",
 		"tailwindcss": "4.3.3",

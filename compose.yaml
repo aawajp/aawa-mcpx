@@ -6,13 +6,16 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: aawa-mcpx
-    env_file:
-      - .env
+    environment:
+      NODE_ENV: production
     ports:
       - "4567:4567"
     volumes:
+      # Mount the secrets next to the image's .env, where Bun loads them
+      - ./.env.local:/home/app/.env.local:ro
       # Mount mcp.json for configuration
       - ./mcp.json:/home/app/mcp.json:rw
       # Mount db directory for SQLite persistence
       - ./db:/home/app/db
-    restart: unless-stopped
+    # Docker cannot restart by exit code, so any failure gets 3 more tries.
+    restart: on-failure:3

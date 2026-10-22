@@ -3,6 +3,7 @@ import type {
 	ReadResourceResult,
 } from '@modelcontextprotocol/client';
 
+import type { TrafficStore } from '@/server/db/traffic';
 import { runLoggedRequest } from '@/server/mcp_upstreams/logged_request';
 import { BackendRpcError } from '@/server/mcp_upstreams/protocol_client';
 import { createToolResultNormalizer } from '@/server/mcp_upstreams/tool_result';
@@ -13,7 +14,6 @@ import type {
 	McpUpstreamBackend,
 	ReadResourceParams,
 } from '@/server/mcp_upstreams/types';
-import type { TrafficStore } from '@/server/traffic_store';
 import { errorMessage } from '@/shared/common';
 import { RPC_ERROR } from '@/shared/mcp_protocol';
 import { type ToolCallResult, toolErrorResult } from '@/shared/mcp_results';
@@ -103,8 +103,8 @@ const createMcpUpstreamOperations = (
 		const { serverName, tool, validateInput, headerParameters } =
 			callParams.tool;
 		const { server, client } = connectedBackend(serverName, signal);
-		// The catalog compiled the schema once. Both dashboard and MCP calls
-		// validate their arguments here exactly once, before any backend work.
+		// The catalog compiled the schema once. Calls validate their arguments
+		// here exactly once, before any backend work.
 		const inputIssue = validateInput(args);
 		if (inputIssue) {
 			if (inputIssue.reason !== 'schema_mismatch')

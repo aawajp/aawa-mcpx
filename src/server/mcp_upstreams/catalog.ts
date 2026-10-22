@@ -8,6 +8,7 @@ import type {
 
 import { saveToolState } from '@/server/config/loader';
 import type { McpConfig } from '@/server/config/schema';
+import type { TrafficStore } from '@/server/db/traffic';
 import { logger } from '@/server/logger';
 import { createInputSchemaCompiler } from '@/server/mcp_upstreams/input_schema';
 import { BackendRpcError } from '@/server/mcp_upstreams/protocol_client';
@@ -21,7 +22,6 @@ import type {
 	McpUpstreamToolsMap,
 	ToggleToolParams,
 } from '@/server/mcp_upstreams/types';
-import type { TrafficStore } from '@/server/traffic_store';
 import { errorMessage } from '@/shared/common';
 import { RPC_ERROR, toolHeaderParameters } from '@/shared/mcp_protocol';
 
