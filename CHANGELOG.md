@@ -34,6 +34,9 @@ Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 - **Breaking:** Require every setting, with no defaults in code.
 - Set `NODE_ENV` in the dev script and `compose.yaml` instead of `.env`, and
   turn on hot reload and console forwarding only with `NODE_ENV=development`.
+- Exit with code 78 on configuration errors and 75 on temporary startup
+  failures, with one log line, and restart the Compose container at most 3
+  times.
 
 #### Removed
 

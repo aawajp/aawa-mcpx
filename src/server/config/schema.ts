@@ -1,4 +1,12 @@
-import { type } from 'arktype';
+import { type ArkErrors, type } from 'arktype';
+
+// A setting, file or database the operator must fix first; restarting the
+// gateway does not help.
+class ConfigurationError extends Error {}
+
+// ArkType's validation errors on one line.
+const describeErrors = (errors: ArkErrors) =>
+	errors.map((error) => error.message).join('; ');
 
 // A bare host name or IP address, as in a URL without scheme, port or path.
 const hostNameType = type('string').narrow(
@@ -23,6 +31,13 @@ const environmentType = type({
 	MCP_MAX_SESSIONS_PER_CLIENT: type('string.integer.parse').to('number > 0'),
 	'NODE_ENV?': 'string',
 });
+
+const parseEnvironment = (env: Record<string, string | undefined>) => {
+	const parsed = environmentType(env);
+	if (parsed instanceof type.errors)
+		throw new ConfigurationError(`Invalid settings: ${describeErrors(parsed)}`);
+	return parsed;
+};
 
 // Backend settings from `mcp.json` in the working directory.
 const sharedFields = {
@@ -65,4 +80,10 @@ const mcpConfigType = type({
 type McpConfig = typeof mcpConfigType.infer;
 
 export type { McpConfig, McpServerConfig };
-export { environmentType, mcpConfigType };
+export {
+	ConfigurationError,
+	describeErrors,
+	environmentType,
+	mcpConfigType,
+	parseEnvironment,
+};

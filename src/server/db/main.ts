@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 
+import { ConfigurationError } from '@/server/config/schema';
 import { logger } from '@/server/logger';
 
 import { Database } from 'bun:sqlite';
@@ -30,7 +31,7 @@ const openMainDatabase = (
 			?.user_version ?? 0;
 	if (current > migrations.length) {
 		db.close();
-		throw new Error(
+		throw new ConfigurationError(
 			`Main database schema version ${current} is newer than this gateway supports (${migrations.length})`,
 		);
 	}

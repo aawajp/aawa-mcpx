@@ -126,6 +126,17 @@ bun dev   # hot reload
 
 Bun runs the TypeScript source directly.
 
+### Exit codes
+
+A startup failure logs one `Startup failed: …` line. The exit code tells a
+supervisor whether restarting can help:
+
+| Code | Recoverable | Cause |
+| --- | --- | --- |
+| `1` | No | Unexpected error |
+| `75` | Yes | Temporary startup failure: the port is in use |
+| `78` | No | Configuration error: invalid settings or `mcp.json`, or a main database newer than the gateway |
+
 ### Docker
 
 ```bash
@@ -133,7 +144,8 @@ docker compose up --build
 ```
 
 Compose mounts `.env.local` read-only, and `mcp.json` (configuration and
-tool state) and `db/` (main database and traffic log) read-write. To run the
+tool state) and `db/` (main database and traffic log) read-write. It restarts
+the gateway at most 3 times after a failure. To run the
 image manually:
 
 ```bash

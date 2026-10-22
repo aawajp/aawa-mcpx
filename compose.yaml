@@ -17,4 +17,5 @@ services:
       - ./mcp.json:/home/app/mcp.json:rw
       # Mount db directory for SQLite persistence
       - ./db:/home/app/db
-    restart: unless-stopped
+    # Docker cannot restart by exit code, so any failure gets 3 more tries.
+    restart: on-failure:3

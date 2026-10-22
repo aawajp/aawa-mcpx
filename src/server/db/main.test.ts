@@ -2,6 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
+import { ConfigurationError } from '@/server/config/schema';
 import { openMainDatabase } from '@/server/db/main';
 
 import type { Database } from 'bun:sqlite';
@@ -70,6 +71,8 @@ test('a failing migration keeps the last good version', () => {
 test('a schema newer than the code stops startup', () => {
 	openMainDatabase(dbPath, [FIRST, SECOND]).close();
 	expect(() => openMainDatabase(dbPath, [FIRST])).toThrow(
-		'Main database schema version 2 is newer than this gateway supports (1)',
+		new ConfigurationError(
+			'Main database schema version 2 is newer than this gateway supports (1)',
+		),
 	);
 });

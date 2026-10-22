@@ -1,4 +1,11 @@
-import { type McpConfig, mcpConfigType } from '@/server/config/schema';
+import { type } from 'arktype';
+
+import {
+	ConfigurationError,
+	describeErrors,
+	type McpConfig,
+	mcpConfigType,
+} from '@/server/config/schema';
 import { errorMessage } from '@/shared/common';
 
 let writeQueue: Promise<unknown> = Promise.resolve();
@@ -24,7 +31,9 @@ const loadRawConfig = async (configPath: string): Promise<unknown> => {
 };
 
 const parseConfig = (contents: unknown): McpConfig => {
-	return mcpConfigType.assert(contents);
+	const config = mcpConfigType(contents);
+	if (config instanceof type.errors) throw new Error(describeErrors(config));
+	return config;
 };
 
 const queueWrite = async <T>(run: () => Promise<T>): Promise<T> => {
@@ -43,7 +52,9 @@ const load = async (configPath: string): Promise<McpConfig> => {
 		savedConfigs.set(config, contents as RawConfig);
 		return config;
 	} catch (err) {
-		throw new Error(`Failed to load "${configPath}": ${errorMessage(err)}`);
+		throw new ConfigurationError(
+			`Failed to load "${configPath}": ${errorMessage(err)}`,
+		);
 	}
 };
 

@@ -1,4 +1,9 @@
-import { environmentType, mcpConfigType } from '@/server/config/schema';
+import {
+	ConfigurationError,
+	environmentType,
+	mcpConfigType,
+	parseEnvironment,
+} from '@/server/config/schema';
 
 import { expect, test } from 'bun:test';
 
@@ -115,4 +120,18 @@ test('mcp.json refuses unknown keys, non-HTTP URLs and empty commands', () => {
 		},
 	])
 		expect(() => mcpConfigType.assert(config)).toThrow();
+});
+
+test('invalid settings are a configuration error, listed on one line', () => {
+	expect(() =>
+		parseEnvironment({
+			...baseEnvironment,
+			PORT: 'abc',
+			MCP_MAX_SESSIONS_PER_CLIENT: '0',
+		}),
+	).toThrow(
+		new ConfigurationError(
+			'Invalid settings: PORT must be a well-formed integer string (was "abc"); MCP_MAX_SESSIONS_PER_CLIENT must be positive (was 0)',
+		),
+	);
 });
