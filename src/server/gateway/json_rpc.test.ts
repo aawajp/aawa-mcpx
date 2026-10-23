@@ -3,16 +3,16 @@ import {
 	parseIncomingJsonRpcMessage,
 } from '@/server/gateway/json_rpc';
 
-import { expect, test } from 'bun:test';
+import { expect, it } from 'bun:test';
 
-test('JSON-RPC IDs are strings or finite integers, including zero', () => {
+it('JSON-RPC IDs are strings or finite integers, including zero', () => {
 	for (const id of ['', 'request', 0, -1, 42])
 		expect(getJsonRpcId(id)).toBe(id);
 	for (const id of [null, undefined, 1.5, NaN, Infinity, -Infinity, true, {}])
 		expect(getJsonRpcId(id)).toBeNull();
 });
 
-test('rejects mixed envelopes, non-object MCP params/results, and malformed errors', () => {
+it('rejects mixed envelopes, non-object MCP params/results, and malformed errors', () => {
 	const request = {
 		jsonrpc: '2.0',
 		id: 0,

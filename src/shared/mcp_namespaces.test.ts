@@ -6,9 +6,9 @@ import {
 	parseResourceUri,
 } from '@/shared/mcp_namespaces';
 
-import { expect, test } from 'bun:test';
+import { expect, it } from 'bun:test';
 
-test('namespaces round-trip backend keys without separator or escape collisions', () => {
+it('namespaces round-trip backend keys without separator or escape collisions', () => {
 	const names = [
 		'a',
 		'.',
@@ -47,7 +47,7 @@ test('namespaces round-trip backend keys without separator or escape collisions'
 	).toBe('ordinary__tool__one');
 });
 
-test('malformed and noncanonical namespaces are rejected', () => {
+it('malformed and noncanonical namespaces are rejected', () => {
 	for (const name of [
 		'',
 		'tool',
@@ -60,7 +60,7 @@ test('malformed and noncanonical namespaces are rejected', () => {
 		expect(() => parsePrefix(name)).toThrow();
 });
 
-test('resource wrappers preserve complete original URIs and distinguish backends', () => {
+it('resource wrappers preserve complete original URIs and distinguish backends', () => {
 	for (const serverName of [
 		'Backend',
 		'.',
@@ -110,7 +110,7 @@ test('resource wrappers preserve complete original URIs and distinguish backends
 	});
 });
 
-test('resource requests reject malformed wrappers and decoded URI syntax', () => {
+it('resource requests reject malformed wrappers and decoded URI syntax', () => {
 	for (const uri of [
 		'file:///a',
 		'backend://relative',
@@ -127,7 +127,7 @@ test('resource requests reject malformed wrappers and decoded URI syntax', () =>
 		expect(() => parseResourceUri(uri)).toThrow();
 });
 
-test('template wrappers keep the backend template so client expansions route intact', () => {
+it('template wrappers keep the backend template so client expansions route intact', () => {
 	for (const serverName of ['Backend', 'a__b', '日本語']) {
 		const wrapped = addResourceTemplatePrefix({
 			serverName,

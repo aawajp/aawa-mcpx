@@ -3,7 +3,7 @@ import { createMcpUpstreamHealthChecks } from '@/server/mcp_upstreams/health_che
 import type { ProtocolClient as Client } from '@/server/mcp_upstreams/protocol_client';
 import type { McpUpstreamBackend } from '@/server/mcp_upstreams/types';
 
-import { expect, spyOn, test } from 'bun:test';
+import { expect, it, spyOn } from 'bun:test';
 
 const createBackend = (
 	serverName: string,
@@ -43,7 +43,7 @@ const createChecks = (
 		waitForRateLimit: async () => undefined,
 	});
 
-test('successful traffic suppresses idle pings and clears old failures', async () => {
+it('successful traffic suppresses idle pings and clears old failures', async () => {
 	const now = spyOn(Date, 'now').mockReturnValue(100_000);
 	let pings = 0;
 	const client = createClient(async () => {
@@ -70,7 +70,7 @@ test('successful traffic suppresses idle pings and clears old failures', async (
 	}
 });
 
-test('successful traffic during a failed health check keeps the backend healthy', async () => {
+it('successful traffic during a failed health check keeps the backend healthy', async () => {
 	const client = createClient(async () => {
 		client.lastSuccessfulRequestAt = Date.now() + 1;
 		throw new Error('Probe response lost');
@@ -82,7 +82,7 @@ test('successful traffic during a failed health check keeps the backend healthy'
 	expect(backend.healthCheckFailures).toBe(0);
 });
 
-test('disabled backends are not health checked', async () => {
+it('disabled backends are not health checked', async () => {
 	let pingCount = 0;
 	const client = createClient(async () => {
 		pingCount += 1;
@@ -96,7 +96,7 @@ test('disabled backends are not health checked', async () => {
 	expect(backend.healthCheckFailures).toBe(0);
 });
 
-test('an in-flight health check cannot affect a disabled or replaced backend', async () => {
+it('an in-flight health check cannot affect a disabled or replaced backend', async () => {
 	let releasePing = (): void => {
 		throw new Error('Ping did not start');
 	};
@@ -139,7 +139,7 @@ test('an in-flight health check cannot affect a disabled or replaced backend', a
 	expect(replacementPingCount).toBe(0);
 });
 
-test('enabled backends use bounded heartbeat timeouts and failure threshold', async () => {
+it('enabled backends use bounded heartbeat timeouts and failure threshold', async () => {
 	const observedTimeouts: Array<number | undefined> = [];
 	const client = createClient(async (options) => {
 		observedTimeouts.push(options.timeout);

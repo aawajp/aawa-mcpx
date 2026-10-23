@@ -7,7 +7,7 @@ import { createMcpUpstreamCatalog } from '@/server/mcp_upstreams/catalog';
 import { createMcpUpstreamBackend } from '@/server/mcp_upstreams/connections';
 import type { ProtocolClient as Client } from '@/server/mcp_upstreams/protocol_client';
 
-import { afterAll, beforeAll, expect, test } from 'bun:test';
+import { afterAll, beforeAll, expect, it } from 'bun:test';
 
 let root = '';
 beforeAll(async () => {
@@ -20,7 +20,7 @@ afterAll(async () => {
 	});
 });
 
-test('catalog responses invalidated by backend disable are discarded', async () => {
+it('catalog responses invalidated by backend disable are discarded', async () => {
 	const server = createMcpUpstreamBackend({
 		serverName: 'catalog-race',
 		serverConfig: {
@@ -118,7 +118,7 @@ test('catalog responses invalidated by backend disable are discarded', async () 
 	expect(statusErrors).toBe(0);
 });
 
-test('lists a backend does not advertise are never requested', async () => {
+it('lists a backend does not advertise are never requested', async () => {
 	const server = createMcpUpstreamBackend({
 		serverName: 'tools-only',
 		serverConfig: {
@@ -169,7 +169,7 @@ test('lists a backend does not advertise are never requested', async () => {
 	expect(statusErrors).toBe(0);
 });
 
-test('MCP lists and tool lookups skip disabled backends and backends with a configuration error', async () => {
+it('MCP lists and tool lookups skip disabled backends and backends with a configuration error', async () => {
 	const createBackend = (serverName: string, enabled: boolean) => {
 		const backend = createMcpUpstreamBackend({
 			serverName,

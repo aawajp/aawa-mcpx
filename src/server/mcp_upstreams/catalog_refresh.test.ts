@@ -15,11 +15,11 @@ import {
 	usesRequestMetadata,
 } from '@/shared/mcp_protocol';
 
-import { expect, test } from 'bun:test';
+import { expect, it } from 'bun:test';
 
 for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 	for (const transport of ['http', 'stdio'] as const) {
-		test(`${version} ${transport}: manual refresh fetches changed tools and preserves exposure`, async () => {
+		it(`${version} ${transport}: manual refresh fetches changed tools and preserves exposure`, async () => {
 			const root = await mkdtemp(path.join(tmpdir(), 'mcpx-refresh-'));
 			const catalogPath = path.join(root, 'tools.json');
 			let holdNextToolsRequest = false;
@@ -261,7 +261,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 	}
 }
 
-test('2026-07-28 lists go stale on their own and refresh only for the request target', async () => {
+it('2026-07-28 lists go stale on their own and refresh only for the request target', async () => {
 	const root = await mkdtemp(path.join(tmpdir(), 'mcpx-stale-'));
 	const requests: string[] = [];
 	let failTools = false;
@@ -371,7 +371,7 @@ test('2026-07-28 lists go stale on their own and refresh only for the request ta
 	}
 });
 
-test('2026-07-28 list expiry counts the fetch time once', async () => {
+it('2026-07-28 list expiry counts the fetch time once', async () => {
 	const root = await mkdtemp(path.join(tmpdir(), 'mcpx-ttl-'));
 	let toolsRequests = 0;
 	// A 500 ms fetch with a 900 ms TTL stays fresh until 900 ms after it
@@ -415,7 +415,7 @@ test('2026-07-28 list expiry counts the fetch time once', async () => {
 	}
 });
 
-test('2026-07-28 manual refresh updates server info, capabilities and instructions', async () => {
+it('2026-07-28 manual refresh updates server info, capabilities and instructions', async () => {
 	const root = await mkdtemp(path.join(tmpdir(), 'mcpx-details-'));
 	let release = '1';
 	const fixture = startFixtureBackend('http', CURRENT_PROTOCOL_VERSION, {

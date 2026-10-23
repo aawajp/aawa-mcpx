@@ -16,7 +16,7 @@ import {
 	protocolHeaders,
 } from '@/shared/mcp_protocol';
 
-import { expect, mock, test } from 'bun:test';
+import { expect, it, mock } from 'bun:test';
 
 const tools = enabledTools('alpha', [
 	{
@@ -131,7 +131,7 @@ const initialize = async (user: string) =>
 		})
 	).headers.get('Mcp-Session-Id') ?? '';
 
-test('lists show only permitted items and other calls are refused with 403', async () => {
+it('lists show only permitted items and other calls are refused with 403', async () => {
 	expect((await send('mallory', 'tools/list', {})).status).toBe(401);
 	const alice = await initialize('alice');
 	const listed = await (await send('alice', 'tools/list', {}, alice)).json();
@@ -195,7 +195,7 @@ test('lists show only permitted items and other calls are refused with 403', asy
 	).toBe(403);
 });
 
-test('MCP 2026-07-28 requests get the same 403', async () => {
+it('MCP 2026-07-28 requests get the same 403', async () => {
 	const params = {
 		name: 'alpha__two',
 		arguments: {},
@@ -220,7 +220,7 @@ test('MCP 2026-07-28 requests get the same 403', async () => {
 	expect(response.status).toBe(403);
 });
 
-test('clients show up with their user current name, and refused requests still show the client', async () => {
+it('clients show up with their user current name, and refused requests still show the client', async () => {
 	const params = {
 		_meta: {
 			[PROTOCOL_VERSION_META]: '2026-07-28',
@@ -339,7 +339,7 @@ const storeSession = async (backend: McpUpstreamManager) => {
 	};
 };
 
-test('permission changes in the store apply to the next request of the same session', async () => {
+it('permission changes in the store apply to the next request of the same session', async () => {
 	const callTool = mock(manager.callTool);
 	const { userId, role, call, grant } = await storeSession({
 		...manager,
@@ -387,7 +387,7 @@ test('permission changes in the store apply to the next request of the same sess
 	expect(callTool).toHaveBeenCalledTimes(2);
 });
 
-test('backend permission changes show and hide resources on the same session', async () => {
+it('backend permission changes show and hide resources on the same session', async () => {
 	const readResource = mock(async () => ({
 		contents: [
 			{

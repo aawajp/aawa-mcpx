@@ -23,9 +23,9 @@ import {
 	usesRequestMetadata,
 } from '@/shared/mcp_protocol';
 
-import { expect, mock, spyOn, test } from 'bun:test';
+import { expect, it, mock, spyOn } from 'bun:test';
 
-test('the shared call path validates arguments exactly once before backend work', async () => {
+it('the shared call path validates arguments exactly once before backend work', async () => {
 	const compiled = createInputSchemaCompiler()({
 		type: 'object',
 		required: ['count'],
@@ -100,7 +100,7 @@ test('the shared call path validates arguments exactly once before backend work'
 
 for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 	for (const transport of ['http', 'stdio'] as const) {
-		test(`${backendVersion} ${transport}: schemas gate exposure and calls across client revisions and refreshes`, async () => {
+		it(`${backendVersion} ${transport}: schemas gate exposure and calls across client revisions and refreshes`, async () => {
 			const root = await mkdtemp(path.join(tmpdir(), 'mcpx-input-'));
 			const catalogPath = path.join(root, 'tools.json');
 			const schema = (minimum: number) => ({

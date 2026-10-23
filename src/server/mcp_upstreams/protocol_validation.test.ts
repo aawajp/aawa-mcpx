@@ -19,11 +19,11 @@ import {
 	validToolContent,
 } from '@/shared/mcp_schema_fixtures';
 
-import { expect, test } from 'bun:test';
+import { expect, it } from 'bun:test';
 
 for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 	for (const transport of ['json', 'sse', 'stdio'] as const) {
-		test(`${version} ${transport}: validates envelopes and content without breaking client versions`, async () => {
+		it(`${version} ${transport}: validates envelopes and content without breaking client versions`, async () => {
 			const backend = startFixtureBackend(
 				transport === 'stdio' ? 'stdio' : 'http',
 				version,
@@ -306,7 +306,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 		});
 	}
 
-	test(`${version}: HTTP error envelopes validate before codes/data are forwarded`, async () => {
+	it(`${version}: HTTP error envelopes validate before codes/data are forwarded`, async () => {
 		let reply: Record<string, unknown> = {};
 		let status = 400;
 		const fetch = (request: Request): Promise<Response> =>

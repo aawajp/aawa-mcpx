@@ -8,9 +8,9 @@ import {
 	saveToolState,
 } from '@/server/config/loader';
 
-import { expect, test } from 'bun:test';
+import { expect, it } from 'bun:test';
 
-test('saving changes only gateway-owned fields and skips unchanged state', async () => {
+it('saving changes only gateway-owned fields and skips unchanged state', async () => {
 	const root = await mkdtemp(path.join(tmpdir(), 'mcpx-loader-'));
 	const configPath = path.join(root, 'mcp.json');
 	try {

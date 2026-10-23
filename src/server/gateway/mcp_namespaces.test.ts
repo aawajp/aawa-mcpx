@@ -3,9 +3,9 @@ import {
 	namespaceTool,
 } from '@/server/gateway/mcp_namespaces';
 
-import { expect, test } from 'bun:test';
+import { expect, it } from 'bun:test';
 
-test('tools and prompts get their public name as title', () => {
+it('tools and prompts get their public name as title', () => {
 	expect(
 		namespaceTool({
 			serverName: 'github',

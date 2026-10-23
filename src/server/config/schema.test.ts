@@ -5,9 +5,9 @@ import {
 	parseEnvironment,
 } from '@/server/config/schema';
 
-import { expect, test } from 'bun:test';
+import { expect, it } from 'bun:test';
 
-test('backend enabled setting defaults to true', () => {
+it('backend enabled setting defaults to true', () => {
 	const defaultConfig = mcpConfigType.assert({
 		mcpServers: {
 			mock: {
@@ -38,7 +38,7 @@ const baseEnvironment = {
 	MCP_MAX_SESSIONS_PER_USER: '100',
 };
 
-test('login settings are ignored when both login methods are off', () => {
+it('login settings are ignored when both login methods are off', () => {
 	const expected = {
 		PORT: 4567,
 		ALLOWED_HOSTS: ['localhost'],
@@ -99,7 +99,7 @@ const requiredEnvironment = {
 	...superadminEnvironment,
 };
 
-test('environment settings are parsed and missing or invalid values are refused', () => {
+it('environment settings are parsed and missing or invalid values are refused', () => {
 	expect(environmentType.assert(requiredEnvironment)).toEqual({
 		PORT: 4567,
 		ALLOWED_HOSTS: ['localhost'],
@@ -205,7 +205,7 @@ test('environment settings are parsed and missing or invalid values are refused'
 		).toThrow();
 });
 
-test('each login method needs only its own settings and the session settings', () => {
+it('each login method needs only its own settings and the session settings', () => {
 	expect(
 		environmentType.assert({
 			...baseEnvironment,
@@ -238,7 +238,7 @@ test('each login method needs only its own settings and the session settings', (
 	).toThrow();
 });
 
-test('mcp.json refuses unknown keys, non-HTTP URLs and empty commands', () => {
+it('mcp.json refuses unknown keys, non-HTTP URLs and empty commands', () => {
 	for (const config of [
 		{
 			mcpServers: {},
@@ -273,7 +273,7 @@ test('mcp.json refuses unknown keys, non-HTTP URLs and empty commands', () => {
 		expect(() => mcpConfigType.assert(config)).toThrow();
 });
 
-test('invalid settings are a configuration error, listed on one line', () => {
+it('invalid settings are a configuration error, listed on one line', () => {
 	expect(() =>
 		parseEnvironment({
 			...requiredEnvironment,

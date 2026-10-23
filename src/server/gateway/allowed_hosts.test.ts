@@ -2,7 +2,7 @@ import { createHostCheck, guardRoutes } from '@/server/gateway/allowed_hosts';
 import { createMcpForbiddenResponse } from '@/server/gateway/mcp_http_route';
 import { createApiForbiddenResponse } from '@/server/gateway/ui_routes';
 
-import { expect, test } from 'bun:test';
+import { expect, it } from 'bun:test';
 
 const request = (url: string, origin?: string) =>
 	new Request(url, {
@@ -10,7 +10,7 @@ const request = (url: string, origin?: string) =>
 		headers: origin === undefined ? {} : { Origin: origin },
 	});
 
-test('host and Origin must be listed in ALLOWED_HOSTS', () => {
+it('host and Origin must be listed in ALLOWED_HOSTS', () => {
 	const isAllowed = createHostCheck([
 		'localhost',
 		'127.0.0.1',
@@ -41,7 +41,7 @@ test('host and Origin must be listed in ALLOWED_HOSTS', () => {
 	);
 });
 
-test('guarded routes answer a refused host with 403 before the handler runs', async () => {
+it('guarded routes answer a refused host with 403 before the handler runs', async () => {
 	let calls = 0;
 	const handler = (request: Request) => {
 		calls += 1;

@@ -20,11 +20,11 @@ import {
 	usesRequestMetadata,
 } from '@/shared/mcp_protocol';
 
-import { expect, mock, test } from 'bun:test';
+import { expect, it, mock } from 'bun:test';
 
 for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 	for (const transport of ['http', 'stdio'] as const) {
-		test(`${backendVersion} ${transport}: namespaces route resources, tools, and prompts for every client revision`, async () => {
+		it(`${backendVersion} ${transport}: namespaces route resources, tools, and prompts for every client revision`, async () => {
 			const backend = startFixtureBackend(transport, backendVersion, {
 				handle: (message, reply) => {
 					const params = recordOf(message.params);
@@ -480,7 +480,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 		});
 	}
 
-test('prompt embedded resources use the same namespace without changing message metadata', async () => {
+it('prompt embedded resources use the same namespace without changing message metadata', async () => {
 	const manager = {
 		getPrompt: async () => ({
 			description: 'retained',

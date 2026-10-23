@@ -69,7 +69,7 @@ const MemberCell = ({
 						onChange={(event) =>
 							onChange(
 								event.target.checked
-									? [...selected, member.id].sort()
+									? [...selected, member.id].sort((a, b) => a.localeCompare(b))
 									: selected.filter((id) => id !== member.id),
 							)
 						}
@@ -148,7 +148,7 @@ const RolesCard = ({
 		userIds: state.users
 			.filter((user) => user.roleIds.includes(role.id))
 			.map((user) => user.id)
-			.sort(),
+			.sort((a, b) => a.localeCompare(b)),
 	}));
 	const savedOf = (role: RoleEntry): RoleDraft => ({
 		name: role.name,

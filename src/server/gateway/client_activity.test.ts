@@ -4,7 +4,7 @@ import { logger } from '@/server/logger';
 import { parseClientInfo } from '@/shared/client_info';
 import { overviewResponseType } from '@/shared/ui_api';
 
-test('client info requires name and version when present; omitted identity uses unknown', () => {
+it('client info requires name and version when present; omitted identity uses unknown', () => {
 	for (const value of [
 		{},
 		{
@@ -38,9 +38,9 @@ test('client info requires name and version when present; omitted identity uses 
 	});
 });
 
-import { expect, spyOn, test } from 'bun:test';
+import { expect, it, spyOn } from 'bun:test';
 
-test('initialization retains the newest sessions per name/version without idle expiration', async () => {
+it('initialization retains the newest sessions per name/version without idle expiration', async () => {
 	for (const maxSessionsPerClient of [10, 2]) {
 		const sessions = createMcpSessionManager({
 			maxSessionsPerClient,
@@ -108,7 +108,7 @@ test('initialization retains the newest sessions per name/version without idle e
 	}
 });
 
-test("one user's sessions never end another's with the same client", async () => {
+it("one user's sessions never end another's with the same client", async () => {
 	const sessions = createMcpSessionManager({
 		maxSessionsPerClient: 2,
 		maxSessionsPerUser: 100,
@@ -144,7 +144,7 @@ test("one user's sessions never end another's with the same client", async () =>
 		expect(sessions.requireSession(id, 2)).toBeNull();
 });
 
-test("a user's sessions of all clients are limited, without ending another user's", async () => {
+it("a user's sessions of all clients are limited, without ending another user's", async () => {
 	const sessions = createMcpSessionManager({
 		maxSessionsPerClient: 10,
 		maxSessionsPerUser: 3,
@@ -180,7 +180,7 @@ test("a user's sessions of all clients are limited, without ending another user'
 	expect(sessions.activeCount()).toBe(4);
 });
 
-test('client names over 256 characters or client info over 64 KiB are refused', async () => {
+it('client names over 256 characters or client info over 64 KiB are refused', async () => {
 	const sessions = createMcpSessionManager({
 		maxSessionsPerClient: 10,
 		maxSessionsPerUser: 100,
@@ -235,7 +235,7 @@ test('client names over 256 characters or client info over 64 KiB are refused', 
 	expect(sessions.activeCount()).toBe(1);
 });
 
-test('session lifecycle and rejection logs omit transport identifiers', async () => {
+it('session lifecycle and rejection logs omit transport identifiers', async () => {
 	const messages: string[] = [];
 	const info = spyOn(logger, 'info').mockImplementation((message) => {
 		messages.push(String(message));
@@ -279,7 +279,7 @@ test('session lifecycle and rejection logs omit transport identifiers', async ()
 	}
 });
 
-test('client activity groups reconnects per protocol and user without exposing sessions', async () => {
+it('client activity groups reconnects per protocol and user without exposing sessions', async () => {
 	const activity = createClientActivityTracker(3);
 	const sessions = createMcpSessionManager({
 		maxSessionsPerClient: 10,
@@ -359,7 +359,7 @@ test('client activity groups reconnects per protocol and user without exposing s
 	]);
 });
 
-test('2025 sessions keep the whole reported client info', async () => {
+it('2025 sessions keep the whole reported client info', async () => {
 	const observed: unknown[] = [];
 	const sessions = createMcpSessionManager({
 		maxSessionsPerClient: 10,

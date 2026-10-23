@@ -20,6 +20,15 @@ Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 ## [Unreleased]
 
+### 2026-10-23
+
+#### Changed
+
+- Update Bun to 1.4.4, ArkType to 2.2.9, jose to 6.2.13 and Biome to 2.6.2,
+  and adapt the lint config, tests and dashboard sorting to Biome's new rules:
+  React rules apply only to `src/ui`, tests call `it`, and sorts compare
+  explicitly.
+
 ### 2026-10-22
 
 #### Added

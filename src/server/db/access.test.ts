@@ -8,7 +8,7 @@ import {
 import { openMainDatabase } from '@/server/db/main';
 import { KEY_HINT_LENGTH, LOCAL_KEY_PREFIX } from '@/shared/ui_api';
 
-import { expect, test } from 'bun:test';
+import { expect, it } from 'bun:test';
 
 const setUp = () => createAccessStore(openMainDatabase(':memory:'));
 
@@ -20,7 +20,7 @@ const keyOf = (userId: string, key: string) => ({
 	hint: key.slice(-KEY_HINT_LENGTH),
 });
 
-test('a new Local user is a machine with a generated ID and a Name', () => {
+it('a new Local user is a machine with a generated ID and a Name', () => {
 	const access = setUp();
 	const localId = access.saveUser({
 		id: 'ignored',
@@ -64,7 +64,7 @@ test('a new Local user is a machine with a generated ID and a Name', () => {
 		expect(save).toThrow(new InvalidInputError('A Local user needs a Name'));
 });
 
-test('an OIDC user needs a new user ID, and only known users change', () => {
+it('an OIDC user needs a new user ID, and only known users change', () => {
 	const access = setUp();
 	const user = {
 		id: 'alice-subject',
@@ -101,7 +101,7 @@ test('an OIDC user needs a new user ID, and only known users change', () => {
 	});
 });
 
-test('the superadmin is a Local human that keeps its name, stays enabled and gets no keys', () => {
+it('the superadmin is a Local human that keeps its name, stays enabled and gets no keys', () => {
 	const access = setUp();
 	const superadmin = access.ensureSuperadmin('root');
 	expect(superadmin).toMatchObject({
@@ -137,7 +137,7 @@ test('the superadmin is a Local human that keeps its name, stays enabled and get
 	expect(access.findUser(superadmin.id)).toEqual(superadmin);
 });
 
-test('only machines get keys, each realm its own way', () => {
+it('only machines get keys, each realm its own way', () => {
 	const access = setUp();
 	const localId = access.saveUser({
 		id: '',
@@ -198,7 +198,7 @@ test('only machines get keys, each realm its own way', () => {
 	expect(() => access.deleteKey(registered.id)).toThrow(UnknownIdError);
 });
 
-test('unknown holders and taken role names are refused', () => {
+it('unknown holders and taken role names are refused', () => {
 	const access = setUp();
 	const roleId = access.saveRole({
 		name: 'ops',
@@ -242,7 +242,7 @@ test('unknown holders and taken role names are refused', () => {
 	expect(access.listUsers()).toEqual([]);
 });
 
-test('a sign-in adds or fills OIDC users only, and follows the IdP roles while enabled', () => {
+it('a sign-in adds or fills OIDC users only, and follows the IdP roles while enabled', () => {
 	const access = setUp();
 	const now = Date.now();
 	// An unknown user ID becomes an OIDC human, its roles added.
@@ -318,7 +318,7 @@ test('a sign-in adds or fills OIDC users only, and follows the IdP roles while e
 	expect(access.listUsers()).toEqual(before);
 });
 
-test('renaming a role renames it in the IdP roles, so tokens keep following them', () => {
+it('renaming a role renames it in the IdP roles, so tokens keep following them', () => {
 	const access = setUp();
 	const now = Date.now();
 	for (const id of ['alice', 'bob'])
@@ -360,7 +360,7 @@ test('renaming a role renames it in the IdP roles, so tokens keep following them
 	expect(bob.roleIds).toContain(newOpsId ?? '');
 });
 
-test('a role assigned in the dashboard and named by a token follows the IdP', () => {
+it('a role assigned in the dashboard and named by a token follows the IdP', () => {
 	const access = setUp();
 	const now = Date.now();
 	access.signIn(
@@ -387,12 +387,14 @@ test('a role assigned in the dashboard and named by a token follows the IdP', ()
 				},
 				now,
 			)
-			.roleIds.toSorted();
-	expect(signIn(['ops'])).toEqual([manual, ops].toSorted());
+			.roleIds.toSorted((a, b) => a.localeCompare(b));
+	expect(signIn(['ops'])).toEqual(
+		[manual, ops].toSorted((a, b) => a.localeCompare(b)),
+	);
 	expect(signIn([])).toEqual([manual]);
 });
 
-test('assigned roles count, and deleting a role removes its assignments and permissions', () => {
+it('assigned roles count, and deleting a role removes its assignments and permissions', () => {
 	const access = setUp();
 	const role = access.saveRole({
 		name: 'temporary',
@@ -440,7 +442,7 @@ test('assigned roles count, and deleting a role removes its assignments and perm
 	);
 });
 
-test('saving upserts by ID and replaces a holder permissions', () => {
+it('saving upserts by ID and replaces a holder permissions', () => {
 	const access = setUp();
 	const role = access.saveRole({
 		id: 'role-id',

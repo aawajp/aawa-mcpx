@@ -28,7 +28,6 @@
 		"domains": {
 			// disable at root and enable for those modules that need them
 			"project": "all",
-			"react": "all",
 			"test": "all",
 			"types": "all"
 		},
@@ -40,7 +39,7 @@
 				"noUnusedLabels": "warn",
 				"noUnusedPrivateClassMembers": "warn",
 				"noUnusedVariables": "warn",
-				"noUnresolvedImports": "off", // unnecessary when using tsc
+				"noUnresolvedImports": "off", // "bun check" already checks this
 				"useImportExtensions": "off"
 			},
 			"performance": {
@@ -48,6 +47,9 @@
 			},
 			"style": {
 				"noExportedImports": "warn"
+			},
+			"suspicious": {
+				"noConditionalExpect": "off" // tests branch on purpose
 			}
 		}
 	},
@@ -79,6 +81,9 @@
 		{
 			"includes": ["src/ui/**"],
 			"linter": {
+				"domains": {
+					"react": "all"
+				},
 				"rules": {
 					"style": {
 						"noRestrictedImports": {

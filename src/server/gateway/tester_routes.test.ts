@@ -1,9 +1,9 @@
 import { createTesterRoutes } from '@/server/gateway/tester_routes';
 import { TESTER_PATH, testerResponseType } from '@/shared/ui_api';
 
-import { expect, mock, test } from 'bun:test';
+import { expect, it, mock } from 'bun:test';
 
-test('the Tester sends the request to /mcp signed as the admin and returns both sides', async () => {
+it('the Tester sends the request to /mcp signed as the admin and returns both sides', async () => {
 	let received: Request | undefined;
 	const routes = createTesterRoutes({
 		mcpRoute: {
@@ -73,7 +73,7 @@ test('the Tester sends the request to /mcp signed as the admin and returns both 
 	});
 });
 
-test('the Tester signs as the superadmin without asking for an access token', async () => {
+it('the Tester signs as the superadmin without asking for an access token', async () => {
 	const received: Request[] = [];
 	const signed: string[] = [];
 	const accessToken = mock(async () => 'oidc-token');

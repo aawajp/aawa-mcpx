@@ -27,7 +27,7 @@ import {
 import type { ToolCallResult } from '@/shared/mcp_results';
 
 import packageJson from '../../../package.json' with { type: 'json' };
-import { expect, mock, test } from 'bun:test';
+import { expect, it, mock } from 'bun:test';
 
 const fixture = () => {
 	let refreshes = 0;
@@ -68,7 +68,7 @@ const fixture = () => {
 };
 
 for (const version of SUPPORTED_PROTOCOL_VERSIONS)
-	test(`public ${version}: metadata reaches calls and unsupported options respect revision rules`, async () => {
+	it(`public ${version}: metadata reaches calls and unsupported options respect revision rules`, async () => {
 		const { route, manager } = fixture();
 		const callTool = mock(manager.callTool);
 		manager.callTool = callTool;
@@ -182,7 +182,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 	});
 
 for (const version of SUPPORTED_PROTOCOL_VERSIONS)
-	test(`public ${version}: lifecycle, list and call`, async () => {
+	it(`public ${version}: lifecycle, list and call`, async () => {
 		const { route, manager, refreshCount } = fixture();
 		let session: string | null = null;
 		const send = async (
@@ -286,7 +286,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 	});
 
 for (const version of SUPPORTED_PROTOCOL_VERSIONS)
-	test(`public ${version}: output schema and structured result agree after adaptation`, async () => {
+	it(`public ${version}: output schema and structured result agree after adaptation`, async () => {
 		const { route, manager } = fixture();
 		const schema = {
 			type: ['object', 'array', 'null', 'string', 'number', 'boolean'],
@@ -534,7 +534,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 		).toBeUndefined();
 	});
 
-test('initialize proposals choose a supported alternative and enforce stored version', async () => {
+it('initialize proposals choose a supported alternative and enforce stored version', async () => {
 	const { sessions } = fixture();
 	for (const protocolVersion of ['2025-06-18', '2025-11-25']) {
 		for (const clientInfo of [
@@ -623,7 +623,7 @@ test('initialize proposals choose a supported alternative and enforce stored ver
 	).toBeNull();
 });
 
-test('2026-07-28 header failures, unsupported version, and irrelevant sessions', async () => {
+it('2026-07-28 header failures, unsupported version, and irrelevant sessions', async () => {
 	const { route } = fixture();
 	const send = (version: string, methodHeader?: string) =>
 		route.POST(
@@ -669,7 +669,7 @@ test('2026-07-28 header failures, unsupported version, and irrelevant sessions',
 	]);
 });
 
-test('request metadata validates per request without requiring or inheriting optional capabilities', async () => {
+it('request metadata validates per request without requiring or inheriting optional capabilities', async () => {
 	const { route, manager, refreshCount } = fixture();
 	const invoke = mock(manager.callTool);
 	manager.callTool = invoke;
@@ -835,7 +835,7 @@ test('request metadata validates per request without requiring or inheriting opt
 	expect(invoke).not.toHaveBeenCalled();
 });
 
-test('parameter mirrors use refreshed rules exactly once and reject recognized surplus headers', async () => {
+it('parameter mirrors use refreshed rules exactly once and reject recognized surplus headers', async () => {
 	const { route, manager, refreshCount } = fixture();
 	let schema: Tool['inputSchema'] = {
 		type: 'object',
@@ -972,7 +972,7 @@ test('parameter mirrors use refreshed rules exactly once and reject recognized s
 });
 
 for (const version of SUPPORTED_PROTOCOL_VERSIONS)
-	test(`${version}: malformed header annotations affect only 2026-07-28 public HTTP tools`, async () => {
+	it(`${version}: malformed header annotations affect only 2026-07-28 public HTTP tools`, async () => {
 		const { route, manager } = fixture();
 		const invoke = mock(manager.callTool);
 		manager.callTool = invoke;
@@ -1058,7 +1058,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 		}
 	});
 
-test('POST checks Accept before reading the body', async () => {
+it('POST checks Accept before reading the body', async () => {
 	const { route } = fixture();
 	const post = async (accept: string) => {
 		const request = new Request('http://localhost:4567/mcp', {
@@ -1098,7 +1098,7 @@ test('POST checks Accept before reading the body', async () => {
 		});
 });
 
-test('unknown protocol version headers without request metadata get HTTP 400', async () => {
+it('unknown protocol version headers without request metadata get HTTP 400', async () => {
 	const { route } = fixture();
 	for (const header of ['zzz', '2026-01-01', '2099-01-01']) {
 		const response = await route.POST(
@@ -1121,7 +1121,7 @@ test('unknown protocol version headers without request metadata get HTTP 400', a
 	}
 });
 
-test('gateway transport errors keep their HTTP status and use Invalid Request', async () => {
+it('gateway transport errors keep their HTTP status and use Invalid Request', async () => {
 	const { route } = fixture();
 	const post = (
 		headers: Record<string, string>,
@@ -1193,7 +1193,7 @@ test('gateway transport errors keep their HTTP status and use Invalid Request', 
 	}
 });
 
-test('the gateway reports its package version', async () => {
+it('the gateway reports its package version', async () => {
 	const { route, sessions } = fixture();
 	const gateway = {
 		name: 'aawa-mcpx',

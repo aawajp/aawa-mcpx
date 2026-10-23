@@ -25,7 +25,7 @@ import {
 	usesRequestMetadata,
 } from '@/shared/mcp_protocol';
 
-import { expect, mock, test } from 'bun:test';
+import { expect, it, mock } from 'bun:test';
 
 const echoTool = enabledTools('backend', [
 	{
@@ -120,7 +120,7 @@ const gateway = (
 
 for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 	for (const transport of ['http', 'stdio'] as const)
-		test(`${backendVersion} ${transport}: cancellation translates every client revision and preserves connection health`, async () => {
+		it(`${backendVersion} ${transport}: cancellation translates every client revision and preserves connection health`, async () => {
 			const received: Record<string, unknown>[] = [];
 			const cancellationHeaders = new Map<unknown, Headers>();
 			let disconnected = 0;
@@ -392,7 +392,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 		});
 
 for (const version of ['2025-06-18', '2025-11-25'] as const)
-	test(`${version}: cancellation isolates sessions and typed IDs, ignores invalid/completed IDs and protects initialize`, async () => {
+	it(`${version}: cancellation isolates sessions and typed IDs, ignores invalid/completed IDs and protects initialize`, async () => {
 		const signals: AbortSignal[] = [];
 		const gates: (() => void)[] = [];
 		const callTool = mock(async (params: CallToolParams) => {
@@ -474,7 +474,7 @@ for (const version of ['2025-06-18', '2025-11-25'] as const)
 		expect(signals[1]?.aborted).toBe(false);
 	});
 
-test('cancelling during a shared catalog refresh prevents dispatch without cancelling the refresh', async () => {
+it('cancelling during a shared catalog refresh prevents dispatch without cancelling the refresh', async () => {
 	const gate = Promise.withResolvers<void>();
 	const callTool = mock(async () => ({
 		content: [],
@@ -513,7 +513,7 @@ test('cancelling during a shared catalog refresh prevents dispatch without cance
 	expect(callTool).not.toHaveBeenCalled();
 });
 
-test('a real 2026-07-28 HTTP disconnect aborts backend dispatch', async () => {
+it('a real 2026-07-28 HTTP disconnect aborts backend dispatch', async () => {
 	const observed = Promise.withResolvers<AbortSignal>();
 	const finished = Promise.withResolvers<void>();
 	const { route, send } = gateway({
@@ -565,6 +565,7 @@ test('a real 2026-07-28 HTTP disconnect aborts backend dispatch', async () => {
 		const signal = await observed.promise;
 		controller.abort();
 		await until(() => signal.aborted);
+		expect(signal.aborted).toBe(true);
 		await finished.promise;
 		await operation;
 	} finally {

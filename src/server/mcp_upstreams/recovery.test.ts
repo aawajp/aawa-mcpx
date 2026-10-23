@@ -15,7 +15,7 @@ import {
 	usesRequestMetadata,
 } from '@/shared/mcp_protocol';
 
-import { expect, jest, spyOn, test } from 'bun:test';
+import { expect, it, jest, spyOn } from 'bun:test';
 
 const createHarness = (
 	url = 'http://127.0.0.1/mcp',
@@ -42,7 +42,7 @@ const createHarness = (
 	};
 };
 
-test('reconnects back off with jitter, cap traffic, and reset after recovery', async () => {
+it('reconnects back off with jitter, cap traffic, and reset after recovery', async () => {
 	const connect = spyOn(ProtocolClient.prototype, 'connect').mockRejectedValue(
 		new BackendTransportError(new Error('Network unreachable')),
 	);
@@ -82,7 +82,7 @@ test('reconnects back off with jitter, cap traffic, and reset after recovery', a
 	}
 });
 
-test('concurrent reconnects share one handshake and catalog refresh', async () => {
+it('concurrent reconnects share one handshake and catalog refresh', async () => {
 	const connect = spyOn(ProtocolClient.prototype, 'connect').mockRejectedValue(
 		new BackendTransportError(new Error('Offline')),
 	);
@@ -112,7 +112,7 @@ test('concurrent reconnects share one handshake and catalog refresh', async () =
 	}
 });
 
-test('shutdown during a reconnect cannot recreate a client or retry timer', async () => {
+it('shutdown during a reconnect cannot recreate a client or retry timer', async () => {
 	const connect = spyOn(ProtocolClient.prototype, 'connect').mockRejectedValue(
 		new BackendTransportError(new Error('Offline')),
 	);
@@ -140,7 +140,7 @@ test('shutdown during a reconnect cannot recreate a client or retry timer', asyn
 	}
 });
 
-test('a backend reconnects automatically when the outage ends', async () => {
+it('a backend reconnects automatically when the outage ends', async () => {
 	let online = false;
 	let discoveries = 0;
 	let refreshes = 0;
@@ -193,7 +193,7 @@ test('a backend reconnects automatically when the outage ends', async () => {
 });
 
 for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
-	test(`${version}: request failure recovers the backend without replaying the tool`, async () => {
+	it(`${version}: request failure recovers the backend without replaying the tool`, async () => {
 		let failed = false;
 		let toolCalls = 0;
 		let refreshes = 0;
@@ -272,7 +272,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 }
 
 for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
-	test(`${version}: a timeout or 5xx fails only its own call`, async () => {
+	it(`${version}: a timeout or 5xx fails only its own call`, async () => {
 		const endpoint = Bun.serve({
 			port: 0,
 			hostname: '127.0.0.1',
@@ -354,7 +354,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 }
 
 for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
-	test(`${version}: a rejected credential stops retries, before and after connecting`, async () => {
+	it(`${version}: a rejected credential stops retries, before and after connecting`, async () => {
 		let authorized = false;
 		const endpoint = Bun.serve({
 			port: 0,
@@ -422,7 +422,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 	});
 }
 
-test('a start failure that is not transient stops at once', async () => {
+it('a start failure that is not transient stops at once', async () => {
 	const connect = spyOn(ProtocolClient.prototype, 'connect').mockRejectedValue(
 		Object.assign(new Error('Executable not found in $PATH'), {
 			code: 'ENOENT',
@@ -445,7 +445,7 @@ test('a start failure that is not transient stops at once', async () => {
 	}
 });
 
-test('transient start failures stop after the startup window', async () => {
+it('transient start failures stop after the startup window', async () => {
 	const connect = spyOn(ProtocolClient.prototype, 'connect').mockRejectedValue(
 		new BackendTransportError(new Error('Connection refused')),
 	);
@@ -472,7 +472,7 @@ test('transient start failures stop after the startup window', async () => {
 	}
 });
 
-test('after a connection, failures retry unless a certificate is rejected', async () => {
+it('after a connection, failures retry unless a certificate is rejected', async () => {
 	const connect = spyOn(ProtocolClient.prototype, 'connect').mockImplementation(
 		async function (this: ProtocolClient) {
 			this.protocolVersion = CURRENT_PROTOCOL_VERSION;

@@ -14,7 +14,7 @@ import {
 	TESTER_PATH,
 } from '@/shared/ui_api';
 
-import { afterAll, beforeAll, expect, spyOn, test } from 'bun:test';
+import { afterAll, beforeAll, expect, it, spyOn } from 'bun:test';
 
 const PASSWORD = 'correct horse battery staple';
 // No backends.
@@ -113,7 +113,7 @@ const mcpHeaders = {
 	'MCP-Protocol-Version': '2025-11-25',
 };
 
-test('without login methods, health is minimal and every route is open', async () => {
+it('without login methods, health is minimal and every route is open', async () => {
 	const { send, stop } = await start(false);
 	try {
 		const health = await send(DASHBOARD_PATHS.health);
@@ -149,7 +149,7 @@ test('without login methods, health is minimal and every route is open', async (
 	}
 });
 
-test('with the password login, only health and login routes are open', async () => {
+it('with the password login, only health and login routes are open', async () => {
 	const { send, stop } = await start(true);
 	try {
 		const health = await send(DASHBOARD_PATHS.health);
@@ -211,7 +211,7 @@ test('with the password login, only health and login routes are open', async () 
 	}
 });
 
-test("a notification's long method is stored as its start, outside its request", async () => {
+it("a notification's long method is stored as its start, outside its request", async () => {
 	const { send, stop } = await start(false);
 	try {
 		const session =

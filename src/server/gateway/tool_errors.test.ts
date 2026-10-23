@@ -27,11 +27,11 @@ import {
 	usesRequestMetadata,
 } from '@/shared/mcp_protocol';
 
-import { expect, mock, spyOn, test } from 'bun:test';
+import { expect, it, mock, spyOn } from 'bun:test';
 
 for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 	for (const transport of ['http', 'stdio'] as const) {
-		test(`${backendVersion} ${transport}: tool errors keep their classification for every client revision`, async () => {
+		it(`${backendVersion} ${transport}: tool errors keep their classification for every client revision`, async () => {
 			const backend = startFixtureBackend(transport, backendVersion, {
 				// An upstream HTTP status belongs to that hop, not the public one.
 				handle: (message, reply) =>
@@ -375,7 +375,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS) {
 }
 
 for (const version of SUPPORTED_PROTOCOL_VERSIONS)
-	test(`${version}: unexpected gateway and HTTP handler failures use internal error`, async () => {
+	it(`${version}: unexpected gateway and HTTP handler failures use internal error`, async () => {
 		const tools = enabledTools('fixture', [
 			{
 				name: 'echo',
@@ -456,7 +456,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS)
 		}
 	});
 
-test('malformed prompt and resource results are JSON-RPC errors for every client revision', async () => {
+it('malformed prompt and resource results are JSON-RPC errors for every client revision', async () => {
 	const backend = startFixtureBackend('http', '2025-11-25', {
 		handle: (message, reply) => {
 			const result = recordOf(reply?.result);

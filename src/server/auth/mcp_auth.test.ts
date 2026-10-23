@@ -14,9 +14,9 @@ import {
 	afterAll,
 	beforeAll,
 	expect,
+	it,
 	setSystemTime,
 	spyOn,
-	test,
 } from 'bun:test';
 
 const PUBLIC_URL = 'https://mcpx.test';
@@ -187,7 +187,7 @@ const status = async (authorization?: string, on = auth) => {
 	return result instanceof Response ? result.status : 200;
 };
 
-test('OAuth access tokens and client credentials map to users by user ID', async () => {
+it('OAuth access tokens and client credentials map to users by user ID', async () => {
 	const ops = access.saveRole({
 		name: 'ops',
 		userIds: [],
@@ -404,7 +404,7 @@ test('OAuth access tokens and client credentials map to users by user ID', async
 	expect(await status('Digest whatever')).toBe(401);
 });
 
-test('Local users sign in with their own API keys, and the Tester as any user', async () => {
+it('Local users sign in with their own API keys, and the Tester as any user', async () => {
 	const localId = access.saveUser({
 		id: '',
 		name: 'Local bot',
@@ -471,7 +471,7 @@ test('Local users sign in with their own API keys, and the Tester as any user', 
 	);
 });
 
-test('an API key is exchanged once per IdP token, and signs in once per touch interval', async () => {
+it('an API key is exchanged once per IdP token, and signs in once per touch interval', async () => {
 	const store = createAccessStore(openMainDatabase(':memory:'));
 	const fresh = await createAuth(store);
 	store.saveUser({
@@ -504,7 +504,7 @@ test('an API key is exchanged once per IdP token, and signs in once per touch in
 	info.mockRestore();
 });
 
-test('parallel requests with one API key share its exchange, and a failed one is not kept', async () => {
+it('parallel requests with one API key share its exchange, and a failed one is not kept', async () => {
 	const store = createAccessStore(openMainDatabase(':memory:'));
 	const fresh = await createAuth(store);
 	store.saveUser({
@@ -536,7 +536,7 @@ test('parallel requests with one API key share its exchange, and a failed one is
 	expect(tokenRequests - exchanges).toBe(3);
 });
 
-test('an API key revoked while the IdP answers is refused', async () => {
+it('an API key revoked while the IdP answers is refused', async () => {
 	const store = createAccessStore(openMainDatabase(':memory:'));
 	const fresh = await createAuth(store);
 	store.saveUser({
@@ -570,7 +570,7 @@ test('an API key revoked while the IdP answers is refused', async () => {
 	}
 });
 
-test('an IdP failure during the key exchange answers 502', async () => {
+it('an IdP failure during the key exchange answers 502', async () => {
 	const store = createAccessStore(openMainDatabase(':memory:'));
 	const fresh = await createAuth(store);
 	store.saveUser({
@@ -591,7 +591,7 @@ test('an IdP failure during the key exchange answers 502', async () => {
 	expect(await status(`Bearer ${wrong}`, fresh)).toBe(401);
 });
 
-test('without OIDC, only Local API keys sign in', async () => {
+it('without OIDC, only Local API keys sign in', async () => {
 	const localOnly = createMcpAuth({
 		access,
 	});
@@ -632,7 +632,7 @@ test('without OIDC, only Local API keys sign in', async () => {
 	);
 });
 
-test('resource metadata names the gateway and the issuer', async () => {
+it('resource metadata names the gateway and the issuer', async () => {
 	const response =
 		auth.routes['/.well-known/oauth-protected-resource/mcp']?.GET();
 	expect(await response?.json()).toEqual({

@@ -32,10 +32,10 @@ import {
 	usesRequestMetadata,
 } from '@/shared/mcp_protocol';
 
-import { expect, mock, spyOn, test } from 'bun:test';
+import { expect, it, mock, spyOn } from 'bun:test';
 
 for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
-	test(`HTTP backend ${version}: mirrors belong to the backend hop and refresh with the catalog`, async () => {
+	it(`HTTP backend ${version}: mirrors belong to the backend hop and refresh with the catalog`, async () => {
 		const received: {
 			message: Record<string, unknown>;
 			headers: Headers;
@@ -263,7 +263,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 	});
 }
 
-test('an SSE RPC error keeps the HTTP status of its response', async () => {
+it('an SSE RPC error keeps the HTTP status of its response', async () => {
 	const client = new ProtocolClient({
 		serverName: 'stream',
 		serverConfig: {
@@ -313,7 +313,7 @@ test('an SSE RPC error keeps the HTTP status of its response', async () => {
 	}
 });
 
-test('a broken SSE response preserves the transport error and requests recovery', async () => {
+it('a broken SSE response preserves the transport error and requests recovery', async () => {
 	const client = new ProtocolClient({
 		serverName: 'stream',
 		serverConfig: {
@@ -356,7 +356,7 @@ test('a broken SSE response preserves the transport error and requests recovery'
 	}
 });
 
-test('caller cancellation does not invalidate a healthy connection', async () => {
+it('caller cancellation does not invalidate a healthy connection', async () => {
 	const client = new ProtocolClient({
 		serverName: 'cancelled',
 		serverConfig: {
@@ -391,7 +391,7 @@ test('caller cancellation does not invalidate a healthy connection', async () =>
 	}
 });
 
-test('a session lost between initialize and initialized remains retryable', async () => {
+it('a session lost between initialize and initialized remains retryable', async () => {
 	const endpoint = Bun.serve({
 		port: 0,
 		hostname: '127.0.0.1',
@@ -439,7 +439,7 @@ for (const method of [
 	'notifications/initialized',
 ]) {
 	for (const failure of ['timeout', 'reset', '503']) {
-		test(`${method}: ${failure} remains retryable during the handshake`, async () => {
+		it(`${method}: ${failure} remains retryable during the handshake`, async () => {
 			const endpoint = Bun.serve({
 				port: 0,
 				hostname: '127.0.0.1',
@@ -502,7 +502,7 @@ for (const method of [
 // supported peer.
 for (const version of ['2025-11-25', '2025-06-18'] as const) {
 	for (const status of [400, 404, 405]) {
-		test(`initial discovery HTTP ${status} with an uncorrelated error falls back to ${version}`, async () => {
+		it(`initial discovery HTTP ${status} with an uncorrelated error falls back to ${version}`, async () => {
 			for (const rejectedId of [null, undefined, 'unrelated']) {
 				const methods: string[] = [];
 				const endpoint = Bun.serve({
@@ -569,7 +569,7 @@ for (const version of ['2025-11-25', '2025-06-18'] as const) {
 }
 
 for (const status of [200, 400, 401, 403, 429, 503]) {
-	test(`uncorrelated HTTP ${status} discovery errors do not downgrade ${status === 400 ? 'a pinned 2026-07-28 peer' : 'without a fallback rejection'}`, async () => {
+	it(`uncorrelated HTTP ${status} discovery errors do not downgrade ${status === 400 ? 'a pinned 2026-07-28 peer' : 'without a fallback rejection'}`, async () => {
 		const methods: string[] = [];
 		const endpoint = Bun.serve({
 			port: 0,
@@ -624,7 +624,7 @@ for (const status of [200, 400, 401, 403, 429, 503]) {
 }
 
 for (const code of [-32020, -32021, -32022]) {
-	test(`valid 2026-07-28 discovery error ${code} never triggers initialization`, async () => {
+	it(`valid 2026-07-28 discovery error ${code} never triggers initialization`, async () => {
 		const methods: string[] = [];
 		const endpoint = Bun.serve({
 			port: 0,
@@ -678,7 +678,7 @@ for (const code of [-32020, -32021, -32022]) {
 
 for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 	for (const transport of ['http', 'stdio'] as const) {
-		test(`${transport} backend ${version}: selection, core calls and pinned reconnect`, async () => {
+		it(`${transport} backend ${version}: selection, core calls and pinned reconnect`, async () => {
 			const methods: string[] = [];
 			const fixture = startFixtureBackend(transport, version, {
 				handle: (message, reply, request) => {
@@ -944,7 +944,7 @@ for (const version of SUPPORTED_PROTOCOL_VERSIONS) {
 	}
 }
 
-test('old-only backends are rejected before initialized', async () => {
+it('old-only backends are rejected before initialized', async () => {
 	const methods: string[] = [];
 	const server = Bun.serve({
 		port: 0,
@@ -983,7 +983,7 @@ test('old-only backends are rejected before initialized', async () => {
 
 for (const version of ['2025-11-25', CURRENT_PROTOCOL_VERSION] as const)
 	for (const transport of ['http', 'stdio'] as const)
-		test(`${transport} backend ${version}: backend requests get answers and never complete gateway calls`, async () => {
+		it(`${transport} backend ${version}: backend requests get answers and never complete gateway calls`, async () => {
 			const answers: unknown[] = [];
 			const answered = Promise.withResolvers<void>();
 			const sessions: (string | null)[] = [];
@@ -1103,7 +1103,7 @@ for (const version of ['2025-11-25', CURRENT_PROTOCOL_VERSION] as const)
 			}
 		});
 
-test('an unruly stdio backend keeps working, logs stderr and is killed on close', async () => {
+it('an unruly stdio backend keeps working, logs stderr and is killed on close', async () => {
 	const info = spyOn(logger, 'info');
 	const warn = spyOn(logger, 'warn');
 	const fixture = startFixtureBackend('stdio', '2025-11-25', {
@@ -1157,7 +1157,7 @@ test('an unruly stdio backend keeps working, logs stderr and is killed on close'
 	}
 });
 
-test('fixture stdio backends never load env files', async () => {
+it('fixture stdio backends never load env files', async () => {
 	const root = await mkdtemp(path.join(tmpdir(), 'mcpx-env-'));
 	try {
 		await writeFile(path.join(root, '.env'), 'SENTINEL_ENV=seen');
@@ -1194,7 +1194,7 @@ test('fixture stdio backends never load env files', async () => {
 	}
 });
 
-test('closing a 2025 HTTP backend ends its session with DELETE', async () => {
+it('closing a 2025 HTTP backend ends its session with DELETE', async () => {
 	const deletes: Headers[] = [];
 	const endpoint = Bun.serve({
 		port: 0,
@@ -1242,7 +1242,7 @@ test('closing a 2025 HTTP backend ends its session with DELETE', async () => {
 	}
 });
 
-test('discovery without 2026-07-28 initializes with an offered 2025 revision', async () => {
+it('discovery without 2026-07-28 initializes with an offered 2025 revision', async () => {
 	let offered = ['2025-06-18'];
 	const fixture = startFixtureBackend('http', '2025-06-18', {
 		handle: (message) =>
@@ -1291,7 +1291,7 @@ test('discovery without 2026-07-28 initializes with an offered 2025 revision', a
 	}
 });
 
-test('SSE responses accept CR, LF and CRLF line endings across chunks', async () => {
+it('SSE responses accept CR, LF and CRLF line endings across chunks', async () => {
 	const bodies = [
 		// Bare CR endings, with the event split inside its JSON.
 		(event: string) => [
@@ -1364,7 +1364,7 @@ const encoder = new TextEncoder();
 // Over the limit in bytes, but under it in UTF-16 units.
 const wide = 'あ'.repeat(MESSAGE_SIZE_LIMIT / 4);
 
-test('backend HTTP JSON bodies are limited in bytes and keep their HTTP status', async () => {
+it('backend HTTP JSON bodies are limited in bytes and keep their HTTP status', async () => {
 	const client = new ProtocolClient({
 		serverName: 'large',
 		serverConfig: {
@@ -1483,7 +1483,7 @@ test('backend HTTP JSON bodies are limited in bytes and keep their HTTP status',
 	}
 });
 
-test('backend stdio lines are limited in bytes wherever chunks split them', async () => {
+it('backend stdio lines are limited in bytes wherever chunks split them', async () => {
 	const client = new ProtocolClient({
 		serverName: 'large',
 		serverConfig: {
@@ -1537,7 +1537,7 @@ test('backend stdio lines are limited in bytes wherever chunks split them', asyn
 		);
 });
 
-test('backend SSE events are limited in bytes', async () => {
+it('backend SSE events are limited in bytes', async () => {
 	const client = new ProtocolClient({
 		serverName: 'large',
 		serverConfig: {
@@ -1639,7 +1639,7 @@ test('backend SSE events are limited in bytes', async () => {
 	}
 });
 
-test('a paginated backend list is limited to 32 MiB of items in all', async () => {
+it('a paginated backend list is limited to 32 MiB of items in all', async () => {
 	const client = new ProtocolClient({
 		serverName: 'paged',
 		serverConfig: {

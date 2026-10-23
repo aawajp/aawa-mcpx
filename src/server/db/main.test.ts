@@ -6,7 +6,7 @@ import { ConfigurationError } from '@/server/config/schema';
 import { openMainDatabase } from '@/server/db/main';
 
 import type { Database } from 'bun:sqlite';
-import { afterEach, beforeEach, expect, test } from 'bun:test';
+import { afterEach, beforeEach, expect, it } from 'bun:test';
 
 const FIRST =
 	'CREATE TABLE first (id INTEGER PRIMARY KEY); INSERT INTO first VALUES (1);';
@@ -39,14 +39,14 @@ const tables = (db: Database): string[] =>
 		.all()
 		.map((row) => row.name);
 
-test('a new database gets its directory and every migration', () => {
+it('a new database gets its directory and every migration', () => {
 	const db = openMainDatabase(dbPath, [FIRST, SECOND]);
 	expect(version(db)).toBe(2);
 	expect(tables(db)).toEqual(['first', 'second']);
 	db.close();
 });
 
-test('reopening applies only migrations added since and keeps data', () => {
+it('reopening applies only migrations added since and keeps data', () => {
 	openMainDatabase(dbPath, [FIRST]).close();
 	const db = openMainDatabase(dbPath, [FIRST, SECOND]);
 	expect(version(db)).toBe(2);
@@ -58,7 +58,7 @@ test('reopening applies only migrations added since and keeps data', () => {
 	db.close();
 });
 
-test('a failing migration keeps the last good version', () => {
+it('a failing migration keeps the last good version', () => {
 	expect(() =>
 		openMainDatabase(dbPath, [FIRST, 'CREATE TABLE second (id); INVALID SQL']),
 	).toThrow();
@@ -68,7 +68,7 @@ test('a failing migration keeps the last good version', () => {
 	db.close();
 });
 
-test('a schema newer than the code stops startup', () => {
+it('a schema newer than the code stops startup', () => {
 	openMainDatabase(dbPath, [FIRST, SECOND]).close();
 	expect(() => openMainDatabase(dbPath, [FIRST])).toThrow(
 		new ConfigurationError(

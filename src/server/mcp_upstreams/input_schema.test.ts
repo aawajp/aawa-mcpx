@@ -2,9 +2,9 @@ import Ajv2020 from 'ajv/dist/2020';
 
 import { createInputSchemaCompiler } from '@/server/mcp_upstreams/input_schema';
 
-import { expect, spyOn, test } from 'bun:test';
+import { expect, it, spyOn } from 'bun:test';
 
-test('input schemas require an object root in every supported revision', () => {
+it('input schemas require an object root in every supported revision', () => {
 	const compile = createInputSchemaCompiler();
 	for (const schema of [
 		null,
@@ -29,7 +29,7 @@ test('input schemas require an object root in every supported revision', () => {
 	).toBe(true);
 });
 
-test('compiled provider schemas enforce references and composition without mutating arguments', () => {
+it('compiled provider schemas enforce references and composition without mutating arguments', () => {
 	const compiled = createInputSchemaCompiler()({
 		type: 'object',
 		$defs: {
@@ -105,7 +105,7 @@ test('compiled provider schemas enforce references and composition without mutat
 	}
 });
 
-test('schema objects compile once, cache failures, and isolate replacement catalog ids', () => {
+it('schema objects compile once, cache failures, and isolate replacement catalog ids', () => {
 	const compile = createInputSchemaCompiler();
 	const spy = spyOn(Ajv2020.prototype, 'compile');
 	try {
@@ -159,7 +159,7 @@ test('schema objects compile once, cache failures, and isolate replacement catal
 	}
 });
 
-test('unsupported dialects, unresolved references and oversized schemas fail without network access', () => {
+it('unsupported dialects, unresolved references and oversized schemas fail without network access', () => {
 	const compile = createInputSchemaCompiler();
 	const fetch = spyOn(globalThis, 'fetch');
 	try {

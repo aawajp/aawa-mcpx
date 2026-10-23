@@ -7,9 +7,9 @@ import { logger } from '@/server/logger';
 import { trafficPageType } from '@/shared/ui_api';
 
 import { Database } from 'bun:sqlite';
-import { expect, spyOn, test } from 'bun:test';
+import { expect, it, spyOn } from 'bun:test';
 
-test('traffic filters isolate peers and keep paginated totals consistent', () => {
+it('traffic filters isolate peers and keep paginated totals consistent', () => {
 	const store = createTrafficStore(':memory:');
 	for (const backend of ['first', 'second']) {
 		for (const method of ['tools/list', 'prompts/list']) {
@@ -58,7 +58,7 @@ test('traffic filters isolate peers and keep paginated totals consistent', () =>
 	}
 });
 
-test('traffic snapshots retain client and backend protocol versions', () => {
+it('traffic snapshots retain client and backend protocol versions', () => {
 	const store = createTrafficStore(':memory:');
 	store.logClientTraffic({
 		protocolVersion: '2026-07-28',
@@ -100,7 +100,7 @@ test('traffic snapshots retain client and backend protocol versions', () => {
 			).toBe('2025-06-18');
 });
 
-test('tool results with isError: true are logged as errors', () => {
+it('tool results with isError: true are logged as errors', () => {
 	const store = createTrafficStore(':memory:');
 	const toolError = {
 		content: [],
@@ -141,7 +141,7 @@ test('tool results with isError: true are logged as errors', () => {
 		]);
 });
 
-test('a failed traffic write is logged and does not throw', async () => {
+it('a failed traffic write is logged and does not throw', async () => {
 	const root = await mkdtemp(path.join(tmpdir(), 'mcpx-traffic-'));
 	const error = spyOn(logger, 'error');
 	try {
@@ -169,7 +169,7 @@ test('a failed traffic write is logged and does not throw', async () => {
 	}
 });
 
-test('traffic keeps only the newest records', () => {
+it('traffic keeps only the newest records', () => {
 	const store = createTrafficStore(':memory:');
 	for (let index = 0; index < TRAFFIC_LIMITS.records + 5; index++)
 		store.logClientTraffic({
@@ -185,7 +185,7 @@ test('traffic keeps only the newest records', () => {
 	expect(page.records[0]?.method).toBe('method-5');
 });
 
-test('traffic keeps at most its byte budget, and stores a long body as its size and start', () => {
+it('traffic keeps at most its byte budget, and stores a long body as its size and start', () => {
 	const store = createTrafficStore(':memory:', {
 		records: 100,
 		bytes: 1000,
@@ -227,7 +227,7 @@ test('traffic keeps at most its byte budget, and stores a long body as its size 
 	});
 });
 
-test('long peers, methods and protocol versions are stored as their start, and count', () => {
+it('long peers, methods and protocol versions are stored as their start, and count', () => {
 	const store = createTrafficStore(':memory:', {
 		records: 100,
 		bytes: 3200,
@@ -275,7 +275,7 @@ test('long peers, methods and protocol versions are stored as their start, and c
 	).toEqual([undefined, 'ä']);
 });
 
-test('backend names stay whole, so long ones sharing a start stay apart', () => {
+it('backend names stay whole, so long ones sharing a start stay apart', () => {
 	const store = createTrafficStore(':memory:');
 	const names = ['a', 'b'].map((last) => `${'x'.repeat(300)}${last}`);
 	for (const backend of names)

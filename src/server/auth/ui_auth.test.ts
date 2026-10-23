@@ -14,9 +14,9 @@ import {
 	afterEach,
 	beforeAll,
 	expect,
+	it,
 	setSystemTime,
 	spyOn,
-	test,
 } from 'bun:test';
 
 const PUBLIC_URL = 'https://mcpx.test';
@@ -252,7 +252,7 @@ const sessionCall = (session: string | undefined, on?: Routes) =>
 			: {},
 	});
 
-test('an admin logs in with code flow and PKCE and gets a session', async () => {
+it('an admin logs in with code flow and PKCE and gets a session', async () => {
 	const { authorization, loginCookie, callback, session } = await logIn({
 		sub: 'user-1',
 		name: 'Ada Admin',
@@ -299,7 +299,7 @@ test('an admin logs in with code flow and PKCE and gets a session', async () => 
 	});
 });
 
-test('roles may be an object keyed by role, and only admins get a session', async () => {
+it('roles may be an object keyed by role, and only admins get a session', async () => {
 	const keyed = await logIn({
 		sub: 'user-2',
 		[ROLES_CLAIM]: {
@@ -336,7 +336,7 @@ test('roles may be an object keyed by role, and only admins get a session', asyn
 	warn.mockRestore();
 });
 
-test('only dashboard pages are returned to after the login', async () => {
+it('only dashboard pages are returned to after the login', async () => {
 	for (const [returnTo, expected] of [
 		['/ui/debug/', '/ui/debug'],
 		['https://evil.example/ui', '/ui'],
@@ -354,7 +354,7 @@ test('only dashboard pages are returned to after the login', async () => {
 	}
 });
 
-test('a login started on another host moves to PUBLIC_URL first', async () => {
+it('a login started on another host moves to PUBLIC_URL first', async () => {
 	const response = await call(AUTH_PATHS.login, 'GET', {
 		url: `http://127.0.0.1:4567${AUTH_PATHS.login}?returnTo=%2Fui`,
 	});
@@ -365,7 +365,7 @@ test('a login started on another host moves to PUBLIC_URL first', async () => {
 	expect(response.headers.getSetCookie()).toEqual([]);
 });
 
-test('a callback without its login cookie, or replayed, is refused', async () => {
+it('a callback without its login cookie, or replayed, is refused', async () => {
 	const { authorization, loginCookie } = await logIn({
 		sub: 'user-1',
 		[ROLES_CLAIM]: ['admin'],
@@ -383,7 +383,7 @@ test('a callback without its login cookie, or replayed, is refused', async () =>
 	}
 });
 
-test('an IdP error answer fails the login with 400', async () => {
+it('an IdP error answer fails the login with 400', async () => {
 	const start = await call(AUTH_PATHS.login, 'GET');
 	const state = new URL(start.headers.get('location') ?? '').searchParams.get(
 		'state',
@@ -398,7 +398,7 @@ test('an IdP error answer fails the login with 400', async () => {
 	expect(cookiesOf(response).mcpx_session).toBeUndefined();
 });
 
-test('sessions end after the idle timeout or the maximum age', async () => {
+it('sessions end after the idle timeout or the maximum age', async () => {
 	const start = Date.now();
 	setSystemTime(start);
 	const admin = {
@@ -424,7 +424,7 @@ test('sessions end after the idle timeout or the maximum age', async () => {
 	expect(db.query('SELECT * FROM ui_sessions').all()).toEqual([]);
 });
 
-test('the login access token survives a restart, stored encrypted', async () => {
+it('the login access token survives a restart, stored encrypted', async () => {
 	const { session } = await logIn({
 		sub: 'user-1',
 		[ROLES_CLAIM]: ['admin'],
@@ -447,7 +447,7 @@ test('the login access token survives a restart, stored encrypted', async () => 
 	expect(await restarted.accessToken(request('unknown'))).toBeUndefined();
 });
 
-test('parallel requests refresh an expired login token once and keep the rotated refresh token', async () => {
+it('parallel requests refresh an expired login token once and keep the rotated refresh token', async () => {
 	const { session = '' } = await logIn({
 		sub: 'user-1',
 		[ROLES_CLAIM]: ['admin'],
@@ -499,7 +499,7 @@ test('parallel requests refresh an expired login token once and keep the rotated
 	warn.mockRestore();
 });
 
-test('a login adds its user and roles, and the session shows the user label', async () => {
+it('a login adds its user and roles, and the session shows the user label', async () => {
 	const { session } = await logIn({
 		sub: 'user-9',
 		name: 'Nine',
@@ -544,7 +544,7 @@ test('a login adds its user and roles, and the session shows the user label', as
 	db.run('DELETE FROM roles');
 });
 
-test('logout deletes the session and returns the IdP logout URL', async () => {
+it('logout deletes the session and returns the IdP logout URL', async () => {
 	const { session } = await logIn({
 		sub: 'user-1',
 		[ROLES_CLAIM]: ['admin'],
@@ -567,7 +567,7 @@ test('logout deletes the session and returns the IdP logout URL', async () => {
 	expect((await sessionCall(session)).status).toBe(401);
 });
 
-test('protected routes need a session, and non-GET ones an Origin equal to PUBLIC_URL', async () => {
+it('protected routes need a session, and non-GET ones an Origin equal to PUBLIC_URL', async () => {
 	const { session } = await logIn({
 		sub: 'user-1',
 		[ROLES_CLAIM]: ['admin'],
@@ -622,7 +622,7 @@ test('protected routes need a session, and non-GET ones an Origin equal to PUBLI
 
 // The Auth tab deletes or disables a user; then the same ID signs in again
 // on /mcp, without an admin role, before the old cookie is used.
-test('deleting or disabling an admin ends its sessions, even if it comes back', async () => {
+it('deleting or disabling an admin ends its sessions, even if it comes back', async () => {
 	const access = createAccessStore(db);
 	const accessRoutes = createAccessRoutes(access, uiAuth);
 	const change = (path: 'deleteUser' | 'saveUser', body: unknown) =>
@@ -700,7 +700,7 @@ test('deleting or disabling an admin ends its sessions, even if it comes back', 
 	}
 });
 
-test('the login check of an event stream is not a use, and fails once the session ends', async () => {
+it('the login check of an event stream is not a use, and fails once the session ends', async () => {
 	const access = createAccessStore(db);
 	const start = Date.now();
 	setSystemTime(start);
@@ -767,7 +767,7 @@ test('the login check of an event stream is not a use, and fails once the sessio
 	expect(db.query('SELECT * FROM ui_sessions').all()).toEqual([]);
 });
 
-test('startup removes expired sessions and those from another issuer, client, deleted user or without an admin role', () => {
+it('startup removes expired sessions and those from another issuer, client, deleted user or without an admin role', () => {
 	const store = createUiSessionStore(db);
 	const now = Date.now();
 	createAccessStore(db).signIn(
@@ -840,7 +840,7 @@ const passwordLogin = (
 		body: JSON.stringify(body),
 	});
 
-test('the superadmin logs in with its password, beside OIDC', async () => {
+it('the superadmin logs in with its password, beside OIDC', async () => {
 	const both = await createAuth({
 		superadmin: true,
 	});
@@ -911,7 +911,7 @@ test('the superadmin logs in with its password, beside OIDC', async () => {
 	).toBe(403);
 });
 
-test('failed password logins are limited per client address', async () => {
+it('failed password logins are limited per client address', async () => {
 	const on = (
 		await createAuth({
 			oidc: false,
@@ -963,7 +963,7 @@ test('failed password logins are limited per client address', async () => {
 	expect((await passwordLogin(on, right, '198.51.100.7')).status).toBe(200);
 });
 
-test('without the superadmin, there is no password login', async () => {
+it('without the superadmin, there is no password login', async () => {
 	expect(routes[AUTH_PATHS.password]).toBeUndefined();
 	expect(await (await call(AUTH_PATHS.methods, 'GET')).json()).toEqual({
 		oidc: true,
@@ -972,7 +972,7 @@ test('without the superadmin, there is no password login', async () => {
 	});
 });
 
-test('parallel password attempts share the failure limit', async () => {
+it('parallel password attempts share the failure limit', async () => {
 	const on = (
 		await createAuth({
 			oidc: false,
@@ -996,9 +996,9 @@ test('parallel password attempts share the failure limit', async () => {
 				),
 		),
 	);
-	expect(attempts.map((response) => response.status).toSorted()).toEqual([
-		401, 401, 401, 401, 401, 429, 429, 429,
-	]);
+	expect(
+		attempts.map((response) => response.status).toSorted((a, b) => a - b),
+	).toEqual([401, 401, 401, 401, 401, 429, 429, 429]);
 	expect(
 		(
 			await passwordLogin(
@@ -1014,7 +1014,7 @@ test('parallel password attempts share the failure limit', async () => {
 	warn.mockRestore();
 });
 
-test('disabled and Local users cannot log in, and their roles stay', async () => {
+it('disabled and Local users cannot log in, and their roles stay', async () => {
 	const access = createAccessStore(db);
 	access.saveUser({
 		id: 'user-5',
@@ -1087,7 +1087,7 @@ test('disabled and Local users cannot log in, and their roles stay', async () =>
 	db.run('DELETE FROM roles');
 });
 
-test('a protected request looks its session up once and its handler gets the user', async () => {
+it('a protected request looks its session up once and its handler gets the user', async () => {
 	const access = createAccessStore(db);
 	const sessions = createUiSessionStore(db);
 	const auth = createUiAuth({

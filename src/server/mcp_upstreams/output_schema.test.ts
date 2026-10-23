@@ -7,9 +7,9 @@ import {
 	wrapOutputSchema,
 } from '@/shared/mcp_output_schema';
 
-import { expect, spyOn, test } from 'bun:test';
+import { expect, it, spyOn } from 'bun:test';
 
-test('default 2020-12 validation supports refs, conditionals and fractional multiples', () => {
+it('default 2020-12 validation supports refs, conditionals and fractional multiples', () => {
 	const validate = createOutputSchemaValidator();
 	const schema = {
 		type: 'object',
@@ -79,7 +79,7 @@ test('default 2020-12 validation supports refs, conditionals and fractional mult
 		expect(validate(schema, value)?.reason).toBe('schema_mismatch');
 });
 
-test('2020-12 array, composition and dependency keywords are enforced', () => {
+it('2020-12 array, composition and dependency keywords are enforced', () => {
 	const validate = createOutputSchemaValidator();
 	const schema = {
 		type: 'array',
@@ -149,7 +149,7 @@ for (const $schema of [
 	'https://json-schema.org/draft/2019-09/schema',
 	'https://json-schema.org/draft/2020-12/schema',
 ])
-	test(`accepts the supported dialect declaration ${$schema}`, () => {
+	it(`accepts the supported dialect declaration ${$schema}`, () => {
 		const validate = createOutputSchemaValidator();
 		const schema = {
 			$schema,
@@ -160,7 +160,7 @@ for (const $schema of [
 		expect(validate(schema, '2')?.reason).toBe('schema_mismatch');
 	});
 
-test('schema failures are reported without resolving external references or mutating data', () => {
+it('schema failures are reported without resolving external references or mutating data', () => {
 	const validate = createOutputSchemaValidator();
 	const fetch = spyOn(globalThis, 'fetch');
 	try {
@@ -220,7 +220,7 @@ test('schema failures are reported without resolving external references or muta
 	}
 });
 
-test('cache is isolated for schemas with the same id and accepts replacement catalogs', () => {
+it('cache is isolated for schemas with the same id and accepts replacement catalogs', () => {
 	const validate = createOutputSchemaValidator();
 	const first = {
 		$id: 'urn:aawa-mcpx:shared',
@@ -235,7 +235,7 @@ test('cache is isolated for schemas with the same id and accepts replacement cat
 	expect(validate(second, 'works')?.reason).toBe('schema_mismatch');
 });
 
-test('schema complexity limits report unavailable validation', () => {
+it('schema complexity limits report unavailable validation', () => {
 	let schema: Record<string, unknown> = {
 		type: 'string',
 	};
@@ -254,7 +254,7 @@ for (const $schema of [
 	'http://json-schema.org/draft-07/schema#',
 	'https://json-schema.org/draft/2019-09/schema',
 ])
-	test(`object wrappers preserve root refs for ${$schema ?? '2020-12'}`, () => {
+	it(`object wrappers preserve root refs for ${$schema ?? '2020-12'}`, () => {
 		const schema = {
 			...($schema
 				? {
@@ -287,7 +287,7 @@ for (const $schema of [
 		expect(requiresOutputWrapper(schema)).toBe(true);
 	});
 
-test('object wrappers preserve recursive refs and anchors and avoid changing object schemas', () => {
+it('object wrappers preserve recursive refs and anchors and avoid changing object schemas', () => {
 	const recursive = {
 		type: ['object', 'null'],
 		$defs: {
@@ -337,7 +337,7 @@ test('object wrappers preserve recursive refs and anchors and avoid changing obj
 	expect(wrapOutputSchema(object, 'count')).toBe(object);
 });
 
-test('object wrappers keep a root $ref compilable in draft-07 and 2020-12', () => {
+it('object wrappers keep a root $ref compilable in draft-07 and 2020-12', () => {
 	// zod-to-json-schema emits a root $ref; client SDKs compile it with Ajv.
 	for (const [Validator, schema] of [
 		[
@@ -392,7 +392,7 @@ test('object wrappers keep a root $ref compilable in draft-07 and 2020-12', () =
 	}
 });
 
-test('one validator checks formats, and keeps each compiled schema', () => {
+it('one validator checks formats, and keeps each compiled schema', () => {
 	const validate = createOutputSchemaValidator();
 	const schemaOf = (format: string) => ({
 		type: 'object',
@@ -417,7 +417,7 @@ test('one validator checks formats, and keeps each compiled schema', () => {
 	}
 });
 
-test('a schema with a meta-schema $id does not break later schemas', () => {
+it('a schema with a meta-schema $id does not break later schemas', () => {
 	const validate = createOutputSchemaValidator();
 	for (const $id of [
 		'https://json-schema.org/draft/2020-12/schema',

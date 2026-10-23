@@ -23,11 +23,11 @@ import {
 } from '@/shared/mcp_protocol';
 
 import packageJson from '../../../package.json' with { type: 'json' };
-import { expect, mock, test } from 'bun:test';
+import { expect, it, mock } from 'bun:test';
 
 for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 	for (const transport of ['http', 'stdio'] as const)
-		test(`${backendVersion} ${transport}: dispatch preserves application metadata with independent client revisions`, async () => {
+		it(`${backendVersion} ${transport}: dispatch preserves application metadata with independent client revisions`, async () => {
 			const backend = startFixtureBackend(transport, backendVersion, {
 				echoRequest: true,
 			});
@@ -232,7 +232,7 @@ for (const backendVersion of SUPPORTED_PROTOCOL_VERSIONS)
 		});
 
 for (const version of SUPPORTED_PROTOCOL_VERSIONS)
-	test(`${version}: unsupported options and malformed session metadata never invoke the backend`, async () => {
+	it(`${version}: unsupported options and malformed session metadata never invoke the backend`, async () => {
 		const callTool = mock(async (_params: CallToolParams) => ({
 			content: [],
 		}));

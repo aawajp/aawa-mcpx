@@ -1,9 +1,9 @@
 import { openMainDatabase } from '@/server/db/main';
 import { createUiSessionStore } from '@/server/db/ui_sessions';
 
-import { expect, test } from 'bun:test';
+import { expect, it } from 'bun:test';
 
-test('sessions are stored by ID hash and can be touched and deleted', () => {
+it('sessions are stored by ID hash and can be touched and deleted', () => {
 	const db = openMainDatabase(':memory:');
 	const store = createUiSessionStore(db);
 	const claims = {
@@ -41,7 +41,7 @@ test('sessions are stored by ID hash and can be touched and deleted', () => {
 	db.close();
 });
 
-test("deleting a user's sessions keeps the other users' sessions", () => {
+it("deleting a user's sessions keeps the other users' sessions", () => {
 	const db = openMainDatabase(':memory:');
 	const store = createUiSessionStore(db);
 	const create = (sub: string) =>

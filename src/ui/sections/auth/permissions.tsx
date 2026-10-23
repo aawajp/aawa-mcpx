@@ -121,7 +121,7 @@ const GrantsCard = ({
 	const roleGrants = user ? grants('role', user.roleIds) : [];
 	const savedKeys = ownGrants
 		.map((permission) => permissionKey(permission.backend, permission.tool))
-		.sort();
+		.sort((a, b) => a.localeCompare(b));
 	const { draft, changed, edit, reset } = useDraft(
 		{
 			keys: savedKeys,
@@ -149,7 +149,7 @@ const GrantsCard = ({
 			onChange: (event: ChangeEvent<HTMLInputElement>) =>
 				edit({
 					keys: event.target.checked
-						? [...draft.keys, key].sort()
+						? [...draft.keys, key].sort((a, b) => a.localeCompare(b))
 						: draft.keys.filter((entry) => entry !== key),
 				}),
 			className: CHECKBOX_CLASS,
@@ -206,7 +206,7 @@ const GrantsCard = ({
 									),
 								),
 						]),
-					].sort()
+					].sort((a, b) => a.localeCompare(b))
 				: draft.keys.filter((key) => {
 						const [backend, tool] = JSON.parse(key) as [string, string];
 						return !names.includes(backend) || tool === BACKEND_TOOL;

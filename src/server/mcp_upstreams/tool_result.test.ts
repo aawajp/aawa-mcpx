@@ -2,9 +2,9 @@ import type { CallToolResult } from '@modelcontextprotocol/client';
 
 import { stripDuplicateToolContent } from '@/server/mcp_upstreams/tool_result';
 
-import { expect, test } from 'bun:test';
+import { expect, it } from 'bun:test';
 
-test('removes duplicate JSON while preserving independent content and metadata', () => {
+it('removes duplicate JSON while preserving independent content and metadata', () => {
 	const structuredContent = {
 		count: 2,
 		items: [
@@ -104,7 +104,7 @@ for (const structuredContent of [
 	false,
 	null,
 ])
-	test(`retains an empty content array for duplicate ${JSON.stringify(structuredContent)}`, () => {
+	it(`retains an empty content array for duplicate ${JSON.stringify(structuredContent)}`, () => {
 		const result = stripDuplicateToolContent({
 			content: [
 				{
@@ -120,7 +120,7 @@ for (const structuredContent of [
 		});
 	});
 
-test('retains text and JSON when structured content is absent', () => {
+it('retains text and JSON when structured content is absent', () => {
 	const result: CallToolResult = {
 		content: [
 			{
@@ -136,7 +136,7 @@ test('retains text and JSON when structured content is absent', () => {
 	expect(stripDuplicateToolContent(result)).toBe(result);
 });
 
-test('does not coerce types or reorder arrays when comparing JSON', () => {
+it('does not coerce types or reorder arrays when comparing JSON', () => {
 	const content: CallToolResult['content'] = [
 		{
 			type: 'text',

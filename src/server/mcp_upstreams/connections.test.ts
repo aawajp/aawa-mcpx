@@ -8,9 +8,9 @@ import {
 	ProtocolNegotiationError,
 } from '@/server/mcp_upstreams/protocol_client';
 
-import { expect, spyOn, test } from 'bun:test';
+import { expect, it, spyOn } from 'bun:test';
 
-test('cancellation frees a rate-limit wait without reserving a dispatch time', async () => {
+it('cancellation frees a rate-limit wait without reserving a dispatch time', async () => {
 	const config = mcpConfigType.assert({
 		mcpServers: {
 			mock: {
@@ -45,7 +45,7 @@ test('cancellation frees a rate-limit wait without reserving a dispatch time', a
 	expect(backend.lastRequestTime).toBe(lastDispatch);
 });
 
-test('protocol failure stops reconnects until explicitly re-enabled', async () => {
+it('protocol failure stops reconnects until explicitly re-enabled', async () => {
 	const config = mcpConfigType.assert({
 		mcpServers: {
 			mock: {
@@ -99,7 +99,7 @@ test('protocol failure stops reconnects until explicitly re-enabled', async () =
 	}
 });
 
-test('concurrent requests wait for their own rate-limit slots', async () => {
+it('concurrent requests wait for their own rate-limit slots', async () => {
 	const config = mcpConfigType.assert({
 		mcpServers: {
 			mock: {

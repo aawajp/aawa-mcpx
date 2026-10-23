@@ -2,7 +2,7 @@ import { logger } from '@/server/logger';
 import { createToolResultNormalizer } from '@/server/mcp_upstreams/tool_result';
 import type { ToolCallResult } from '@/shared/mcp_results';
 
-import { expect, spyOn, test } from 'bun:test';
+import { expect, it, spyOn } from 'bun:test';
 
 const context = {
 	backend: 'provider',
@@ -19,7 +19,7 @@ const objectSchema = {
 	required: ['count'],
 };
 
-test('schema mismatch logs a warning with tool context and returns normal data', () => {
+it('schema mismatch logs a warning with tool context and returns normal data', () => {
 	const warn = spyOn(logger, 'warn').mockImplementation(() => undefined);
 	try {
 		const result: ToolCallResult = {
@@ -62,7 +62,7 @@ for (const structuredContent of [
 	[1, 2],
 	'hello',
 ])
-	test(`recovers missing structured content from JSON ${JSON.stringify(structuredContent)}`, () => {
+	it(`recovers missing structured content from JSON ${JSON.stringify(structuredContent)}`, () => {
 		const warn = spyOn(logger, 'warn').mockImplementation(() => undefined);
 		try {
 			const original: ToolCallResult = {
@@ -96,7 +96,7 @@ for (const structuredContent of [
 		}
 	});
 
-test('recovers a unique JSON candidate even if it mismatches the provider schema', () => {
+it('recovers a unique JSON candidate even if it mismatches the provider schema', () => {
 	const warn = spyOn(logger, 'warn').mockImplementation(() => undefined);
 	try {
 		const result: ToolCallResult = {
@@ -123,7 +123,7 @@ test('recovers a unique JSON candidate even if it mismatches the provider schema
 	}
 });
 
-test('uses schema to select one candidate and preserves other JSON content', () => {
+it('uses schema to select one candidate and preserves other JSON content', () => {
 	const warn = spyOn(logger, 'warn').mockImplementation(() => undefined);
 	try {
 		const unrelated = {
@@ -155,7 +155,7 @@ test('uses schema to select one candidate and preserves other JSON content', () 
 	}
 });
 
-test('array item recovery preserves item order and duplicates', () => {
+it('array item recovery preserves item order and duplicates', () => {
 	const warn = spyOn(logger, 'warn').mockImplementation(() => undefined);
 	try {
 		const content: ToolCallResult['content'] = [2, 1, 2].map((value) => ({
@@ -207,7 +207,7 @@ test('array item recovery preserves item order and duplicates', () => {
 	}
 });
 
-test('preserves ambiguous or non-JSON content and reports missing structured output', () => {
+it('preserves ambiguous or non-JSON content and reports missing structured output', () => {
 	const warn = spyOn(logger, 'warn').mockImplementation(() => undefined);
 	try {
 		for (const texts of [
@@ -237,7 +237,7 @@ test('preserves ambiguous or non-JSON content and reports missing structured out
 	}
 });
 
-test('malformed schemas and unresolved references warn without rejecting responses', () => {
+it('malformed schemas and unresolved references warn without rejecting responses', () => {
 	const warn = spyOn(logger, 'warn').mockImplementation(() => undefined);
 	try {
 		for (const schema of [
@@ -267,7 +267,7 @@ test('malformed schemas and unresolved references warn without rejecting respons
 	}
 });
 
-test('error results skip the success schema and content-only tools remain supported', () => {
+it('error results skip the success schema and content-only tools remain supported', () => {
 	const warn = spyOn(logger, 'warn').mockImplementation(() => undefined);
 	try {
 		const normalize = createToolResultNormalizer();

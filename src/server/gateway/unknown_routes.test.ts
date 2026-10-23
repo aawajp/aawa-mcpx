@@ -3,11 +3,11 @@ import {
 	withTrailingSlashes,
 } from '@/server/gateway/unknown_routes';
 
-import { expect, test } from 'bun:test';
+import { expect, it } from 'bun:test';
 
 const handler = () => new Response();
 
-test('routes answer with and without a trailing slash', () => {
+it('routes answer with and without a trailing slash', () => {
 	const routes = withTrailingSlashes({
 		'/': handler,
 		'/mcp': {
@@ -18,7 +18,7 @@ test('routes answer with and without a trailing slash', () => {
 	expect(routes['/mcp/']).toBe(routes['/mcp']);
 });
 
-test('a known path with another method gets 405 and any other path 404', async () => {
+it('a known path with another method gets 405 and any other path 404', async () => {
 	const unknown = createUnknownRouteHandler(
 		withTrailingSlashes({
 			'/mcp': {

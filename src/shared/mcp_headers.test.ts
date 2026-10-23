@@ -6,9 +6,9 @@ import {
 	validateToolHeaders,
 } from '@/shared/mcp_protocol';
 
-import { expect, test } from 'bun:test';
+import { expect, it } from 'bun:test';
 
-test('header values round-trip Unicode, whitespace, sentinels, BOM, and long strings', () => {
+it('header values round-trip Unicode, whitespace, sentinels, BOM, and long strings', () => {
 	for (const value of [
 		'',
 		'hello',
@@ -33,7 +33,7 @@ test('header values round-trip Unicode, whitespace, sentinels, BOM, and long str
 		expect(() => decodeHeaderValue(value)).toThrow();
 });
 
-test('header rules ignore instance data and report invalid annotations', () => {
+it('header rules ignore instance data and report invalid annotations', () => {
 	const schema = {
 		type: 'object',
 		properties: {
@@ -86,7 +86,7 @@ test('header rules ignore instance data and report invalid annotations', () => {
 	).toBeInstanceOf(Error);
 });
 
-test('only static primitive property paths are valid header sources', () => {
+it('only static primitive property paths are valid header sources', () => {
 	for (const schema of [
 		{
 			'x-mcp-header': 'Root',
@@ -171,7 +171,7 @@ test('only static primitive property paths are valid header sources', () => {
 		expect(toolHeaderParameters(schema)).toBeInstanceOf(Error);
 });
 
-test('recognized mirrors compare decoded values, safe integers, and omitted/null parameters', () => {
+it('recognized mirrors compare decoded values, safe integers, and omitted/null parameters', () => {
 	const schema = {
 		properties: {
 			count: {

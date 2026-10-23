@@ -10,7 +10,7 @@ import {
 	LOCAL_KEY_PREFIX,
 } from '@/shared/ui_api';
 
-import { expect, spyOn, test } from 'bun:test';
+import { expect, it, spyOn } from 'bun:test';
 
 const setUp = () => {
 	const access = createAccessStore(openMainDatabase(':memory:'));
@@ -34,7 +34,7 @@ const setUp = () => {
 	};
 };
 
-test('every Auth tab change is logged with the admin who made it', async () => {
+it('every Auth tab change is logged with the admin who made it', async () => {
 	const { access, call } = setUp();
 	const info = spyOn(logger, 'info').mockImplementation(() => undefined);
 	const warn = spyOn(logger, 'warn').mockImplementation(() => undefined);
@@ -99,7 +99,7 @@ test('every Auth tab change is logged with the admin who made it', async () => {
 	warn.mockRestore();
 });
 
-test('Local users get keys from the gateway, OIDC service accounts register theirs', async () => {
+it('Local users get keys from the gateway, OIDC service accounts register theirs', async () => {
 	const { access, call } = setUp();
 	const info = spyOn(logger, 'info').mockImplementation(() => undefined);
 	const warn = spyOn(logger, 'warn').mockImplementation(() => undefined);
@@ -277,7 +277,7 @@ test('Local users get keys from the gateway, OIDC service accounts register thei
 	warn.mockRestore();
 });
 
-test('the superadmin can be neither deleted, disabled nor renamed', async () => {
+it('the superadmin can be neither deleted, disabled nor renamed', async () => {
 	const { access, call } = setUp();
 	const superadmin = access.ensureSuperadmin('root');
 	expect(superadmin).toMatchObject({
@@ -336,7 +336,7 @@ test('the superadmin can be neither deleted, disabled nor renamed', async () => 
 	info.mockRestore();
 });
 
-test('refusals answer with the status of their cause', async () => {
+it('refusals answer with the status of their cause', async () => {
 	const { access, call } = setUp();
 	const warn = spyOn(logger, 'warn').mockImplementation(() => undefined);
 	const info = spyOn(logger, 'info').mockImplementation(() => undefined);

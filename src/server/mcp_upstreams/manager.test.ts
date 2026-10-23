@@ -14,7 +14,7 @@ import { fixtureReply } from '@/server/mcp_upstreams/protocol_fixture';
 import { CURRENT_PROTOCOL_VERSION, recordOf } from '@/shared/mcp_protocol';
 import type { McpUpstreamStatus } from '@/shared/ui_api';
 
-import { expect, spyOn, test } from 'bun:test';
+import { expect, it, spyOn } from 'bun:test';
 
 type JsonRpcRequest = {
 	id?: string | number;
@@ -81,7 +81,7 @@ const requireMockServer = (config: McpConfig): McpServerConfig => {
 	return server;
 };
 
-test('backend lifecycle preserves tool exposure state', async () => {
+it('backend lifecycle preserves tool exposure state', async () => {
 	const testRoot = await mkdtemp(path.join(tmpdir(), 'mcpx-lifecycle-'));
 	const configPath = path.join(testRoot, 'mcp.json');
 	const methods: string[] = [];
@@ -467,7 +467,7 @@ test('backend lifecycle preserves tool exposure state', async () => {
 	}
 });
 
-test('a refresh pending across a reconnect does not leave an empty catalog', async () => {
+it('a refresh pending across a reconnect does not leave an empty catalog', async () => {
 	const testRoot = await mkdtemp(path.join(tmpdir(), 'mcpx-refresh-'));
 	const configPath = path.join(testRoot, 'mcp.json');
 	const mockServer = Bun.serve({
@@ -570,7 +570,7 @@ test('a refresh pending across a reconnect does not leave an empty catalog', asy
 	}
 });
 
-test('every configured backend has a status as soon as startup begins', async () => {
+it('every configured backend has a status as soon as startup begins', async () => {
 	const testRoot = await mkdtemp(path.join(tmpdir(), 'mcpx-startup-'));
 	const warn = spyOn(logger, 'warn').mockImplementation(() => undefined);
 	const error = spyOn(logger, 'error').mockImplementation(() => undefined);
@@ -618,7 +618,7 @@ test('every configured backend has a status as soon as startup begins', async ()
 	}
 });
 
-test('refresh starts a stopped backend again', async () => {
+it('refresh starts a stopped backend again', async () => {
 	const testRoot = await mkdtemp(path.join(tmpdir(), 'mcpx-refresh-'));
 	const error = spyOn(logger, 'error').mockImplementation(() => undefined);
 	let authorized = false;

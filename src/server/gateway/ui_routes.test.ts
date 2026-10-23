@@ -2,7 +2,7 @@ import type { TrafficStore } from '@/server/db/traffic';
 import { createUiRoutes } from '@/server/gateway/ui_routes';
 import type { McpUpstreamManager } from '@/server/mcp_upstreams/types';
 
-import { expect, test } from 'bun:test';
+import { expect, it } from 'bun:test';
 
 const catalogOf = (serverName: string, availableTools: string[] = []) => ({
 	getStatuses: () => [
@@ -13,7 +13,7 @@ const catalogOf = (serverName: string, availableTools: string[] = []) => ({
 	],
 });
 
-test('dashboard toggles name the backend and tool as they are and return the overview', async () => {
+it('dashboard toggles name the backend and tool as they are and return the overview', async () => {
 	let toggled: unknown;
 	const routes = createUiRoutes({
 		buildOverview: () => ({
@@ -66,7 +66,7 @@ test('dashboard toggles name the backend and tool as they are and return the ove
 	).toBe(400);
 });
 
-test('backend refresh waits for fresh catalogs before returning the overview', async () => {
+it('backend refresh waits for fresh catalogs before returning the overview', async () => {
 	const started = Promise.withResolvers<void>();
 	const release = Promise.withResolvers<void>();
 	let refreshed = false;
@@ -105,7 +105,7 @@ test('backend refresh waits for fresh catalogs before returning the overview', a
 	});
 });
 
-test('backend refresh rejects malformed requests without fetching catalogs', async () => {
+it('backend refresh rejects malformed requests without fetching catalogs', async () => {
 	let calls = 0;
 	const routes = createUiRoutes({
 		buildOverview: () => ({}),
@@ -129,7 +129,7 @@ test('backend refresh rejects malformed requests without fetching catalogs', asy
 	expect(calls).toBe(0);
 });
 
-test('dashboard API errors are JSON with the reason and a client status', async () => {
+it('dashboard API errors are JSON with the reason and a client status', async () => {
 	const routes = createUiRoutes({
 		buildOverview: () => ({}),
 		mcpUpstreamManager: {
@@ -216,7 +216,7 @@ test('dashboard API errors are JSON with the reason and a client status', async 
 	]);
 });
 
-test('shutdown closes active UI event streams', async () => {
+it('shutdown closes active UI event streams', async () => {
 	const shutdownController = new AbortController();
 	const routes = createUiRoutes({
 		buildOverview: () => ({
@@ -244,7 +244,7 @@ test('shutdown closes active UI event streams', async () => {
 	});
 });
 
-test('a UI event stream ends once its session is no longer valid', async () => {
+it('a UI event stream ends once its session is no longer valid', async () => {
 	let loggedIn = true;
 	const checked: Request[] = [];
 	const routes = createUiRoutes({
@@ -271,7 +271,7 @@ test('a UI event stream ends once its session is no longer valid', async () => {
 	expect(checked).toEqual([request]);
 });
 
-test('the health check answers only that the gateway serves', async () => {
+it('the health check answers only that the gateway serves', async () => {
 	const routes = createUiRoutes({
 		buildOverview: () => ({}),
 		mcpUpstreamManager: catalogOf('backend', [
@@ -287,7 +287,7 @@ test('the health check answers only that the gateway serves', async () => {
 	});
 });
 
-test('debug queries are parsed with their defaults and malformed ones are refused', async () => {
+it('debug queries are parsed with their defaults and malformed ones are refused', async () => {
 	const queries: unknown[] = [];
 	const routes = createUiRoutes({
 		buildOverview: () => ({}),

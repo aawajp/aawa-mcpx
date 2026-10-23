@@ -1,6 +1,6 @@
 ARG TARGETARCH
 
-FROM aawajp/bun:1.4.3 AS build
+FROM aawajp/bun:1.4.4 AS build
 
 SHELL ["/bin/ash", "-eu", "-o", "pipefail", "-c"]
 
@@ -24,7 +24,7 @@ RUN bun run css
 
 
 # Use the base image with Bun runtime
-FROM aawajp/bun:1.4.3
+FROM aawajp/bun:1.4.4
 
 SHELL ["/bin/ash", "-eu", "-o", "pipefail", "-c"]
 

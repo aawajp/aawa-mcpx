@@ -4,9 +4,9 @@ import {
 } from '@/shared/mcp_schema_fixtures';
 import { callToolResultType } from '@/shared/mcp_schemas';
 
-import { expect, test } from 'bun:test';
+import { expect, it } from 'bun:test';
 
-test('validates every tool content type without stripping extensions or metadata', () => {
+it('validates every tool content type without stripping extensions or metadata', () => {
 	const result = {
 		content: validToolContent.map((block) => ({
 			...block,
@@ -44,7 +44,7 @@ test('validates every tool content type without stripping extensions or metadata
 	).toBe(true);
 });
 
-test('rejects malformed tool content and unsupported content-free envelopes', () => {
+it('rejects malformed tool content and unsupported content-free envelopes', () => {
 	for (const result of invalidToolResults)
 		expect(callToolResultType.allows(result)).toBe(false);
 });
